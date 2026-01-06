@@ -68,3 +68,5 @@ flowchart TB
 - Editor positioned at click location using anchor data (elementId → elementSelector → clickPosition fallback)
 - Anchor data captured: pageUrl, elementId, elementSelector, relativePosition, clickPosition
 - Type-safe messaging in `src/shared/messaging.ts`
+- Reactive mustardState shared via provide/inject
+- Positioning logic centralized in MustardContent, child components stay dumb

@@ -1,13 +1,35 @@
 // Content script
-import { createApp, type App } from 'vue'
-import MustardNoteEditor from '@/ui/note-editor/MustardNoteEditor.vue'
+import { createApp } from 'vue'
+import MustardContent from '@/ui/content/MustardContent.vue'
+import { createMustardState } from '@/ui/content/mustard-state'
 import styles from '@/styles/main.css?inline'
 import type { Message, MustardNoteAnchorData } from '@/shared/messaging'
 
-console.log('Mustard content script loaded')
+// Reactive state shared with Vue app
+const mustardState = createMustardState()
 
-let editorApp: App | null = null
-let editorHost: HTMLElement | null = null
+// Single host element for all Mustard UI
+const mustardHost = document.createElement('div')
+mustardHost.id = 'mustard-host'
+document.body.appendChild(mustardHost)
+
+const mustardShadowRoot = mustardHost.attachShadow({ mode: 'open' })
+
+// Inject styles once for all Mustard UI
+const styleElement = document.createElement('style')
+styleElement.textContent = styles
+mustardShadowRoot.appendChild(styleElement)
+
+// Mount point for Vue app
+const mountPoint = document.createElement('div')
+mustardShadowRoot.appendChild(mountPoint)
+
+// Create Vue app with state provided
+const app = createApp(MustardContent)
+app.provide('mustardState', mustardState)
+app.mount(mountPoint)
+
+// Capture context menu data
 let lastContextMenuData: MustardNoteAnchorData | null = null
 
 // Capture context menu data when right-clicking
@@ -36,7 +58,6 @@ document.addEventListener('contextmenu', (event) => {
 
 function normalizePageUrl(url: string): string {
   const u = new URL(url)
-  // Remove hash and search params for normalization
   return `${u.origin}${u.pathname}`
 }
 
@@ -80,74 +101,12 @@ function generateSelector(element: HTMLElement): string | null {
   }
 }
 
+// Handle messages from service worker
 chrome.runtime.onMessage.addListener((message: Message) => {
   if (message.type === 'OPEN_NOTE_EDITOR') {
-    showNoteEditor()
-  }
-})
-
-function findAnchorElement(anchor: MustardNoteAnchorData): HTMLElement | null {
-  // Try by id first
-  if (anchor.elementId) {
-    const el = document.getElementById(anchor.elementId)
-    if (el) return el
-  }
-
-  // Try by selector
-  if (anchor.elementSelector) {
-    const el = document.querySelector<HTMLElement>(anchor.elementSelector)
-    if (el) return el
-  }
-
-  return null
-}
-
-function calculateEditorPosition(anchor: MustardNoteAnchorData): { x: number; y: number } {
-  const element = findAnchorElement(anchor)
-
-  if (element) {
-    const rect = element.getBoundingClientRect()
-    return {
-      x: rect.left + (rect.width * anchor.relativePosition.xP) / 100,
-      y: rect.top + (rect.height * anchor.relativePosition.yP) / 100 + window.scrollY,
+    if (lastContextMenuData) {
+      mustardState.editor.anchor = lastContextMenuData
+      mustardState.editor.isOpen = true
     }
   }
-
-  // Fallback to absolute click position
-  return {
-    x: (anchor.clickPosition.xVw / 100) * window.innerWidth,
-    y: anchor.clickPosition.yPx,
-  }
-}
-
-function showNoteEditor() {
-  if (editorHost) return
-  if (!lastContextMenuData) return
-
-  console.log('Opening editor with anchor data:', lastContextMenuData)
-
-  const position = calculateEditorPosition(lastContextMenuData)
-
-  // Create host element with shadow DOM for style isolation
-  editorHost = document.createElement('div')
-  editorHost.id = 'mustard-note-editor-host'
-  editorHost.style.position = 'absolute'
-  editorHost.style.left = `${position.x}px`
-  editorHost.style.top = `${position.y}px`
-  editorHost.style.zIndex = '2147483647'
-  document.body.appendChild(editorHost)
-
-  const shadow = editorHost.attachShadow({ mode: 'open' })
-
-  // Inject styles inside shadow DOM only
-  const styleElement = document.createElement('style')
-  styleElement.textContent = styles
-  shadow.appendChild(styleElement)
-
-  // Mount point inside shadow
-  const mountPoint = document.createElement('div')
-  shadow.appendChild(mountPoint)
-
-  editorApp = createApp(MustardNoteEditor)
-  editorApp.mount(mountPoint)
-}
+})
