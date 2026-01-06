@@ -8,7 +8,7 @@ This document tracks the current implementation status of Mustard features. Comp
 flowchart TB
     subgraph User["User Actions"]
         Click["Click extension icon"]
-        RightClick["Right-click element (PLANNED)"]
+        RightClick["Right-click element"]
     end
 
     subgraph Extension["Mustard Extension"]
@@ -16,7 +16,7 @@ flowchart TB
         Options["Options Page"]
         BG["Background Service Worker"]
         CS["Content Script"]
-        CtxMenu["Context Menu (PLANNED)"]
+        CtxMenu["Context Menu"]
         NoteEditor["Note Editor (PLANNED)"]
     end
 
@@ -47,8 +47,6 @@ flowchart TB
     API <--> DB
     API <--> Auth
 
-    style RightClick stroke-dasharray: 5 5
-    style CtxMenu stroke-dasharray: 5 5
     style NoteEditor stroke-dasharray: 5 5
     style Notes stroke-dasharray: 5 5
     style Backend stroke-dasharray: 5 5
@@ -65,3 +63,4 @@ flowchart TB
 - MustardOptionsPage accessible via chrome://extensions → Options
 - Background service worker initialized
 - Content script initialized (runs on all URLs)
+- Context menu "Add Mustard" appears on right-click, handled in service worker

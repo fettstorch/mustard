@@ -28,7 +28,7 @@ export default {
     type: 'module',
   },
 
-  permissions: ['storage'],
+  permissions: ['storage', 'contextMenus'],
 
   host_permissions: ['<all_urls>'],
 
