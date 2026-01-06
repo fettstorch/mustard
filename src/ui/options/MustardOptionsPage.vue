@@ -14,13 +14,57 @@
  * Note: This is different from the popup menu (MustardPopupMenu.vue) which opens
  * when clicking the extension icon. This is a full-page settings interface.
  */
+
+const gearIconUrl = chrome.runtime.getURL('gear_128.png')
 </script>
 
 <template>
-  <div style="padding: 24px">
-    <h1>Mustard Options</h1>
-    <p>Mustard options page is working!</p>
+  <div class="options-page">
+    <div class="header">
+      <img :src="gearIconUrl" alt="Settings" class="gear-icon" />
+      <h1>Mustard Options</h1>
+    </div>
+
+    <div class="content">
+      <p class="working-text">Mustard options page is working!</p>
+    </div>
   </div>
 </template>
 
-<style scoped></style>
+<style scoped>
+.options-page {
+  padding: 24px;
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 32px;
+}
+
+.gear-icon {
+  width: 48px;
+  height: 48px;
+}
+
+h1 {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 600;
+}
+
+.content {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.working-text {
+  color: #666;
+  font-size: 14px;
+  margin: 0;
+}
+</style>

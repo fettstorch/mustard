@@ -64,3 +64,4 @@ flowchart TB
 - Background service worker initialized
 - Content script initialized (runs on all URLs)
 - Context menu "Add Mustard" appears on right-click, handled in service worker
+- Gear icon in popup menu opens options page

@@ -8,8 +8,6 @@ chrome.runtime.onInstalled.addListener(() => {
     title: 'Add Mustard',
     contexts: ['all'], // Shows on any right-click context
   })
-
-  console.log('Mustard context menu created')
 })
 
 // Handle context menu item clicks
