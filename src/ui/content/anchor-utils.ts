@@ -5,9 +5,12 @@ export function calculateAnchorPosition(anchor: MustardNoteAnchorData): { x: num
 
   if (element) {
     const rect = element.getBoundingClientRect()
-    return {
-      x: rect.left + (rect.width * anchor.relativePosition.xP) / 100,
-      y: rect.top + (rect.height * anchor.relativePosition.yP) / 100 + window.scrollY,
+    // If element has zero dimensions, it's likely hidden/detached - fall back to clickPosition
+    if (rect.width > 0 && rect.height > 0) {
+      return {
+        x: rect.left + (rect.width * anchor.relativePosition.xP) / 100,
+        y: rect.top + (rect.height * anchor.relativePosition.yP) / 100 + window.scrollY,
+      }
     }
   }
 
