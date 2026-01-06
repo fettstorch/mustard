@@ -2,6 +2,61 @@
 
 This document tracks the current implementation status of Mustard features. Compare against `README.md` to see what's completed vs. what's still needed.
 
+## Architecture
+
+```mermaid
+flowchart TB
+    subgraph User["User Actions"]
+        Click["Click extension icon"]
+        RightClick["Right-click element (PLANNED)"]
+    end
+
+    subgraph Extension["Mustard Extension"]
+        Popup["Popup Menu"]
+        Options["Options Page"]
+        BG["Background Service Worker"]
+        CS["Content Script"]
+        CtxMenu["Context Menu (PLANNED)"]
+        NoteEditor["Note Editor (PLANNED)"]
+    end
+
+    subgraph Page["Web Page"]
+        Elements["Page Elements"]
+        Notes["Injected Notes (PLANNED)"]
+    end
+
+    subgraph Backend["Backend (PLANNED)"]
+        API["REST API (PLANNED)"]
+        DB[("PostgreSQL (PLANNED)")]
+        Auth["Auth (PLANNED)<br/>Atproto/Google"]
+    end
+
+    Click -->|"opens"| Popup
+    RightClick -->|"opens"| CtxMenu
+    CtxMenu -->|"opens"| NoteEditor
+
+    Popup <-->|"chrome.runtime (PLANNED)"| BG
+    Options <-->|"chrome.storage"| BG
+    BG <-->|"chrome.runtime (PLANNED)"| CS
+
+    CS -->|"MutationObserver (PLANNED)"| Elements
+    CS -->|"DOM injection (PLANNED)"| Notes
+    Notes -->|"anchored to"| Elements
+
+    BG <-->|"fetch (PLANNED)"| API
+    API <--> DB
+    API <--> Auth
+
+    style RightClick stroke-dasharray: 5 5
+    style CtxMenu stroke-dasharray: 5 5
+    style NoteEditor stroke-dasharray: 5 5
+    style Notes stroke-dasharray: 5 5
+    style Backend stroke-dasharray: 5 5
+    style API stroke-dasharray: 5 5
+    style DB stroke-dasharray: 5 5
+    style Auth stroke-dasharray: 5 5
+```
+
 ## Completed
 
 - Chrome extension setup with CRXJS and HMR working
