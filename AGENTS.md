@@ -1,5 +1,10 @@
 # Agent Rules
 
+## When making changes
+
+Whenever you make changes to the code you must use 'nr type-check' in order to verify that you didn't break anything!
+Your work is **not** done until type-check no longer shows errors.
+
 ## Product & Strategic Decisions
 
 **IMPORTANT**: For product and strategic decisions, always read and reference the `README.md` file, specifically the "Project Vision" section. This contains the project goals, MVP scope, and strategic direction that should guide all implementation decisions.

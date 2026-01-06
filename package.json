@@ -20,6 +20,7 @@
   },
   "devDependencies": {
     "@crxjs/vite-plugin": "^2.3.0",
+    "@tailwindcss/vite": "^4.1.18",
     "@tsconfig/node24": "^24.0.3",
     "@types/chrome": "^0.1.32",
     "@types/node": "^24.10.4",
@@ -32,6 +33,7 @@
     "jiti": "^2.6.1",
     "npm-run-all2": "^8.0.4",
     "prettier": "3.7.4",
+    "tailwindcss": "^4.1.18",
     "typescript": "~5.9.3",
     "vite": "^7.3.0",
     "vue-tsc": "^3.2.1"
