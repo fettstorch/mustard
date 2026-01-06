@@ -1,33 +1,41 @@
-import type { ManifestV3Export } from "@crxjs/vite-plugin";
+import type { ManifestV3Export } from '@crxjs/vite-plugin'
 
 export default {
   manifest_version: 3,
-  name: "Notes Overlay",
-  version: "0.0.1",
+  name: 'Mustard',
+  version: '0.0.1',
+
+  icons: {
+    16: 'mustard_bottle_smile_16.png',
+    48: 'mustard_bottle_smile_48.png',
+    128: 'mustard_bottle_smile_128.png',
+    512: 'mustard_bottle_smile_512.png',
+  },
 
   action: {
-    default_popup: "src/ui/popup/index.html",
+    default_popup: 'src/ui/popup/index.html',
+    default_icon: {
+      16: 'mustard_bottle_smile_16.png',
+      48: 'mustard_bottle_smile_48.png',
+      128: 'mustard_bottle_smile_128.png',
+    },
   },
 
-  options_page: "src/ui/options/index.html",
+  options_page: 'src/ui/options/index.html',
 
   background: {
-    service_worker: "src/background/service-worker.ts",
-    type: "module",
+    service_worker: 'src/background/service-worker.ts',
+    type: 'module',
   },
 
-  permissions: [
-    "storage"
-  ],
+  permissions: ['storage'],
 
-  host_permissions: [
-    "<all_urls>"
-  ],
+  host_permissions: ['<all_urls>'],
 
   content_scripts: [
     {
-      matches: ["<all_urls>"],
-      js: ["src/content/content-script.ts"],
+      matches: ['<all_urls>'],
+      js: ['src/content/content-script.ts'],
     },
   ],
-} satisfies ManifestV3Export;
+} satisfies ManifestV3Export
