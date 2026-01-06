@@ -17,7 +17,7 @@ flowchart TB
         BG["Background Service Worker"]
         CS["Content Script"]
         CtxMenu["Context Menu"]
-        NoteEditor["Note Editor (PLANNED)"]
+        NoteEditor["Note Editor (SKELETON)"]
     end
 
     subgraph Page["Web Page"]
@@ -37,7 +37,7 @@ flowchart TB
 
     Popup <-->|"chrome.runtime (PLANNED)"| BG
     Options <-->|"chrome.storage"| BG
-    BG <-->|"chrome.runtime (PLANNED)"| CS
+    BG <-->|"chrome.runtime"| CS
 
     CS -->|"MutationObserver (PLANNED)"| Elements
     CS -->|"DOM injection (PLANNED)"| Notes
@@ -47,7 +47,6 @@ flowchart TB
     API <--> DB
     API <--> Auth
 
-    style NoteEditor stroke-dasharray: 5 5
     style Notes stroke-dasharray: 5 5
     style Backend stroke-dasharray: 5 5
     style API stroke-dasharray: 5 5
@@ -66,3 +65,6 @@ flowchart TB
 - Context menu "Add Mustard" appears on right-click, handled in service worker
 - Gear icon in popup menu opens options page
 - Tailwind v4 configured via `@tailwindcss/vite`, imported in popup & options entry points
+- Editor positioned at click location using anchor data (elementId → elementSelector → clickPosition fallback)
+- Anchor data captured: pageUrl, elementId, elementSelector, relativePosition, clickPosition
+- Type-safe messaging in `src/shared/messaging.ts`
