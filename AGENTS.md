@@ -15,3 +15,13 @@
 - Update messages should be **very concise with maximum information density**
 - Example format: "Can now access <feature> via <component/location>"
 - The purpose is to quickly compare implementation status against the README.md vision
+
+## Learnings Documentation
+
+**LEARNINGS.md Purpose**: The `LEARNINGS.md` file documents simple learnings discovered during development that document how things actually work (e.g., technical limitations, workarounds, platform-specific behaviors).
+
+**Updating LEARNINGS.md**:
+
+- When a learning is discovered (e.g., something doesn't work as expected, a workaround is found, platform-specific behavior is identified), suggest adding it to LEARNINGS.md
+- Entries should be **very concise with maximum information density**
+- Focus on practical learnings that help avoid future issues or explain unexpected behavior
