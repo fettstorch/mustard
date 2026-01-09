@@ -1,4 +1,4 @@
-import type { MustardNote } from './model/MustardNote'
+import type { DtoMustardNote } from './dto/DtoMustardNote'
 import type { Satisfies } from './Satisfies'
 
 type BaseMessage = {
@@ -34,7 +34,7 @@ export type UpsertNoteMessage = Satisfies<
   {
     type: 'UPSERT_NOTE'
     service: 'local' | 'remote'
-    data: Omit<MustardNote, 'id' | 'authorId'>
+    data: Omit<DtoMustardNote, 'id' | 'authorId'>
   }
 >
 
@@ -47,8 +47,18 @@ export type QueryNotesMessage = Satisfies<
   }
 >
 
+// Message to delete a note (response returns fresh notes via sendResponse)
+export type DeleteNoteMessage = Satisfies<
+  BaseMessage,
+  {
+    type: 'DELETE_NOTE'
+    noteId: string
+    pageUrl: string
+  }
+>
+
 // Discriminated union of all messages - enables type narrowing
-export type Message = OpenNoteEditorMessage | UpsertNoteMessage | QueryNotesMessage
+export type Message = OpenNoteEditorMessage | UpsertNoteMessage | QueryNotesMessage | DeleteNoteMessage
 
 export function createOpenNoteEditorMessage(): OpenNoteEditorMessage {
   return {
@@ -58,7 +68,7 @@ export function createOpenNoteEditorMessage(): OpenNoteEditorMessage {
 
 export function createUpsertNoteMessage(
   service: 'local' | 'remote',
-  data: Omit<MustardNote, 'id' | 'authorId'>,
+  data: Omit<DtoMustardNote, 'id' | 'authorId'>,
 ): UpsertNoteMessage {
   return {
     type: 'UPSERT_NOTE',
@@ -70,6 +80,14 @@ export function createUpsertNoteMessage(
 export function createQueryNotesMessage(pageUrl: string): QueryNotesMessage {
   return {
     type: 'QUERY_NOTES',
+    pageUrl,
+  }
+}
+
+export function createDeleteNoteMessage(noteId: string, pageUrl: string): DeleteNoteMessage {
+  return {
+    type: 'DELETE_NOTE',
+    noteId,
     pageUrl,
   }
 }

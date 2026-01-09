@@ -30,13 +30,14 @@ chrome.runtime.onMessage.addListener(
     console.debug('mustard [service-worker] onMessage:', message)
 
     if (message.type === 'UPSERT_NOTE') {
-      const note = {
-        id: null,
+      // Convert DTO to domain model at the boundary
+      const note = DtoMustardNote.fromDto({
+        id: crypto.randomUUID(),
         authorId: 'local', // TODO get from mustardnotesmanager or whoever will manage the login
         content: message.data.content,
         anchorData: message.data.anchorData,
-        updatedAt: new Date(),
-      }
+        updatedAt: message.data.updatedAt,
+      })
       mustardNotesManager.upsertNote(note)
       return // No response needed
     }
@@ -44,6 +45,15 @@ chrome.runtime.onMessage.addListener(
     if (message.type === 'QUERY_NOTES') {
       mustardNotesManager.queryMustardNotesFor(message.pageUrl).then((notes) => {
         // Convert to DTOs for serialization over chrome.runtime messaging
+        sendResponse(notes.map(DtoMustardNote.toDto))
+      })
+      return true // Keep channel open for async response
+    }
+
+    if (message.type === 'DELETE_NOTE') {
+      mustardNotesManager.deleteNote(message.noteId, message.pageUrl).then(async () => {
+        // Re-query and return fresh notes
+        const notes = await mustardNotesManager.queryMustardNotesFor(message.pageUrl)
         sendResponse(notes.map(DtoMustardNote.toDto))
       })
       return true // Keep channel open for async response

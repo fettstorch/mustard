@@ -48,7 +48,7 @@ flowchart TB
     RightClick -->|"opens"| CtxMenu
     CtxMenu -->|"opens"| NoteEditor
 
-    CS <-->|"QUERY_NOTES / UPSERT_NOTE"| BG
+    CS <-->|"QUERY_NOTES / UPSERT_NOTE / DELETE_NOTE"| BG
     BG --> Manager
     Manager --> ServiceInterface
     ServiceInterface --> LocalService
@@ -93,8 +93,10 @@ flowchart TB
 - DTOs for serialization: `DtoMustardNote`, `DtoMustardIndex` with `toDto`/`fromDto` mappers
 - `MustardNote` model with `authorId`, `MustardIndex` class with follows/merge support
 - `MustardNotesManager` coordinates services, merges indexes from multiple services
-- Service worker ↔ content script: `QUERY_NOTES` (sendResponse), `UPSERT_NOTE` messaging
+- Service worker ↔ content script: `QUERY_NOTES`, `UPSERT_NOTE`, `DELETE_NOTE` messaging via sendResponse
 - Notes persisted to chrome.storage.local and retrieved on page load
 - DTOs moved to `src/shared/dto/` for access by both background and content scripts
 - `MustardNote.vue` component renders notes at anchor positions with date footer
 - Notes injected into pages via MustardContent, positioned using anchor data
+- Delete note: trash icon removes note, re-queries fresh list (re-query pattern for mutations)
+- Clean DTO boundary: messaging uses DTOs, content-script converts to domain models for Vue

@@ -24,4 +24,8 @@ export const mustardNotesManager = {
   upsertNote(note: MustardNote): Promise<void[]> {
     return Promise.all(services.map((s) => s.upsertNote(note)))
   },
+
+  async deleteNote(noteId: string, pageUrl: string): Promise<void> {
+    await Promise.all(services.map((s) => s.deleteNote(noteId, pageUrl)))
+  },
 }

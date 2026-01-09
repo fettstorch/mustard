@@ -4,7 +4,7 @@ import {
   type Message,
   type MustardNoteAnchorData,
 } from '@/shared/messaging'
-import type { MustardNote } from '@/shared/model/MustardNote'
+import { DtoMustardNote } from '@/shared/dto/DtoMustardNote'
 import MustardContent from '@/ui/content/MustardContent.vue'
 import { createMustardState } from '@/ui/content/mustard-state'
 import { Observable } from '@fettstorch/jule'
@@ -26,9 +26,9 @@ chrome.runtime.onMessage.addListener((message: Message) => {
 })
 
 // Query notes for the current page (response comes via sendResponse callback)
-chrome.runtime.sendMessage(createQueryNotesMessage(normalizedPageUrl), (notes: MustardNote[]) => {
-  console.debug('mustard [content-script] received notes:', notes)
-  mustardState.notes = notes ?? []
+chrome.runtime.sendMessage(createQueryNotesMessage(normalizedPageUrl), (dtos: DtoMustardNote[]) => {
+  console.debug('mustard [content-script] received notes:', dtos)
+  mustardState.notes = (dtos ?? []).map(DtoMustardNote.fromDto)
 })
 
 // Single host element for all Mustard UI
@@ -49,6 +49,13 @@ app.mount(mustardHost)
 event.subscribe((message) => {
   if (message.type === 'UPSERT_NOTE') {
     chrome.runtime.sendMessage(message)
+  }
+
+  if (message.type === 'DELETE_NOTE') {
+    chrome.runtime.sendMessage(message, (dtos: DtoMustardNote[]) => {
+      console.debug('mustard [content-script] received notes after delete:', dtos)
+      mustardState.notes = (dtos ?? []).map(DtoMustardNote.fromDto)
+    })
   }
 })
 

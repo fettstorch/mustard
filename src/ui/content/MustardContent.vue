@@ -6,7 +6,7 @@ import MustardNoteEditor from './note-editor/MustardNoteEditor.vue'
 import MustardNote from './note/MustardNote.vue'
 import type { MustardNote as MustardNoteType } from '@/shared/model/MustardNote'
 import type { Observable } from '@fettstorch/jule'
-import { createUpsertNoteMessage, type Message } from '@/shared/messaging'
+import { createUpsertNoteMessage, createDeleteNoteMessage, type Message } from '@/shared/messaging'
 
 const mustardState = inject<MustardState>('mustardState')!
 const event = inject<Observable<Message>>('event')!
@@ -49,7 +49,7 @@ function handlePressedSave(data: { content: string }) {
     createUpsertNoteMessage('local', {
       content: data.content,
       anchorData: mustardState.editor.anchor,
-      updatedAt: new Date(),
+      updatedAt: Date.now(),
     }),
   )
   mustardState.editor.isOpen = false
@@ -61,8 +61,8 @@ function handleEditNote(note: MustardNoteType) {
 }
 
 function handleDeleteNote(note: MustardNoteType) {
-  // TODO: Send delete message to service worker
-  console.log('Delete note:', note)
+  if (!note.id) return
+  event.emit(createDeleteNoteMessage(note.id, note.anchorData.pageUrl))
 }
 </script>
 

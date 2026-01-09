@@ -16,11 +16,7 @@ const emit = defineEmits<{
 const isMyOwnNote = props.note.authorId === 'local'
 
 const formattedDate = computed(() => {
-  // updatedAt may be a Date, string, or number depending on serialization
-  const date =
-    props.note.updatedAt instanceof Date ? props.note.updatedAt : new Date(props.note.updatedAt)
-
-  return date.toLocaleDateString(undefined, {
+  return props.note.updatedAt.toLocaleDateString(undefined, {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
