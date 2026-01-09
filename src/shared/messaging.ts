@@ -58,7 +58,11 @@ export type DeleteNoteMessage = Satisfies<
 >
 
 // Discriminated union of all messages - enables type narrowing
-export type Message = OpenNoteEditorMessage | UpsertNoteMessage | QueryNotesMessage | DeleteNoteMessage
+export type Message =
+  | OpenNoteEditorMessage
+  | UpsertNoteMessage
+  | QueryNotesMessage
+  | DeleteNoteMessage
 
 export function createOpenNoteEditorMessage(): OpenNoteEditorMessage {
   return {

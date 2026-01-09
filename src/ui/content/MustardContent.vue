@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { inject, computed, onMounted, onUnmounted } from 'vue'
+import { inject, computed, onMounted, onUnmounted, ref } from 'vue'
 import type { MustardState } from './mustard-state'
 import { calculateAnchorPosition } from './anchor-utils'
 import MustardNoteEditor from './note-editor/MustardNoteEditor.vue'
@@ -11,25 +11,38 @@ import { createUpsertNoteMessage, createDeleteNoteMessage, type Message } from '
 const mustardState = inject<MustardState>('mustardState')!
 const event = inject<Observable<Message>>('event')!
 
+// Reactive trigger for recalculating positions on resize
+const resizeTick = ref(0)
+
 const editorPosition = computed(() => {
+  // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+  resizeTick.value // dependency to trigger recalculation
   if (!mustardState.editor.isOpen || !mustardState.editor.anchor) return { x: 0, y: 0 }
   return calculateAnchorPosition(mustardState.editor.anchor)
 })
 
 /** Compute positions for all notes */
 const notesWithPositions = computed(() => {
+  // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+  resizeTick.value // dependency to trigger recalculation
   return mustardState.notes.map((note) => ({
     note,
     position: calculateAnchorPosition(note.anchorData),
   }))
 })
 
+function handleResize() {
+  resizeTick.value++
+}
+
 onMounted(() => {
   document.addEventListener('keydown', handleKeyDown)
+  window.addEventListener('resize', handleResize)
 })
 
 onUnmounted(() => {
   document.removeEventListener('keydown', handleKeyDown)
+  window.removeEventListener('resize', handleResize)
 })
 
 function handleKeyDown(event: KeyboardEvent) {

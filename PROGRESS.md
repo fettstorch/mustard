@@ -100,3 +100,4 @@ flowchart TB
 - Notes injected into pages via MustardContent, positioned using anchor data
 - Delete note: trash icon removes note, re-queries fresh list (re-query pattern for mutations)
 - Clean DTO boundary: messaging uses DTOs, content-script converts to domain models for Vue
+- Note positions recalculate on window resize
