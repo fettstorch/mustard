@@ -48,7 +48,10 @@ app.mount(mustardHost)
 // it can receive messages from the vue app via the event observable which it will relay to the service-worker
 event.subscribe((message) => {
   if (message.type === 'UPSERT_NOTE') {
-    chrome.runtime.sendMessage(message)
+    chrome.runtime.sendMessage(message, (dtos: DtoMustardNote[]) => {
+      console.debug('mustard [content-script] received notes after upsert:', dtos)
+      mustardState.notes = (dtos ?? []).map(DtoMustardNote.fromDto)
+    })
   }
 
   if (message.type === 'DELETE_NOTE') {

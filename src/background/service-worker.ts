@@ -38,8 +38,12 @@ chrome.runtime.onMessage.addListener(
         anchorData: message.data.anchorData,
         updatedAt: message.data.updatedAt,
       })
-      mustardNotesManager.upsertNote(note)
-      return // No response needed
+      mustardNotesManager.upsertNote(note).then(async () => {
+        // Re-query and return fresh notes
+        const notes = await mustardNotesManager.queryMustardNotesFor(note.anchorData.pageUrl)
+        sendResponse(notes.map(DtoMustardNote.toDto))
+      })
+      return true // Keep channel open for async response
     }
 
     if (message.type === 'QUERY_NOTES') {
