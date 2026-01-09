@@ -3,6 +3,8 @@ import { inject, computed, onMounted, onUnmounted } from 'vue'
 import type { MustardState } from './mustard-state'
 import { calculateAnchorPosition } from './anchor-utils'
 import MustardNoteEditor from './note-editor/MustardNoteEditor.vue'
+import MustardNote from './note/MustardNote.vue'
+import type { MustardNote as MustardNoteType } from '@/shared/model/MustardNote'
 import type { Observable } from '@fettstorch/jule'
 import { createUpsertNoteMessage, type Message } from '@/shared/messaging'
 
@@ -12,6 +14,14 @@ const event = inject<Observable<Message>>('event')!
 const editorPosition = computed(() => {
   if (!mustardState.editor.isOpen || !mustardState.editor.anchor) return { x: 0, y: 0 }
   return calculateAnchorPosition(mustardState.editor.anchor)
+})
+
+/** Compute positions for all notes */
+const notesWithPositions = computed(() => {
+  return mustardState.notes.map((note) => ({
+    note,
+    position: calculateAnchorPosition(note.anchorData),
+  }))
 })
 
 onMounted(() => {
@@ -42,11 +52,34 @@ function handlePressedSave(data: { content: string }) {
       updatedAt: new Date(),
     }),
   )
+  mustardState.editor.isOpen = false
+}
+
+function handleEditNote(note: MustardNoteType) {
+  // TODO: Open editor with existing note content for editing
+  console.log('Edit note:', note)
+}
+
+function handleDeleteNote(note: MustardNoteType) {
+  // TODO: Send delete message to service worker
+  console.log('Delete note:', note)
 }
 </script>
 
 <template>
   <div class="mustard-root">
+    <!-- Existing notes -->
+    <MustardNote
+      v-for="({ note, position }, index) in notesWithPositions"
+      :key="note.id ?? `unsaved-${index}`"
+      :note="note"
+      class="mustard-positioned"
+      :style="{ left: `${position.x}px`, top: `${position.y}px` }"
+      @pressed-edit="handleEditNote"
+      @pressed-delete="handleDeleteNote"
+    />
+
+    <!-- Note editor -->
     <Transition name="mustard-editor">
       <MustardNoteEditor
         v-if="mustardState.editor.isOpen"

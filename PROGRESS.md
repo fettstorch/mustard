@@ -40,7 +40,7 @@ flowchart TB
 
     subgraph Page["Web Page"]
         Elements["Page Elements"]
-        Notes["Injected Notes (PLANNED)"]
+        Notes["Injected Notes"]
     end
 
     Click -->|"opens"| Popup
@@ -61,13 +61,12 @@ flowchart TB
     RemoteService -.->|"fetch (PLANNED)"| API
     API -.-> DB
 
-    CS -->|"DOM injection (PLANNED)"| Notes
+    CS -->|"DOM injection"| Notes
     Notes -->|"anchored to"| Elements
 
     style RemoteService stroke-dasharray: 5 5
     style API stroke-dasharray: 5 5
     style DB stroke-dasharray: 5 5
-    style Notes stroke-dasharray: 5 5
 ```
 
 ## Completed
@@ -96,3 +95,6 @@ flowchart TB
 - `MustardNotesManager` coordinates services, merges indexes from multiple services
 - Service worker ↔ content script: `QUERY_NOTES` (sendResponse), `UPSERT_NOTE` messaging
 - Notes persisted to chrome.storage.local and retrieved on page load
+- DTOs moved to `src/shared/dto/` for access by both background and content scripts
+- `MustardNote.vue` component renders notes at anchor positions with date footer
+- Notes injected into pages via MustardContent, positioned using anchor data

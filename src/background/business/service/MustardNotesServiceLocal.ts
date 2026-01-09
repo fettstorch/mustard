@@ -1,8 +1,8 @@
 import type { MustardNote } from '@/shared/model/MustardNote'
 import type { MustardNotesService } from './MustardNotesService'
 import { MustardIndex } from '@/shared/model/MustardIndex'
-import { DtoMustardIndex } from './DtoMustardIndex'
-import { DtoMustardNote } from './DtoMustardNote'
+import { DtoMustardIndex } from '@/shared/dto/DtoMustardIndex'
+import { DtoMustardNote } from '@/shared/dto/DtoMustardNote'
 
 const LOCAL_USER_ID = 'local'
 const storageKey = `mustard-notes-${chrome.runtime.id}`

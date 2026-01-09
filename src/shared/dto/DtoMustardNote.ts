@@ -2,7 +2,7 @@ import type { MustardNoteAnchorData } from '@/shared/messaging'
 import type { MustardNote } from '@/shared/model/MustardNote'
 
 /**
- * Serializable DTO for MustardNote (for chrome.storage.local)
+ * Serializable DTO for MustardNote (for chrome.storage.local and chrome.runtime messaging)
  * Date is stored as Unix timestamp (milliseconds)
  */
 export type DtoMustardNote = {

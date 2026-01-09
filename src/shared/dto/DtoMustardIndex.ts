@@ -4,7 +4,7 @@ type PageUrl = string
 type UserId = string
 
 /**
- * Serializable DTO for MustardIndex (for chrome.storage.local)
+ * Serializable DTO for MustardIndex (for chrome.storage.local and chrome.runtime messaging)
  * Map is stored as a plain object (Record)
  */
 export type DtoMustardIndex = Record<UserId, PageUrl[]>

@@ -1,9 +1,9 @@
 // Background service worker
 import { createOpenNoteEditorMessage, type Message } from '@/shared/messaging'
 import type { MustardIndex } from '@/shared/model/MustardIndex'
-import type { MustardNote } from '@/shared/model/MustardNote'
 import { awaitable } from '@fettstorch/jule'
 import { mustardNotesManager } from './business/MustardNotesManager'
+import { DtoMustardNote } from '@/shared/dto/DtoMustardNote'
 
 console.log('Mustard background service worker loaded')
 const mustardIndex = awaitable<MustardIndex>()
@@ -26,7 +26,7 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 // Receiving messages from the content-script
 // IMPORTANT: Cannot be async! Must return true for async responses and use sendResponse callback.
 chrome.runtime.onMessage.addListener(
-  (message: Message, _sender, sendResponse: (response: MustardNote[]) => void) => {
+  (message: Message, _sender, sendResponse: (response: DtoMustardNote[]) => void) => {
     console.debug('mustard [service-worker] onMessage:', message)
 
     if (message.type === 'UPSERT_NOTE') {
@@ -43,7 +43,8 @@ chrome.runtime.onMessage.addListener(
 
     if (message.type === 'QUERY_NOTES') {
       mustardNotesManager.queryMustardNotesFor(message.pageUrl).then((notes) => {
-        sendResponse(notes)
+        // Convert to DTOs for serialization over chrome.runtime messaging
+        sendResponse(notes.map(DtoMustardNote.toDto))
       })
       return true // Keep channel open for async response
     }
