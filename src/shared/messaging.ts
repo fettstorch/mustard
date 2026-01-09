@@ -1,3 +1,4 @@
+import type { MustardNote } from './model/MustardNote'
 import type { Satisfies } from './Satisfies'
 
 type BaseMessage = {
@@ -24,16 +25,51 @@ export type OpenNoteEditorMessage = Satisfies<
   BaseMessage,
   {
     type: 'OPEN_NOTE_EDITOR'
-    data: Record<string, never>
+  }
+>
+
+// Message to create or update a mustard note
+export type UpsertNoteMessage = Satisfies<
+  BaseMessage,
+  {
+    type: 'UPSERT_NOTE'
+    service: 'local' | 'remote'
+    data: Omit<MustardNote, 'id' | 'authorId'>
+  }
+>
+
+// Message to query notes for a page (response via sendResponse callback)
+export type QueryNotesMessage = Satisfies<
+  BaseMessage,
+  {
+    type: 'QUERY_NOTES'
+    pageUrl: string
   }
 >
 
 // Discriminated union of all messages - enables type narrowing
-export type Message = OpenNoteEditorMessage
+export type Message = OpenNoteEditorMessage | UpsertNoteMessage | QueryNotesMessage
 
 export function createOpenNoteEditorMessage(): OpenNoteEditorMessage {
   return {
     type: 'OPEN_NOTE_EDITOR',
-    data: {},
+  }
+}
+
+export function createUpsertNoteMessage(
+  service: 'local' | 'remote',
+  data: Omit<MustardNote, 'id' | 'authorId'>,
+): UpsertNoteMessage {
+  return {
+    type: 'UPSERT_NOTE',
+    service,
+    data,
+  }
+}
+
+export function createQueryNotesMessage(pageUrl: string): QueryNotesMessage {
+  return {
+    type: 'QUERY_NOTES',
+    pageUrl,
   }
 }

@@ -1,7 +1,12 @@
 // Background service worker
-import { createOpenNoteEditorMessage } from '@/shared/messaging'
+import { createOpenNoteEditorMessage, type Message } from '@/shared/messaging'
+import type { MustardIndex } from '@/shared/model/MustardIndex'
+import type { MustardNote } from '@/shared/model/MustardNote'
+import { awaitable } from '@fettstorch/jule'
+import { mustardNotesManager } from './business/MustardNotesManager'
 
 console.log('Mustard background service worker loaded')
+const mustardIndex = awaitable<MustardIndex>()
 
 // Create context menu item when extension is installed
 chrome.runtime.onInstalled.addListener(() => {
@@ -16,4 +21,35 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
   if (info.menuItemId === 'mustard-add-note' && tab?.id) {
     chrome.tabs.sendMessage(tab.id, createOpenNoteEditorMessage())
   }
+})
+
+// Receiving messages from the content-script
+// IMPORTANT: Cannot be async! Must return true for async responses and use sendResponse callback.
+chrome.runtime.onMessage.addListener(
+  (message: Message, _sender, sendResponse: (response: MustardNote[]) => void) => {
+    console.debug('mustard [service-worker] onMessage:', message)
+
+    if (message.type === 'UPSERT_NOTE') {
+      const note = {
+        id: null,
+        authorId: 'local', // TODO get from mustardnotesmanager or whoever will manage the login
+        content: message.data.content,
+        anchorData: message.data.anchorData,
+        updatedAt: new Date(),
+      }
+      mustardNotesManager.upsertNote(note)
+      return // No response needed
+    }
+
+    if (message.type === 'QUERY_NOTES') {
+      mustardNotesManager.queryMustardNotesFor(message.pageUrl).then((notes) => {
+        sendResponse(notes)
+      })
+      return true // Keep channel open for async response
+    }
+  },
+)
+
+chrome.runtime.onStartup.addListener(async () => {
+  mustardNotesManager.queryMustardIndex().then((index) => mustardIndex.resolve(index))
 })

@@ -1,11 +1,35 @@
 // Content script
-import { createApp } from 'vue'
+import {
+  createQueryNotesMessage,
+  type Message,
+  type MustardNoteAnchorData,
+} from '@/shared/messaging'
+import type { MustardNote } from '@/shared/model/MustardNote'
 import MustardContent from '@/ui/content/MustardContent.vue'
 import { createMustardState } from '@/ui/content/mustard-state'
-import type { Message, MustardNoteAnchorData } from '@/shared/messaging'
+import { Observable } from '@fettstorch/jule'
+import { createApp } from 'vue'
 
 // Reactive state shared with Vue app
 const mustardState = createMustardState()
+
+const normalizedPageUrl = normalizePageUrl(window.location.href)
+
+// Handle messages from service worker
+chrome.runtime.onMessage.addListener((message: Message) => {
+  console.debug('mustard [content-script] onMessage:', message)
+  if (message.type === 'OPEN_NOTE_EDITOR') {
+    mustardState.editor.anchor = lastContextMenuData
+    mustardState.editor.isOpen = true
+    return
+  }
+})
+
+// Query notes for the current page (response comes via sendResponse callback)
+chrome.runtime.sendMessage(createQueryNotesMessage(normalizedPageUrl), (notes: MustardNote[]) => {
+  console.debug('mustard [content-script] received notes:', notes)
+  mustardState.notes = notes ?? []
+})
 
 // Single host element for all Mustard UI
 const mustardHost = document.createElement('div')
@@ -14,8 +38,19 @@ document.body.appendChild(mustardHost)
 
 // Create Vue app with state provided - mount directly to host (no shadow DOM)
 const app = createApp(MustardContent)
+const event = new Observable<Message>()
 app.provide('mustardState', mustardState)
+app.provide('event', event)
 app.mount(mustardHost)
+
+// content-script will act as a message relay between the vue app and the service worker
+// it can alter the mustardState which is reactive and the vue app will act on it
+// it can receive messages from the vue app via the event observable which it will relay to the service-worker
+event.subscribe((message) => {
+  if (message.type === 'UPSERT_NOTE') {
+    chrome.runtime.sendMessage(message)
+  }
+})
 
 // Capture context menu data
 let lastContextMenuData: MustardNoteAnchorData | null = null
@@ -30,7 +65,7 @@ document.addEventListener('contextmenu', (event) => {
   const rect = target.getBoundingClientRect()
 
   lastContextMenuData = {
-    pageUrl: normalizePageUrl(window.location.href),
+    pageUrl: normalizedPageUrl,
     elementId: target.id || null,
     elementSelector: generateSelector(target),
     relativePosition: {
@@ -88,11 +123,3 @@ function generateSelector(element: HTMLElement): string | null {
     return null
   }
 }
-
-// Handle messages from service worker
-chrome.runtime.onMessage.addListener((message: Message) => {
-  if (message.type === 'OPEN_NOTE_EDITOR') {
-    mustardState.editor.anchor = lastContextMenuData
-    mustardState.editor.isOpen = true
-  }
-})

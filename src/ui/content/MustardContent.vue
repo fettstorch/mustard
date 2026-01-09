@@ -35,7 +35,13 @@ function handlePressedSave(data: { content: string }) {
     console.warn('No anchor data found when trying to save note')
     return
   }
-  event.emit(createUpsertNoteMessage(mustardState.editor.anchor, data.content, 'local'))
+  event.emit(
+    createUpsertNoteMessage('local', {
+      content: data.content,
+      anchorData: mustardState.editor.anchor,
+      updatedAt: new Date(),
+    }),
+  )
 }
 </script>
 

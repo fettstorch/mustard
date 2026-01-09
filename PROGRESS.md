@@ -17,7 +17,25 @@ flowchart TB
         BG["Background Service Worker"]
         CS["Content Script"]
         CtxMenu["Context Menu"]
-        NoteEditor["Note Editor (SKELETON)"]
+        NoteEditor["Note Editor"]
+    end
+
+    subgraph Business["Business Logic"]
+        Manager["MustardNotesManager"]
+        ServiceInterface["MustardNotesService"]
+        LocalService["MustardNotesServiceLocal"]
+        RemoteService["MustardNotesServiceRemote (PLANNED)"]
+    end
+
+    subgraph Storage["Storage"]
+        ChromeStorage[("chrome.storage.local")]
+        API["REST API (PLANNED)"]
+        DB[("PostgreSQL (PLANNED)")]
+    end
+
+    subgraph DTOs["DTOs"]
+        DtoNote["DtoMustardNote"]
+        DtoIndex["DtoMustardIndex"]
     end
 
     subgraph Page["Web Page"]
@@ -25,33 +43,31 @@ flowchart TB
         Notes["Injected Notes (PLANNED)"]
     end
 
-    subgraph Backend["Backend (PLANNED)"]
-        API["REST API (PLANNED)"]
-        DB[("PostgreSQL (PLANNED)")]
-        Auth["Auth (PLANNED)<br/>Atproto/Google"]
-    end
-
     Click -->|"opens"| Popup
+    Popup -->|"gear icon"| Options
     RightClick -->|"opens"| CtxMenu
     CtxMenu -->|"opens"| NoteEditor
 
-    Popup <-->|"chrome.runtime (PLANNED)"| BG
-    Options <-->|"chrome.storage"| BG
-    BG <-->|"chrome.runtime"| CS
+    CS <-->|"QUERY_NOTES / UPSERT_NOTE"| BG
+    BG --> Manager
+    Manager --> ServiceInterface
+    ServiceInterface --> LocalService
+    ServiceInterface -.-> RemoteService
 
-    CS -->|"MutationObserver (PLANNED)"| Elements
+    LocalService <-->|"serialize via"| DtoNote
+    LocalService <-->|"serialize via"| DtoIndex
+    LocalService <--> ChromeStorage
+
+    RemoteService -.->|"fetch (PLANNED)"| API
+    API -.-> DB
+
     CS -->|"DOM injection (PLANNED)"| Notes
     Notes -->|"anchored to"| Elements
 
-    BG <-->|"fetch (PLANNED)"| API
-    API <--> DB
-    API <--> Auth
-
-    style Notes stroke-dasharray: 5 5
-    style Backend stroke-dasharray: 5 5
+    style RemoteService stroke-dasharray: 5 5
     style API stroke-dasharray: 5 5
     style DB stroke-dasharray: 5 5
-    style Auth stroke-dasharray: 5 5
+    style Notes stroke-dasharray: 5 5
 ```
 
 ## Completed
@@ -71,6 +87,12 @@ flowchart TB
 - Reactive mustardState shared via provide/inject
 - Positioning logic centralized in MustardContent, child components stay dumb
 - UI folder reorganized: content script components in `src/ui/content/`
-- Modular content styles in `content-styles.css` (mustard-plastic, mustard-rounded, mustard-text-*, mustard-padding)
+- Modular content styles in `content-styles.css` (mustard-plastic, mustard-rounded, mustard-text-\*, mustard-padding)
 - Note Editor styled with mustard bottle aesthetic
-
+- `MustardNotesService` interface: `queryIndex(userId)`, `queryNotes(pageUrl, userId)`, `upsertNote`, `deleteNote`
+- `MustardNotesServiceLocal` implementation using chrome.storage.local
+- DTOs for serialization: `DtoMustardNote`, `DtoMustardIndex` with `toDto`/`fromDto` mappers
+- `MustardNote` model with `authorId`, `MustardIndex` class with follows/merge support
+- `MustardNotesManager` coordinates services, merges indexes from multiple services
+- Service worker ↔ content script: `QUERY_NOTES` (sendResponse), `UPSERT_NOTE` messaging
+- Notes persisted to chrome.storage.local and retrieved on page load
