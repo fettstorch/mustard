@@ -1,9 +1,12 @@
 <script setup lang="ts">
-import { onMounted, useTemplateRef } from 'vue'
+import { onMounted, onUnmounted, useTemplateRef } from 'vue'
 import IconButton from '../IconButton.vue'
 import MustardNoteHeader from '../MustardNoteHeader.vue'
 
-const emit = defineEmits(['pressed-x'])
+const emit = defineEmits<{
+  (e: 'pressed-x'): void
+  (e: 'pressed-save', data: { content: string }): void
+}>()
 
 const editorContainerRef = useTemplateRef<HTMLDivElement>('editorContainer')
 
@@ -12,7 +15,18 @@ onMounted(() => {
   if (!editorEl) return
   editorEl.innerHTML = ''
   editorEl.focus()
+  document.addEventListener('keydown', handleKeyDown)
 })
+
+onUnmounted(() => {
+  document.removeEventListener('keydown', handleKeyDown)
+})
+
+function handleKeyDown(event: KeyboardEvent) {
+  if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+    emit('pressed-save', { content: getEditorContent() })
+  }
+}
 
 function handleFocusOut(event: FocusEvent) {
   const container = editorContainerRef.value
@@ -24,6 +38,12 @@ function handleFocusOut(event: FocusEvent) {
   }
 
   emit('pressed-x')
+}
+
+function getEditorContent(): string {
+  const editorEl = document.getElementById('mustard-editor-el')
+  if (!editorEl) return ''
+  return editorEl.textContent || ''
 }
 </script>
 
@@ -37,7 +57,7 @@ function handleFocusOut(event: FocusEvent) {
   >
     <!-- Header -->
     <MustardNoteHeader style="translate: 5px; margin-bottom: 8px">
-      <IconButton icon="eye-open" />
+      <IconButton icon="save" @click="emit('pressed-save', { content: getEditorContent() })" />
       <IconButton icon="x" @click="emit('pressed-x')" />
     </MustardNoteHeader>
     <!-- User-Writable Textarea -->

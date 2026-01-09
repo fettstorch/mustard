@@ -3,8 +3,11 @@ import { inject, computed, onMounted, onUnmounted } from 'vue'
 import type { MustardState } from './mustard-state'
 import { calculateAnchorPosition } from './anchor-utils'
 import MustardNoteEditor from './note-editor/MustardNoteEditor.vue'
+import type { Observable } from '@fettstorch/jule'
+import { createUpsertNoteMessage, type Message } from '@/shared/messaging'
 
 const mustardState = inject<MustardState>('mustardState')!
+const event = inject<Observable<Message>>('event')!
 
 const editorPosition = computed(() => {
   if (!mustardState.editor.isOpen || !mustardState.editor.anchor) return { x: 0, y: 0 }
@@ -26,6 +29,14 @@ function handleKeyDown(event: KeyboardEvent) {
     }
   }
 }
+
+function handlePressedSave(data: { content: string }) {
+  if (!mustardState.editor.anchor) {
+    console.warn('No anchor data found when trying to save note')
+    return
+  }
+  event.emit(createUpsertNoteMessage(mustardState.editor.anchor, data.content, 'local'))
+}
 </script>
 
 <template>
@@ -36,6 +47,7 @@ function handleKeyDown(event: KeyboardEvent) {
         class="mustard-positioned"
         :style="{ left: `${editorPosition.x}px`, top: `${editorPosition.y}px` }"
         @pressed-x="mustardState.editor.isOpen = false"
+        @pressed-save="handlePressedSave"
       />
     </Transition>
   </div>
