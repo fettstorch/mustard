@@ -92,9 +92,7 @@ function generateSelector(element: HTMLElement): string | null {
 // Handle messages from service worker
 chrome.runtime.onMessage.addListener((message: Message) => {
   if (message.type === 'OPEN_NOTE_EDITOR') {
-    if (lastContextMenuData) {
-      mustardState.editor.anchor = lastContextMenuData
-      mustardState.editor.isOpen = true
-    }
+    mustardState.editor.anchor = lastContextMenuData
+    mustardState.editor.isOpen = true
   }
 })
