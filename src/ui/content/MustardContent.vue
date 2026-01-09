@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { inject, computed } from 'vue'
+import { inject, computed, onMounted, onUnmounted } from 'vue'
 import type { MustardState } from './mustard-state'
 import { calculateAnchorPosition } from './anchor-utils'
 import MustardNoteEditor from './note-editor/MustardNoteEditor.vue'
@@ -10,15 +10,34 @@ const editorPosition = computed(() => {
   if (!mustardState.editor.isOpen || !mustardState.editor.anchor) return { x: 0, y: 0 }
   return calculateAnchorPosition(mustardState.editor.anchor)
 })
+
+onMounted(() => {
+  document.addEventListener('keydown', handleKeyDown)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('keydown', handleKeyDown)
+})
+
+function handleKeyDown(event: KeyboardEvent) {
+  if (event.key === 'Escape') {
+    if (mustardState.editor.isOpen) {
+      mustardState.editor.isOpen = false
+    }
+  }
+}
 </script>
 
 <template>
   <div class="mustard-root">
-    <MustardNoteEditor
-      v-if="mustardState.editor.isOpen"
-      class="mustard-positioned"
-      :style="{ left: `${editorPosition.x}px`, top: `${editorPosition.y}px` }"
-    />
+    <Transition name="mustard-editor">
+      <MustardNoteEditor
+        v-if="mustardState.editor.isOpen"
+        class="mustard-positioned"
+        :style="{ left: `${editorPosition.x}px`, top: `${editorPosition.y}px` }"
+        @pressed-x="mustardState.editor.isOpen = false"
+      />
+    </Transition>
   </div>
 </template>
 
@@ -44,5 +63,16 @@ const editorPosition = computed(() => {
 
 .mustard-positioned {
   position: absolute;
+}
+
+.mustard-editor-enter-active,
+.mustard-editor-leave-active {
+  transition: all 0.3s cubic-bezier(0.38, -0.9, 0.5, 1.95);
+}
+
+.mustard-editor-enter-from,
+.mustard-editor-leave-to {
+  opacity: 0;
+  transform: scale(0.95);
 }
 </style>
