@@ -82,18 +82,20 @@ function handleDeleteNote(note: MustardNoteType) {
 <template>
   <div class="mustard-root">
     <!-- Existing notes -->
-    <MustardNote
-      v-for="({ note, position }, index) in notesWithPositions"
-      :key="note.id ?? `unsaved-${index}`"
-      :note="note"
-      class="mustard-positioned"
-      :style="{ left: `${position.x}px`, top: `${position.y}px` }"
-      @pressed-edit="handleEditNote"
-      @pressed-delete="handleDeleteNote"
-    />
+    <TransitionGroup name="mustard-note">
+      <MustardNote
+        v-for="({ note, position }, index) in notesWithPositions"
+        :key="note.id ?? `unsaved-${index}`"
+        :note="note"
+        class="mustard-positioned"
+        :style="{ left: `${position.x}px`, top: `${position.y}px` }"
+        @pressed-edit="handleEditNote"
+        @pressed-delete="handleDeleteNote"
+      />
+    </TransitionGroup>
 
     <!-- Note editor -->
-    <Transition name="mustard-editor">
+    <Transition name="mustard-note">
       <MustardNoteEditor
         v-if="mustardState.editor.isOpen"
         class="mustard-positioned"
@@ -129,13 +131,13 @@ function handleDeleteNote(note: MustardNoteType) {
   position: absolute;
 }
 
-.mustard-editor-enter-active,
-.mustard-editor-leave-active {
+.mustard-note-enter-active,
+.mustard-note-leave-active {
   transition: all 0.3s cubic-bezier(0.38, -0.9, 0.5, 1.95);
 }
 
-.mustard-editor-enter-from,
-.mustard-editor-leave-to {
+.mustard-note-enter-from,
+.mustard-note-leave-to {
   opacity: 0;
   transform: scale(0.95);
 }
