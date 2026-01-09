@@ -70,3 +70,7 @@ flowchart TB
 - Type-safe messaging in `src/shared/messaging.ts`
 - Reactive mustardState shared via provide/inject
 - Positioning logic centralized in MustardContent, child components stay dumb
+- UI folder reorganized: content script components in `src/ui/content/`
+- Modular content styles in `content-styles.css` (mustard-plastic, mustard-rounded, mustard-text-*, mustard-padding)
+- Note Editor styled with mustard bottle aesthetic
+

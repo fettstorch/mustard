@@ -1,5 +1,7 @@
 # Agent Rules
 
+read the LEARNINGS.md and the PROGRESS.md in order to have a better understanding of what needs to be done and how.
+
 ## When making changes
 
 Whenever you make changes to the code you must use 'nr type-check' in order to verify that you didn't break anything!

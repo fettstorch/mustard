@@ -2,7 +2,6 @@
 import { createApp } from 'vue'
 import MustardContent from '@/ui/content/MustardContent.vue'
 import { createMustardState } from '@/ui/content/mustard-state'
-import styles from '@/styles/main.css?inline'
 import type { Message, MustardNoteAnchorData } from '@/shared/messaging'
 
 // Reactive state shared with Vue app
@@ -13,21 +12,10 @@ const mustardHost = document.createElement('div')
 mustardHost.id = 'mustard-host'
 document.body.appendChild(mustardHost)
 
-const mustardShadowRoot = mustardHost.attachShadow({ mode: 'open' })
-
-// Inject styles once for all Mustard UI
-const styleElement = document.createElement('style')
-styleElement.textContent = styles
-mustardShadowRoot.appendChild(styleElement)
-
-// Mount point for Vue app
-const mountPoint = document.createElement('div')
-mustardShadowRoot.appendChild(mountPoint)
-
-// Create Vue app with state provided
+// Create Vue app with state provided - mount directly to host (no shadow DOM)
 const app = createApp(MustardContent)
 app.provide('mustardState', mustardState)
-app.mount(mountPoint)
+app.mount(mustardHost)
 
 // Capture context menu data
 let lastContextMenuData: MustardNoteAnchorData | null = null
