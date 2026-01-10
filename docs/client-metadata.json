@@ -3,7 +3,7 @@
   "client_name": "Mustard",
   "client_uri": "https://fettstorch.github.io/mustard/",
   "redirect_uris": [
-    "https://fettstorch.github.io/mustard/callback.html"
+    "https://gpfmmjemfofiflnhedmpaononjimfikl.chromiumapp.org/callback"
   ],
   "scope": "atproto",
   "grant_types": ["authorization_code", "refresh_token"],
