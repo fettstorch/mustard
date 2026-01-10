@@ -72,7 +72,7 @@
       contentEl.innerHTML = '<p class="instructions">The Mustard extension is completing your login.<br>You can close this tab.</p>' + debugInfo;
 
       if (window.opener) {
-        window.opener.postMessage({ type: 'MUSTARD_OAUTH_CALLBACK', code, state }, '*');
+        window.opener.postMessage({ type: 'MUSTARD_OAUTH_CALLBACK', code, state, iss, error: null, error_description: null }, '*');
       }
     } else {
       statusEl.textContent = 'Something went wrong';
