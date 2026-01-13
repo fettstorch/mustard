@@ -13,7 +13,14 @@ import { createApp } from 'vue'
 // Reactive state shared with Vue app
 const mustardState = createMustardState()
 
+// The page's URL (used for storing/retrieving notes)
 const normalizedPageUrl = normalizePageUrl(window.location.href)
+
+// Capture context menu data when user right-clicks on a page
+// In order for us to get the click-data
+// The service-worker registers the right-click on the 'add mustard' context menu
+// but the service-worker can't access the page's click-target
+let lastContextMenuData: MustardNoteAnchorData | null = null
 
 // Handle messages from service worker
 chrome.runtime.onMessage.addListener((message: Message) => {
@@ -61,9 +68,6 @@ event.subscribe((message) => {
     })
   }
 })
-
-// Capture context menu data
-let lastContextMenuData: MustardNoteAnchorData | null = null
 
 // Capture context menu data when right-clicking
 // the service-worker has no permission to capture the click-target

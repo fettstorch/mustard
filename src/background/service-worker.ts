@@ -9,6 +9,13 @@ import { login, getSession, logout } from './auth/AtprotoAuth'
 console.log('Mustard background service worker loaded')
 const mustardIndex = awaitable<MustardIndex>()
 
+const initializeIndex = () => {
+  mustardNotesManager.queryMustardIndex().then((index) => mustardIndex.resolve(index))
+}
+
+chrome.runtime.onStartup.addListener(initializeIndex)
+chrome.runtime.onInstalled.addListener(initializeIndex)
+
 // Create context menu item when extension is installed
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({
@@ -48,9 +55,16 @@ chrome.runtime.onMessage.addListener(
     }
 
     if (message.type === 'QUERY_NOTES') {
-      mustardNotesManager.queryMustardNotesFor(message.pageUrl).then((notes) => {
-        // Convert to DTOs for serialization over chrome.runtime messaging
-        sendResponse(notes.map(DtoMustardNote.toDto))
+      mustardIndex.then((index) => {
+        console.debug('mustard [service-worker] QUERY_NOTES index:', index)
+        // Check index first - if no notes for this page, return early
+        if (index.getUsersForPage(message.pageUrl).length === 0) {
+          sendResponse([])
+          return
+        }
+        mustardNotesManager.queryMustardNotesFor(message.pageUrl).then((notes) => {
+          sendResponse(notes.map(DtoMustardNote.toDto))
+        })
       })
       return true // Keep channel open for async response
     }
@@ -101,6 +115,3 @@ chrome.runtime.onMessage.addListener(
   },
 )
 
-chrome.runtime.onStartup.addListener(async () => {
-  mustardNotesManager.queryMustardIndex().then((index) => mustardIndex.resolve(index))
-})
