@@ -3,14 +3,13 @@
  * BlueskyLogin Component
  *
  * Handles the Bluesky/AT Protocol login flow.
- * Emits 'success' with the OAuthSession when login completes.
+ * Uses messaging to service worker because popup can close during OAuth flow.
  */
 import { ref } from 'vue'
-import { login } from '@/background/auth/AtprotoAuth'
-import type { OAuthSession } from '@atproto/oauth-client-browser'
+import { createAtprotoLoginMessage, type AtprotoSessionResponse } from '@/shared/messaging'
 
 const emit = defineEmits<{
-  success: [session: OAuthSession]
+  success: [session: NonNullable<AtprotoSessionResponse>]
 }>()
 
 /** User's Bluesky handle, e.g. "julian.bsky.social" */
@@ -26,8 +25,13 @@ async function submit() {
   errorMessage.value = null
 
   try {
-    const session = await login(handle)
-    emit('success', session)
+    // Send to service worker - it handles OAuth and persists across popup close
+    const session = await chrome.runtime.sendMessage(createAtprotoLoginMessage(handle)) as AtprotoSessionResponse
+    if (session) {
+      emit('success', session)
+    } else {
+      errorMessage.value = 'Login failed or was cancelled'
+    }
   } catch (e) {
     errorMessage.value = e instanceof Error ? e.message : 'Login failed'
   } finally {

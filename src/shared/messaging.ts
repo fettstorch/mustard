@@ -57,12 +57,44 @@ export type DeleteNoteMessage = Satisfies<
   }
 >
 
+// AT Protocol auth messages - handled by service worker since popup can close during OAuth flow
+export type AtprotoLoginMessage = Satisfies<
+  BaseMessage,
+  {
+    type: 'ATPROTO_LOGIN'
+    handle: string
+  }
+>
+
+export type GetAtprotoSessionMessage = Satisfies<
+  BaseMessage,
+  {
+    type: 'GET_ATPROTO_SESSION'
+  }
+>
+
+export type AtprotoLogoutMessage = Satisfies<
+  BaseMessage,
+  {
+    type: 'ATPROTO_LOGOUT'
+    did: string
+  }
+>
+
+// Response types for AT Protocol auth messages
+export type AtprotoSessionResponse = {
+  did: string
+} | null
+
 // Discriminated union of all messages - enables type narrowing
 export type Message =
   | OpenNoteEditorMessage
   | UpsertNoteMessage
   | QueryNotesMessage
   | DeleteNoteMessage
+  | AtprotoLoginMessage
+  | GetAtprotoSessionMessage
+  | AtprotoLogoutMessage
 
 export function createOpenNoteEditorMessage(): OpenNoteEditorMessage {
   return {
@@ -93,5 +125,25 @@ export function createDeleteNoteMessage(noteId: string, pageUrl: string): Delete
     type: 'DELETE_NOTE',
     noteId,
     pageUrl,
+  }
+}
+
+export function createAtprotoLoginMessage(handle: string): AtprotoLoginMessage {
+  return {
+    type: 'ATPROTO_LOGIN',
+    handle,
+  }
+}
+
+export function createGetAtprotoSessionMessage(): GetAtprotoSessionMessage {
+  return {
+    type: 'GET_ATPROTO_SESSION',
+  }
+}
+
+export function createAtprotoLogoutMessage(did: string): AtprotoLogoutMessage {
+  return {
+    type: 'ATPROTO_LOGOUT',
+    did,
   }
 }

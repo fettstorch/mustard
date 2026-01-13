@@ -1,9 +1,10 @@
 // Background service worker
-import { createOpenNoteEditorMessage, type Message } from '@/shared/messaging'
+import { createOpenNoteEditorMessage, type Message, type AtprotoSessionResponse } from '@/shared/messaging'
 import type { MustardIndex } from '@/shared/model/MustardIndex'
 import { awaitable } from '@fettstorch/jule'
 import { mustardNotesManager } from './business/MustardNotesManager'
 import { DtoMustardNote } from '@/shared/dto/DtoMustardNote'
+import { login, getSession, logout } from './auth/AtprotoAuth'
 
 console.log('Mustard background service worker loaded')
 const mustardIndex = awaitable<MustardIndex>()
@@ -23,10 +24,10 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
   }
 })
 
-// Receiving messages from the content-script
+// Receiving messages from the content-script and popup
 // IMPORTANT: Cannot be async! Must return true for async responses and use sendResponse callback.
 chrome.runtime.onMessage.addListener(
-  (message: Message, _sender, sendResponse: (response: DtoMustardNote[]) => void) => {
+  (message: Message, _sender, sendResponse: (response: DtoMustardNote[] | AtprotoSessionResponse) => void) => {
     console.debug('mustard [service-worker] onMessage:', message)
 
     if (message.type === 'UPSERT_NOTE') {
@@ -60,6 +61,41 @@ chrome.runtime.onMessage.addListener(
         const notes = await mustardNotesManager.queryMustardNotesFor(message.pageUrl)
         sendResponse(notes.map(DtoMustardNote.toDto))
       })
+      return true // Keep channel open for async response
+    }
+
+    // AT Protocol auth messages - handled here because popup can close during OAuth flow
+    if (message.type === 'ATPROTO_LOGIN') {
+      login(message.handle)
+        .then((session) => {
+          sendResponse({ did: session.did })
+        })
+        .catch((err) => {
+          console.error('ATPROTO_LOGIN failed:', err)
+          sendResponse(null)
+        })
+      return true // Keep channel open for async response
+    }
+
+    if (message.type === 'GET_ATPROTO_SESSION') {
+      getSession()
+        .then((session) => {
+          sendResponse(session ? { did: session.did } : null)
+        })
+        .catch((err) => {
+          console.error('GET_ATPROTO_SESSION failed:', err)
+          sendResponse(null)
+        })
+      return true // Keep channel open for async response
+    }
+
+    if (message.type === 'ATPROTO_LOGOUT') {
+      logout(message.did)
+        .then(() => sendResponse(null))
+        .catch((err) => {
+          console.error('ATPROTO_LOGOUT failed:', err)
+          sendResponse(null)
+        })
       return true // Keep channel open for async response
     }
   },

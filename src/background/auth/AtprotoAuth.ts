@@ -9,6 +9,14 @@ const CLIENT_ID = 'https://fettstorch.github.io/mustard/client-metadata.json'
 // The type assertion is needed because the library expects specific URL patterns
 const REDIRECT_URI = chrome.identity.getRedirectURL('callback') as `https://${string}`
 
+// Storage key for persisting session info
+// NOTE: We use chrome.storage.local instead of localStorage because service workers
+// don't have localStorage access. The BrowserOAuthClient's init() uses localStorage
+// internally, so we bypass it and manage session state ourselves.
+const STORAGE_KEY = 'atproto_session'
+
+type StoredSession = { did: string; sub: string }
+
 const getOAuthClient = once(() =>
   BrowserOAuthClient.load({
     clientId: CLIENT_ID,
@@ -42,29 +50,30 @@ export async function login(handle: string): Promise<OAuthSession> {
   // Step 4: Complete the token exchange (uses stored PKCE/DPoP keys)
   const result = await client.callback(hashParams, { redirect_uri: REDIRECT_URI })
 
-  // Store the session ID so init() can find it later
-  // The library normally does this in initCallback(), but we're using callback() directly
-  localStorage.setItem('@@atproto/oauth-client-browser(sub)', result.session.sub)
+  // Store session info in chrome.storage.local (works in service workers, unlike localStorage)
+  const storedSession: StoredSession = { did: result.session.did, sub: result.session.sub }
+  await chrome.storage.local.set({ [STORAGE_KEY]: storedSession })
 
   return result.session
 }
 
 /**
- * Check if user is already logged in (restores previous session)
- * @returns Session if logged in, undefined otherwise
+ * Check if user is already logged in
+ * NOTE: Returns stored session info, not full OAuthSession. For API calls needing
+ * tokens, the BrowserOAuthClient would need to restore from IndexedDB separately.
+ * @returns Session info if logged in, undefined otherwise
  */
-export async function getSession(): Promise<OAuthSession | undefined> {
-  const client = await getOAuthClient()
-  const result = await client.init()
-  return result?.session
+export async function getSession(): Promise<StoredSession | undefined> {
+  const result = await chrome.storage.local.get(STORAGE_KEY)
+  return result[STORAGE_KEY] as StoredSession | undefined
 }
 
 /**
- * Logout - revokes the session
+ * Logout - revokes the session and clears stored state
  * @param did - The user's DID to revoke
  */
 export async function logout(did: string): Promise<void> {
   const client = await getOAuthClient()
-  localStorage.removeItem('@@atproto/oauth-client-browser(sub)')
+  await chrome.storage.local.remove(STORAGE_KEY)
   await client.revoke(did)
 }

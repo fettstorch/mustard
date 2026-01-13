@@ -28,4 +28,6 @@ Simple learnings discovered during development that document how things actually
 - **Session persistence**: When using `callback()` directly (not `initCallback()`), you must manually set `localStorage['@@atproto/oauth-client-browser(sub)']` to the session's `sub` — otherwise `init()` won't find the session.
 - **Extension ID**: Changes when unpacked extension is removed/re-added. For stable ID, pack the extension or publish to Chrome Web Store.
 - **GitHub Pages + Jekyll**: Add empty `.nojekyll` file to serve static files without Jekyll build.
+- **Service worker + localStorage**: Manifest V3 service workers do NOT have `localStorage` access. The `BrowserOAuthClient.init()` method uses localStorage internally, so it won't work from a service worker. Solution: store session info in `chrome.storage.local` instead and manage session state manually.
+- **Popup closes during OAuth**: Extension popups close when `launchWebAuthFlow` opens (loses focus). Run OAuth in the service worker (persists) and communicate via messaging.
 

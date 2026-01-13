@@ -6,26 +6,32 @@
  * in the Chrome toolbar.
  */
 import { ref, onMounted } from 'vue'
-import { logout, getSession } from '@/background/auth/AtprotoAuth'
-import type { OAuthSession } from '@atproto/oauth-client-browser'
+import {
+  createGetAtprotoSessionMessage,
+  createAtprotoLogoutMessage,
+  type AtprotoSessionResponse,
+} from '@/shared/messaging'
 import BlueskyLogin from './auth/BlueskyLogin.vue'
 
-const session = ref<OAuthSession | null>(null)
+const session = ref<AtprotoSessionResponse>(null)
 
 onMounted(async () => {
-  const existingSession = await getSession()
+  // Get session via service worker (auth state lives there)
+  const existingSession = (await chrome.runtime.sendMessage(
+    createGetAtprotoSessionMessage(),
+  )) as AtprotoSessionResponse
   if (existingSession) {
     session.value = existingSession
   }
 })
 
-function onLoginSuccess(newSession: OAuthSession) {
+function onLoginSuccess(newSession: NonNullable<AtprotoSessionResponse>) {
   session.value = newSession
 }
 
 async function handleLogout() {
   if (!session.value) return
-  await logout(session.value.did)
+  await chrome.runtime.sendMessage(createAtprotoLogoutMessage(session.value.did))
   session.value = null
 }
 
