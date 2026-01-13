@@ -25,6 +25,7 @@ flowchart TB
         ServiceInterface["MustardNotesService"]
         LocalService["MustardNotesServiceLocal"]
         RemoteService["MustardNotesServiceRemote (PLANNED)"]
+        ProfileService["MustardProfileServiceBsky"]
     end
 
     subgraph Storage["Storage"]
@@ -48,8 +49,10 @@ flowchart TB
     RightClick -->|"opens"| CtxMenu
     CtxMenu -->|"opens"| NoteEditor
 
-    CS <-->|"QUERY_NOTES / UPSERT_NOTE / DELETE_NOTE"| BG
+    CS <-->|"QUERY_NOTES / UPSERT_NOTE / DELETE_NOTE / GET_PROFILES"| BG
     BG --> Manager
+    BG --> ProfileService
+    ProfileService -->|"app.bsky.actor.getProfiles"| BSkyAPI["bsky.social API"]
     Manager --> ServiceInterface
     ServiceInterface --> LocalService
     ServiceInterface -.-> RemoteService
@@ -105,6 +108,9 @@ flowchart TB
 - `MustardProfileService` interface + `MustardProfileServiceBsky` implementation using `@atproto/api`
 - `UserProfile` model with type discriminator, `BskyProfile` satisfies it
 - Popup displays user avatar, display name, and @handle when logged in
+- Profile fetching via service worker `GET_PROFILES` message (bulk fetch using `app.bsky.actor.getProfiles`)
+- Notes auto-select `authorId` based on session (DID if logged in, `'local'` otherwise)
+- Service routing stubbed: `upsertNote(note, 'local' | 'remote')` with fallback to local until remote implemented
 
 ## AT Protocol OAuth Flow
 

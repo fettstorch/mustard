@@ -59,7 +59,7 @@ function handlePressedSave(data: { content: string }) {
     return
   }
   event.emit(
-    createUpsertNoteMessage('local', {
+    createUpsertNoteMessage({
       content: data.content,
       anchorData: mustardState.editor.anchor,
       updatedAt: Date.now(),

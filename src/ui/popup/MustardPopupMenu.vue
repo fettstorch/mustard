@@ -9,15 +9,15 @@ import { ref, onMounted, watch } from 'vue'
 import {
   createGetAtprotoSessionMessage,
   createAtprotoLogoutMessage,
+  createGetProfilesMessage,
   type AtprotoSessionResponse,
+  type GetProfilesResponse,
 } from '@/shared/messaging'
-import { MustardProfileServiceBsky } from '@/background/business/service/MustardProfileServiceBsky'
 import type { UserProfile } from '@/shared/model/UserProfile'
 import BlueskyLogin from './auth/BlueskyLogin.vue'
 
 const session = ref<AtprotoSessionResponse>(null)
 const profile = ref<UserProfile | null>(null)
-const profileService = new MustardProfileServiceBsky()
 
 onMounted(async () => {
   // Get session via service worker (auth state lives there)
@@ -34,7 +34,10 @@ watch(
   session,
   async (newSession) => {
     if (newSession) {
-      profile.value = await profileService.getProfile(newSession.did)
+      const profiles = (await chrome.runtime.sendMessage(
+        createGetProfilesMessage([newSession.did]),
+      )) as GetProfilesResponse
+      profile.value = profiles[newSession.did] ?? null
     } else {
       profile.value = null
     }
@@ -88,9 +91,7 @@ const gearIconUrl = chrome.runtime.getURL('gear_128.png')
           <span class="text-sm font-medium text-gray-900 truncate">
             {{ profile?.displayName ?? 'Loading...' }}
           </span>
-          <span class="text-xs text-gray-500 truncate">
-            @{{ profile?.handle ?? '...' }}
-          </span>
+          <span class="text-xs text-gray-500 truncate"> @{{ profile?.handle ?? '...' }} </span>
         </div>
       </div>
       <button

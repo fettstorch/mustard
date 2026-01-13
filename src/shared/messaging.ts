@@ -1,5 +1,6 @@
 import type { DtoMustardNote } from './dto/DtoMustardNote'
 import type { Satisfies } from './Satisfies'
+import type { UserProfile, UserId } from './model/UserProfile'
 
 type BaseMessage = {
   type: string
@@ -29,11 +30,11 @@ export type OpenNoteEditorMessage = Satisfies<
 >
 
 // Message to create or update a mustard note
+// Service worker auto-selects local/remote based on session state
 export type UpsertNoteMessage = Satisfies<
   BaseMessage,
   {
     type: 'UPSERT_NOTE'
-    service: 'local' | 'remote'
     data: Omit<DtoMustardNote, 'id' | 'authorId'>
   }
 >
@@ -81,10 +82,22 @@ export type AtprotoLogoutMessage = Satisfies<
   }
 >
 
+// Message to get profiles for multiple users (batch fetch)
+export type GetProfilesMessage = Satisfies<
+  BaseMessage,
+  {
+    type: 'GET_PROFILES'
+    userIds: UserId[]
+  }
+>
+
 // Response types for AT Protocol auth messages
 export type AtprotoSessionResponse = {
   did: string
 } | null
+
+// Response type for GET_PROFILES - map of userId to profile (null if not found)
+export type GetProfilesResponse = Record<string, UserProfile | null>
 
 // Discriminated union of all messages - enables type narrowing
 export type Message =
@@ -95,6 +108,7 @@ export type Message =
   | AtprotoLoginMessage
   | GetAtprotoSessionMessage
   | AtprotoLogoutMessage
+  | GetProfilesMessage
 
 export function createOpenNoteEditorMessage(): OpenNoteEditorMessage {
   return {
@@ -102,13 +116,9 @@ export function createOpenNoteEditorMessage(): OpenNoteEditorMessage {
   }
 }
 
-export function createUpsertNoteMessage(
-  service: 'local' | 'remote',
-  data: Omit<DtoMustardNote, 'id' | 'authorId'>,
-): UpsertNoteMessage {
+export function createUpsertNoteMessage(data: Omit<DtoMustardNote, 'id' | 'authorId'>): UpsertNoteMessage {
   return {
     type: 'UPSERT_NOTE',
-    service,
     data,
   }
 }
@@ -145,5 +155,12 @@ export function createAtprotoLogoutMessage(did: string): AtprotoLogoutMessage {
   return {
     type: 'ATPROTO_LOGOUT',
     did,
+  }
+}
+
+export function createGetProfilesMessage(userIds: UserId[]): GetProfilesMessage {
+  return {
+    type: 'GET_PROFILES',
+    userIds,
   }
 }

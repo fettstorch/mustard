@@ -1,10 +1,18 @@
 // Background service worker
-import { createOpenNoteEditorMessage, type Message, type AtprotoSessionResponse } from '@/shared/messaging'
+import {
+  createOpenNoteEditorMessage,
+  type Message,
+  type AtprotoSessionResponse,
+  type GetProfilesResponse,
+} from '@/shared/messaging'
 import type { MustardIndex } from '@/shared/model/MustardIndex'
 import { awaitable } from '@fettstorch/jule'
 import { mustardNotesManager } from './business/MustardNotesManager'
 import { DtoMustardNote } from '@/shared/dto/DtoMustardNote'
 import { login, getSession, logout } from './auth/AtprotoAuth'
+import { MustardProfileServiceBsky } from './business/service/MustardProfileServiceBsky'
+
+const profileService = new MustardProfileServiceBsky()
 
 console.log('Mustard background service worker loaded')
 const mustardIndex = awaitable<MustardIndex>()
@@ -34,19 +42,30 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 // Receiving messages from the content-script and popup
 // IMPORTANT: Cannot be async! Must return true for async responses and use sendResponse callback.
 chrome.runtime.onMessage.addListener(
-  (message: Message, _sender, sendResponse: (response: DtoMustardNote[] | AtprotoSessionResponse) => void) => {
+  (
+    message: Message,
+    _sender,
+    sendResponse: (response: DtoMustardNote[] | AtprotoSessionResponse | GetProfilesResponse) => void,
+  ) => {
     console.debug('mustard [service-worker] onMessage:', message)
 
     if (message.type === 'UPSERT_NOTE') {
-      // Convert DTO to domain model at the boundary
-      const note = DtoMustardNote.fromDto({
-        id: crypto.randomUUID(),
-        authorId: 'local', // TODO get from mustardnotesmanager or whoever will manage the login
-        content: message.data.content,
-        anchorData: message.data.anchorData,
-        updatedAt: message.data.updatedAt,
-      })
-      mustardNotesManager.upsertNote(note).then(async () => {
+      // Auto-select local/remote based on session state
+      getSession().then(async (session) => {
+        // Determine target service and authorId based on login state
+        const isLoggedIn = !!session
+        const target = isLoggedIn ? 'remote' : 'local'
+        const authorId = session?.did ?? 'local'
+
+        const note = DtoMustardNote.fromDto({
+          id: crypto.randomUUID(),
+          authorId,
+          content: message.data.content,
+          anchorData: message.data.anchorData,
+          updatedAt: message.data.updatedAt,
+        })
+
+        await mustardNotesManager.upsertNote(note, target)
         // Re-query and return fresh notes
         const notes = await mustardNotesManager.queryMustardNotesFor(note.anchorData.pageUrl)
         sendResponse(notes.map(DtoMustardNote.toDto))
@@ -109,6 +128,17 @@ chrome.runtime.onMessage.addListener(
         .catch((err) => {
           console.error('ATPROTO_LOGOUT failed:', err)
           sendResponse(null)
+        })
+      return true // Keep channel open for async response
+    }
+
+    if (message.type === 'GET_PROFILES') {
+      profileService
+        .getProfiles(message.userIds)
+        .then((profiles) => sendResponse(profiles))
+        .catch((err) => {
+          console.error('GET_PROFILES failed:', err)
+          sendResponse({})
         })
       return true // Keep channel open for async response
     }
