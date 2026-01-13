@@ -101,3 +101,63 @@ flowchart TB
 - Delete note: trash icon removes note, re-queries fresh list (re-query pattern for mutations)
 - Clean DTO boundary: messaging uses DTOs, content-script converts to domain models for Vue
 - Note positions recalculate on window resize
+- AT Protocol OAuth login via Bluesky working (popup → auth → session)
+
+## AT Protocol OAuth Flow
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Popup as Extension Popup
+    participant Auth as AtprotoAuth.ts
+    participant Client as BrowserOAuthClient
+    participant IDB as IndexedDB
+    participant Chrome as chrome.identity
+    participant BSky as bsky.social
+    participant GH as GitHub Pages<br/>(client-metadata.json)
+
+    User->>Popup: Enter handle, click Login
+    Popup->>Auth: login(handle)
+    
+    Note over Auth,Client: Step 1: Initialize OAuth Client
+    Auth->>Client: BrowserOAuthClient.load({clientId})
+    Client->>GH: Fetch client-metadata.json
+    GH-->>Client: {client_id, redirect_uris, scope, ...}
+    
+    Note over Auth,IDB: Step 2: Generate Auth URL
+    Auth->>Client: authorize(handle, {redirect_uri})
+    Client->>Client: Generate PKCE verifier/challenge
+    Client->>Client: Generate DPoP keypair
+    Client->>IDB: Store PKCE verifier, DPoP keys, state
+    Client->>BSky: PAR Request (POST /oauth/par)<br/>+ DPoP proof header
+    BSky-->>Client: {request_uri}
+    Client-->>Auth: Authorization URL
+
+    Note over Auth,BSky: Step 3: User Authentication
+    Auth->>Chrome: launchWebAuthFlow({url, interactive: true})
+    Chrome->>BSky: Open popup to auth URL
+    BSky->>User: Show login form
+    User->>BSky: Enter credentials, approve
+    BSky->>Chrome: Redirect to chromiumapp.org/callback#code=...
+    Chrome-->>Auth: Return callback URL with code
+
+    Note over Auth,BSky: Step 4: Token Exchange
+    Auth->>Auth: Extract code, state, iss from URL hash
+    Auth->>Client: callback(params, {redirect_uri})
+    Client->>IDB: Retrieve stored PKCE verifier, DPoP keys
+    Client->>BSky: Token request (POST /oauth/token)<br/>+ code + PKCE verifier + DPoP proof
+    BSky-->>Client: {access_token, refresh_token, ...}
+    Client->>IDB: Store session tokens
+    Client-->>Auth: OAuthSession
+
+    Auth-->>Popup: session (did, handle, tokens)
+    Popup->>User: Show "Logged in as {handle}"
+```
+
+### Key Components
+
+- **client-metadata.json** (GitHub Pages): Public OAuth client configuration. The URL to this file IS the `client_id`
+- **redirect_uri** (`chromiumapp.org`): Chrome extension's special OAuth callback URL - Chrome intercepts redirects here
+- **PKCE**: Proof Key for Code Exchange - prevents authorization code interception
+- **DPoP**: Demonstrating Proof of Possession - binds tokens to cryptographic keys
+- **PAR**: Pushed Authorization Request - sends auth params to server before redirect (required by AT Protocol)

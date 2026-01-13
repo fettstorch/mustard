@@ -2,14 +2,32 @@
 /**
  * MustardPopupMenu Component
  *
- * Purpose:
- * This is the main popup menu that appears when users click the Mustard extension icon
- * in the Chrome toolbar. It provides controls for managing mustard on the current webpage.
- *
- * How to access in Chrome:
- * 1. Click the Mustard extension icon in the Chrome toolbar (next to address bar)
- * 2. The popup will open below/above the icon
+ * The main popup menu that appears when users click the Mustard extension icon
+ * in the Chrome toolbar.
  */
+import { ref, onMounted } from 'vue'
+import { logout, getSession } from '@/background/auth/AtprotoAuth'
+import type { OAuthSession } from '@atproto/oauth-client-browser'
+import BlueskyLogin from './auth/BlueskyLogin.vue'
+
+const session = ref<OAuthSession | null>(null)
+
+onMounted(async () => {
+  const existingSession = await getSession()
+  if (existingSession) {
+    session.value = existingSession
+  }
+})
+
+function onLoginSuccess(newSession: OAuthSession) {
+  session.value = newSession
+}
+
+async function handleLogout() {
+  if (!session.value) return
+  await logout(session.value.did)
+  session.value = null
+}
 
 function openOptions() {
   chrome.runtime.openOptionsPage()
@@ -19,65 +37,32 @@ const gearIconUrl = chrome.runtime.getURL('gear_128.png')
 </script>
 
 <template>
-  <div class="popup-container">
-    <div class="header">
-      <h1>Mustard</h1>
-      <button @click="openOptions" class="gear-button" title="Options">
-        <img :src="gearIconUrl" alt="Settings" class="gear-icon" />
+  <div class="w-75 p-4">
+    <div class="flex justify-between items-center mb-4">
+      <h1 class="text-xl font-semibold">🌭 Mustard</h1>
+      <button
+        @click="openOptions"
+        class="p-1 rounded hover:bg-gray-100 active:bg-gray-200 transition-colors"
+        title="Options"
+      >
+        <img :src="gearIconUrl" alt="Settings" class="w-5 h-5 block" />
       </button>
     </div>
-    <p>Mustard popup menu is working!</p>
+
+    <!-- Logged in -->
+    <div v-if="session" class="flex flex-col gap-3">
+      <p class="text-sm text-gray-700 break-all">
+        Logged in as <strong>{{ session.did }}</strong>
+      </p>
+      <button
+        @click="handleLogout"
+        class="px-3 py-2 bg-gray-100 border border-gray-300 rounded-md text-sm hover:bg-gray-200 transition-colors"
+      >
+        Logout
+      </button>
+    </div>
+
+    <!-- Not logged in -->
+    <BlueskyLogin v-else @success="onLoginSuccess" />
   </div>
 </template>
-
-<style scoped>
-.popup-container {
-  width: 300px;
-  padding: 16px;
-}
-
-.header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
-}
-
-h1 {
-  margin: 0;
-  font-size: 20px;
-  font-weight: 600;
-}
-
-.gear-button {
-  background: none;
-  border: none;
-  padding: 4px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 4px;
-  transition: background-color 0.2s;
-}
-
-.gear-button:hover {
-  background-color: #f0f0f0;
-}
-
-.gear-button:active {
-  background-color: #e0e0e0;
-}
-
-.gear-icon {
-  width: 20px;
-  height: 20px;
-  display: block;
-}
-
-p {
-  margin: 0;
-  color: #666;
-  font-size: 14px;
-}
-</style>

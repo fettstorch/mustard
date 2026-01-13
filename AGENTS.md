@@ -2,6 +2,17 @@
 
 read the LEARNINGS.md and the PROGRESS.md in order to have a better understanding of what needs to be done and how.
 
+## Research Before Suggesting
+
+**CRITICAL**: Before suggesting any technical approach or third-party service, you MUST research whether it actually works for the specific problem:
+
+- Search for known issues, limitations, and gotchas
+- Verify the service/tool supports the specific use case (e.g., "does X support serving HTML?", "does Y work with Chrome extensions?")
+- Check official documentation for limitations
+- Look for Stack Overflow/GitHub issues about the specific problem
+
+Do NOT suggest solutions based on assumptions. Wasting the user's time on approaches that don't work is unacceptable.
+
 ## When making changes
 
 Whenever you make changes to the code you must use 'nr type-check' in order to verify that you didn't break anything!
