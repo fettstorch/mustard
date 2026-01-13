@@ -58,9 +58,15 @@ export async function login(handle: string): Promise<OAuthSession> {
 }
 
 /**
- * Check if user is already logged in
- * NOTE: Returns stored session info, not full OAuthSession. For API calls needing
- * tokens, the BrowserOAuthClient would need to restore from IndexedDB separately.
+ * Check if user is already logged in.
+ *
+ * WARNING: This only reads stored session info - it does NOT validate if tokens are expired.
+ * Currently sufficient because we only use `did` for public API calls (no auth needed).
+ *
+ * TODO: When authenticated API calls are needed (posting, following, etc.), replace this with
+ * `client.init()` which properly validates/refreshes tokens and returns a full OAuthSession.
+ * See: https://github.com/bluesky-social/atproto/tree/main/packages/oauth/oauth-client-browser
+ *
  * @returns Session info if logged in, undefined otherwise
  */
 export async function getSession(): Promise<StoredSession | undefined> {

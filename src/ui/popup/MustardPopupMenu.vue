@@ -5,15 +5,19 @@
  * The main popup menu that appears when users click the Mustard extension icon
  * in the Chrome toolbar.
  */
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import {
   createGetAtprotoSessionMessage,
   createAtprotoLogoutMessage,
   type AtprotoSessionResponse,
 } from '@/shared/messaging'
+import { MustardProfileServiceBsky } from '@/background/business/service/MustardProfileServiceBsky'
+import type { UserProfile } from '@/shared/model/UserProfile'
 import BlueskyLogin from './auth/BlueskyLogin.vue'
 
 const session = ref<AtprotoSessionResponse>(null)
+const profile = ref<UserProfile | null>(null)
+const profileService = new MustardProfileServiceBsky()
 
 onMounted(async () => {
   // Get session via service worker (auth state lives there)
@@ -24,6 +28,19 @@ onMounted(async () => {
     session.value = existingSession
   }
 })
+
+// Fetch profile when session changes
+watch(
+  session,
+  async (newSession) => {
+    if (newSession) {
+      profile.value = await profileService.getProfile(newSession.did)
+    } else {
+      profile.value = null
+    }
+  },
+  { immediate: true },
+)
 
 function onLoginSuccess(newSession: NonNullable<AtprotoSessionResponse>) {
   session.value = newSession
@@ -57,9 +74,25 @@ const gearIconUrl = chrome.runtime.getURL('gear_128.png')
 
     <!-- Logged in -->
     <div v-if="session" class="flex flex-col gap-3">
-      <p class="text-sm text-gray-700 break-all">
-        Logged in as <strong>{{ session.did }}</strong>
-      </p>
+      <div class="flex items-center gap-3">
+        <img
+          v-if="profile?.avatarUrl"
+          :src="profile.avatarUrl"
+          alt="Profile picture"
+          class="w-10 h-10 rounded-full object-cover"
+        />
+        <div v-else class="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center">
+          <span class="text-gray-500 text-sm">?</span>
+        </div>
+        <div class="flex flex-col min-w-0">
+          <span class="text-sm font-medium text-gray-900 truncate">
+            {{ profile?.displayName ?? 'Loading...' }}
+          </span>
+          <span class="text-xs text-gray-500 truncate">
+            @{{ profile?.handle ?? '...' }}
+          </span>
+        </div>
+      </div>
       <button
         @click="handleLogout"
         class="px-3 py-2 bg-gray-100 border border-gray-300 rounded-md text-sm hover:bg-gray-200 transition-colors"

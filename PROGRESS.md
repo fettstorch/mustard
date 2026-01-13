@@ -102,6 +102,9 @@ flowchart TB
 - Clean DTO boundary: messaging uses DTOs, content-script converts to domain models for Vue
 - Note positions recalculate on window resize
 - AT Protocol OAuth login via Bluesky working (popup → auth → session)
+- `MustardProfileService` interface + `MustardProfileServiceBsky` implementation using `@atproto/api`
+- `UserProfile` model with type discriminator, `BskyProfile` satisfies it
+- Popup displays user avatar, display name, and @handle when logged in
 
 ## AT Protocol OAuth Flow
 

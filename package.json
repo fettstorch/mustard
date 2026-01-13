@@ -16,6 +16,7 @@
     "format": "prettier --write --experimental-cli src/"
   },
   "dependencies": {
+    "@atproto/api": "^0.18.14",
     "@atproto/oauth-client-browser": "^0.3.39",
     "@fettstorch/jule": "^1.5.3",
     "vue": "^3.5.26"
