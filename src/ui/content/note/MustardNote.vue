@@ -141,6 +141,14 @@ const authorProfile = computed(() => {
   cursor: grabbing;
 }
 
+.mustard-note-header {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
 .mustard-note-content {
   white-space: pre-wrap;
   word-break: break-word;

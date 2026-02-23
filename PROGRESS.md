@@ -124,6 +124,7 @@ flowchart TB
 - Published icon rendered as static (non-interactive) indicator
 - Publish flow: local note kept visible until remote publish confirmed, then deleted
 - Notes draggable: click and drag anywhere on note to reposition (temporary, not persisted)
+- Remote notes display author avatar (clickable link to their Bluesky profile)
 
 ## AT Protocol OAuth Flow
 
