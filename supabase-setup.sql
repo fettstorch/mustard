@@ -12,7 +12,14 @@ CREATE TABLE notes (
   relative_position_y REAL NOT NULL,    -- 0-100% relative to element
   click_position_x REAL NOT NULL,       -- viewport width percentage (0-100)
   click_position_y REAL NOT NULL,       -- pixels from top (includes scroll)
-  updated_at TIMESTAMPTZ DEFAULT now()
+  updated_at TIMESTAMPTZ DEFAULT now(),
+  
+  -- Add CHECK constraints for character limits (defense-in-depth)
+  CONSTRAINT content_max_length CHECK (length(content) <= 300),
+  CONSTRAINT page_url_max_length CHECK (length(page_url) <= 2000),
+  CONSTRAINT element_selector_max_length CHECK (
+    element_selector IS NULL OR length(element_selector) <= 500
+  )
 );
 
 -- 2. Create indexes for performance

@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, useTemplateRef } from 'vue'
+import { onMounted, onUnmounted, useTemplateRef, ref, computed } from 'vue'
 import IconButton from '../IconButton.vue'
 import MustardNoteHeader from '../MustardNoteHeader.vue'
+import { LIMITS } from '@/shared/constants'
 
 const emit = defineEmits<{
   (e: 'pressed-x'): void
@@ -10,22 +11,35 @@ const emit = defineEmits<{
 }>()
 
 const editorContainerRef = useTemplateRef<HTMLDivElement>('editorContainer')
+const currentLength = ref(0)
+
+const isOverLimit = computed(() => currentLength.value > LIMITS.CONTENT_MAX_LENGTH)
+const characterCountText = computed(() => `${currentLength.value}/${LIMITS.CONTENT_MAX_LENGTH}`)
 
 onMounted(() => {
   const editorEl = document.getElementById('mustard-editor-el')
   if (!editorEl) return
   editorEl.innerHTML = ''
   editorEl.focus()
+  editorEl.addEventListener('input', updateCharacterCount)
   document.addEventListener('keydown', handleKeyDown)
 })
 
 onUnmounted(() => {
+  const editorEl = document.getElementById('mustard-editor-el')
+  if (editorEl) {
+    editorEl.removeEventListener('input', updateCharacterCount)
+  }
   document.removeEventListener('keydown', handleKeyDown)
 })
 
+function updateCharacterCount() {
+  currentLength.value = getEditorContent().length
+}
+
 function handleKeyDown(event: KeyboardEvent) {
   if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
-    emit('pressed-save', { content: getEditorContent() })
+    handleSave()
   }
 }
 
@@ -46,6 +60,18 @@ function getEditorContent(): string {
   if (!editorEl) return ''
   return editorEl.textContent || ''
 }
+
+function handleSave() {
+  // Allow local saves even if over limit - user's local storage
+  const content = getEditorContent()
+  emit('pressed-save', { content })
+}
+
+function handlePublish() {
+  if (isOverLimit.value) return
+  const content = getEditorContent()
+  emit('pressed-publish', { content })
+}
 </script>
 
 <template>
@@ -58,11 +84,8 @@ function getEditorContent(): string {
   >
     <!-- Header -->
     <MustardNoteHeader style="translate: 5px; margin-bottom: 8px">
-      <IconButton icon="save" @click="emit('pressed-save', { content: getEditorContent() })" />
-      <IconButton
-        icon="publish"
-        @click="emit('pressed-publish', { content: getEditorContent() })"
-      />
+      <IconButton icon="save" @click="handleSave" />
+      <IconButton icon="publish" :disabled="isOverLimit" @click="handlePublish" />
       <IconButton icon="x" @click="emit('pressed-x')" />
     </MustardNoteHeader>
     <!-- User-Writable Textarea -->
@@ -71,6 +94,10 @@ function getEditorContent(): string {
       contenteditable="true"
       style="width: 260px; caret-color: #5c3a1e"
     ></div>
+    <!-- Character count -->
+    <div class="character-count" :class="{ 'over-limit': isOverLimit }">
+      {{ characterCountText }}
+    </div>
   </div>
 </template>
 
@@ -83,5 +110,18 @@ function getEditorContent(): string {
 
 #mustard-editor-el:focus {
   outline: none;
+}
+
+.character-count {
+  text-align: right;
+  font-size: 0.75em;
+  opacity: 0.5;
+  margin-top: 8px;
+}
+
+.character-count.over-limit {
+  opacity: 1;
+  color: #d32f2f;
+  font-weight: bold;
 }
 </style>

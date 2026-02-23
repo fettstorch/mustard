@@ -8,6 +8,7 @@ import {
   type AtprotoSessionResponse,
   type GetProfilesResponse,
 } from '@/shared/messaging'
+import { LIMITS } from '@/shared/constants'
 import { DtoMustardNote } from '@/shared/dto/DtoMustardNote'
 import MustardContent from '@/ui/content/MustardContent.vue'
 import { createMustardState } from '@/ui/content/mustard-state'
@@ -227,6 +228,9 @@ function generateSelector(element: HTMLElement): string | null {
   }
 
   const selector = path.join(' > ')
+
+  // Return null if selector too long - will fall back to clickPosition
+  if (selector.length > LIMITS.SELECTOR_MAX_LENGTH) return null
 
   // Validate selector before returning
   try {

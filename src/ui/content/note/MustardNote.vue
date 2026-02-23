@@ -6,6 +6,7 @@ import IconButton from '../IconButton.vue'
 import MustardNoteHeader from '../MustardNoteHeader.vue'
 import AuthorAvatar from './AuthorAvatar.vue'
 import { parseContent } from './parse-content'
+import { LIMITS } from '@/shared/constants'
 
 const props = defineProps<{
   note: MustardNote
@@ -91,6 +92,22 @@ const authorProfile = computed(() => {
 const parsedContent = computed(() => {
   return parseContent(props.note.content)
 })
+
+const isOverLimit = computed(() => {
+  return props.note.content.length > LIMITS.CONTENT_MAX_LENGTH
+})
+
+const isPublishDisabled = computed(() => {
+  return isPending.value || isOverLimit.value
+})
+
+const characterCountText = computed(() => {
+  return `${props.note.content.length}/${LIMITS.CONTENT_MAX_LENGTH}`
+})
+
+const shouldShowCharacterCount = computed(() => {
+  return isLocalNote.value && isOverLimit.value
+})
 </script>
 
 <template>
@@ -110,7 +127,7 @@ const parsedContent = computed(() => {
           <IconButton
             v-if="isLocalNote"
             icon="publish"
-            :disabled="isPending"
+            :disabled="isPublishDisabled"
             @click="emit('pressed-publish', note)"
             @mousedown.stop
           />
@@ -149,6 +166,10 @@ const parsedContent = computed(() => {
           {{ segment.value }}
         </a>
       </template>
+    </div>
+    <!-- Character count (for oversized local notes) -->
+    <div v-if="shouldShowCharacterCount" class="character-count over-limit">
+      {{ characterCountText }}
     </div>
     <!-- Date footer -->
     <div class="mustard-note-date">
@@ -192,6 +213,18 @@ const parsedContent = computed(() => {
 
 .mustard-note-link {
   word-break: break-all;
+}
+
+.character-count {
+  text-align: right;
+  font-size: 0.75em;
+  margin-top: 8px;
+}
+
+.character-count.over-limit {
+  opacity: 1;
+  color: #d32f2f;
+  font-weight: bold;
 }
 
 .mustard-note-date {

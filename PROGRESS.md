@@ -128,6 +128,12 @@ flowchart TB
 - Rich content in notes: URLs auto-detected and rendered as inline images (png/jpg/jpeg/gif/webp) or clickable links
 - Images constrained to note width (260px max), non-draggable, don't interfere with note dragging
 - CSP configured to allow loading images from HTTPS sources
+- Security limits enforced: content (300 chars), selectors (500 chars), page URLs (2000 chars)
+- Multi-layer validation: client-side (selector generation), UI (disabled buttons), service layer, database constraints
+- Character counter in editor (subtle date-style display, turns red when over limit)
+- Oversized local notes show character count and disable publish button (local saves unrestricted)
+- Selector length validation returns `null` for fallback to click position
+- Database migration files: 001 (table structure), 002 (CHECK constraints)
 
 ## AT Protocol OAuth Flow
 

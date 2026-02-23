@@ -7,6 +7,7 @@ import MustardNote from './note/MustardNote.vue'
 import type { MustardNote as MustardNoteType } from '@/shared/model/MustardNote'
 import type { Observable } from '@fettstorch/jule'
 import { createUpsertNoteMessage, createDeleteNoteMessage, type Message } from '@/shared/messaging'
+import { LIMITS } from '@/shared/constants'
 
 const mustardState = inject<MustardState>('mustardState')!
 const event = inject<Observable<Message>>('event')!
@@ -88,6 +89,7 @@ function onEditorSave(data: { content: string }) {
     console.warn('No anchor data found when trying to save note')
     return
   }
+  // Allow local saves regardless of length - user's local storage
   event.emit(
     createUpsertNoteMessage(
       {
@@ -105,6 +107,10 @@ function onEditorSave(data: { content: string }) {
 function onEditorPublish(data: { content: string }) {
   if (!mustardState.editor.anchor) {
     console.warn('No anchor data found when trying to publish note')
+    return
+  }
+  if (data.content.length > LIMITS.CONTENT_MAX_LENGTH) {
+    console.warn(`Content exceeds ${LIMITS.CONTENT_MAX_LENGTH} character limit`)
     return
   }
   publishToRemote(data.content, mustardState.editor.anchor)

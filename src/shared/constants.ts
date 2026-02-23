@@ -1,0 +1,5 @@
+export const LIMITS = {
+  CONTENT_MAX_LENGTH: 300,
+  SELECTOR_MAX_LENGTH: 500,
+  PAGE_URL_MAX_LENGTH: 2000,
+} as const

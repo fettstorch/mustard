@@ -3,6 +3,7 @@ import type { MustardNotesService } from './MustardNotesService'
 import { MustardIndex } from '@/shared/model/MustardIndex'
 import { DtoMustardIndex } from '@/shared/dto/DtoMustardIndex'
 import { DtoMustardNote } from '@/shared/dto/DtoMustardNote'
+import { LIMITS } from '@/shared/constants'
 
 const LOCAL_AUTHOR_ID = 'local'
 const storageKey = `mustard-notes-${chrome.runtime.id}`
@@ -33,6 +34,15 @@ export class MustardNotesServiceLocal implements MustardNotesService {
   }
 
   async upsertNote(note: MustardNote): Promise<void> {
+    // No validation for local storage - user can manage their own local storage as they see fit
+    // Selector length is still validated to prevent issues with very long selectors
+    if (
+      note.anchorData.elementSelector &&
+      note.anchorData.elementSelector.length > LIMITS.SELECTOR_MAX_LENGTH
+    ) {
+      throw new Error(`Element selector exceeds ${LIMITS.SELECTOR_MAX_LENGTH} character limit`)
+    }
+
     const pageUrl = note.anchorData.pageUrl
     const key = notesKey(pageUrl)
 

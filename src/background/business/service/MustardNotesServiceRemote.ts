@@ -3,6 +3,7 @@ import type { MustardNote } from '@/shared/model/MustardNote'
 import type { MustardNotesService } from './MustardNotesService'
 import { supabase } from '@/background/supabase-client'
 import { MustardIndex as MustardIndexClass } from '@/shared/model/MustardIndex'
+import { LIMITS } from '@/shared/constants'
 
 const SUPABASE_PROJECT_ID = 'dexvrkxjgitrebqetvjw'
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRleHZya3hqZ2l0cmVicWV0dmp3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc5ODQwMTcsImV4cCI6MjA4MzU2MDAxN30.2hzb5-dpI0XYbklfqFsK5CkDeNXXlE1V78Q1eEgV4iI'
@@ -107,6 +108,24 @@ export class MustardNotesServiceRemote implements MustardNotesService {
   }
 
 async upsertNote(note: MustardNote): Promise<void> {
+    // Validate content length
+    if (note.content.length > LIMITS.CONTENT_MAX_LENGTH) {
+      throw new Error(`Content exceeds ${LIMITS.CONTENT_MAX_LENGTH} character limit`)
+    }
+
+    // Validate page URL length
+    if (note.anchorData.pageUrl.length > LIMITS.PAGE_URL_MAX_LENGTH) {
+      throw new Error(`Page URL exceeds ${LIMITS.PAGE_URL_MAX_LENGTH} character limit`)
+    }
+
+    // Validate selector length
+    if (
+      note.anchorData.elementSelector &&
+      note.anchorData.elementSelector.length > LIMITS.SELECTOR_MAX_LENGTH
+    ) {
+      throw new Error(`Element selector exceeds ${LIMITS.SELECTOR_MAX_LENGTH} character limit`)
+    }
+
     const dbNote: Partial<DbNote> = {
       author_id: note.authorId,
       page_url: note.anchorData.pageUrl,
