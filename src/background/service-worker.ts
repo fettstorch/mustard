@@ -5,28 +5,28 @@ import {
   type AtprotoSessionResponse,
   type GetProfilesResponse,
 } from '@/shared/messaging'
-import type { MustardIndex } from '@/shared/model/MustardIndex'
 import { mustardNotesManager } from './business/MustardNotesManager'
 import { DtoMustardNote } from '@/shared/dto/DtoMustardNote'
 import { login, getSession, logout } from './auth/AtprotoAuth'
 import { MustardProfileServiceBsky } from './business/service/MustardProfileServiceBsky'
+import { invalidateRemoteIndexCache } from './business/service/MustardNotesServiceRemote'
 
 const profileService = new MustardProfileServiceBsky()
 
 console.log('Mustard background service worker loaded')
 
-let cachedIndex: MustardIndex | null = null
-
-async function getIndex(userId?: string): Promise<MustardIndex> {
-  if (!cachedIndex) {
-    cachedIndex = await mustardNotesManager.queryMustardIndex(userId)
+/** Broadcast session change to all tabs so content scripts can update their state */
+async function broadcastSessionChanged(did: string | null) {
+  const tabs = await chrome.tabs.query({})
+  for (const tab of tabs) {
+    if (tab.id) {
+      chrome.tabs.sendMessage(tab.id, { type: 'SESSION_CHANGED', did }).catch(() => {
+        // Tab might not have content script loaded, ignore errors
+      })
+    }
   }
-  return cachedIndex
 }
 
-function invalidateIndex() {
-  cachedIndex = null
-}
 
 // Create context menu item when extension is installed
 chrome.runtime.onInstalled.addListener(() => {
@@ -56,6 +56,7 @@ chrome.runtime.onMessage.addListener(
     if (message.type === 'UPSERT_NOTE') {
       getSession().then(async (session) => {
         const target = message.target
+        const pageUrl = message.data.anchorData.pageUrl
 
         // Set authorId based on target
         let authorId: string
@@ -72,7 +73,8 @@ chrome.runtime.onMessage.addListener(
         }
 
         const note = DtoMustardNote.fromDto({
-          id: crypto.randomUUID(),
+          // For local notes, generate ID client-side; for remote, let DB generate it
+          id: target === 'local' ? crypto.randomUUID() : null,
           authorId,
           content: message.data.content,
           anchorData: message.data.anchorData,
@@ -80,12 +82,31 @@ chrome.runtime.onMessage.addListener(
         })
 
         await mustardNotesManager.upsertNote(note, target)
-        invalidateIndex()
 
-        // Re-query and return fresh notes
-        const userId = session?.did
-        const notes = await mustardNotesManager.queryMustardNotesFor(note.anchorData.pageUrl, userId)
-        sendResponse(notes.map(DtoMustardNote.toDto))
+        // Invalidate index cache since this page now has a new/updated note
+        if (target === 'remote') {
+          invalidateRemoteIndexCache()
+        }
+
+        if (target === 'local') {
+          // For local saves, just return local notes (fast)
+          const localNotes = await mustardNotesManager.queryLocalNotesFor(pageUrl)
+          sendResponse(localNotes.map(DtoMustardNote.toDto))
+        } else {
+          // For remote publish:
+          // 1. Re-query all notes (including the just-published remote one)
+          const allNotes = await mustardNotesManager.queryMustardNotesFor(pageUrl, session!.did)
+
+          // 2. Delete the local note if specified (after we have remote notes)
+          if (message.localNoteIdToDelete) {
+            await mustardNotesManager.deleteNote(message.localNoteIdToDelete, pageUrl, 'local')
+            // Filter out the deleted local note from response
+            const filteredNotes = allNotes.filter(n => n.id !== message.localNoteIdToDelete)
+            sendResponse(filteredNotes.map(DtoMustardNote.toDto))
+          } else {
+            sendResponse(allNotes.map(DtoMustardNote.toDto))
+          }
+        }
       })
       return true // Keep channel open for async response
     }
@@ -93,13 +114,6 @@ chrome.runtime.onMessage.addListener(
     if (message.type === 'QUERY_NOTES') {
       getSession().then(async (session) => {
         const userId = session?.did
-        const index = await getIndex(userId)
-
-        if (index.getUsersForPage(message.pageUrl).length === 0) {
-          sendResponse([])
-          return
-        }
-
         const notes = await mustardNotesManager.queryMustardNotesFor(message.pageUrl, userId)
         sendResponse(notes.map(DtoMustardNote.toDto))
       })
@@ -108,13 +122,22 @@ chrome.runtime.onMessage.addListener(
 
     if (message.type === 'DELETE_NOTE') {
       getSession().then(async (session) => {
-        await mustardNotesManager.deleteNote(message.noteId, message.pageUrl)
-        invalidateIndex()
+        await mustardNotesManager.deleteNote(message.noteId, message.pageUrl, message.authorId)
 
-        // Re-query and return fresh notes
-        const userId = session?.did
-        const notes = await mustardNotesManager.queryMustardNotesFor(message.pageUrl, userId)
-        sendResponse(notes.map(DtoMustardNote.toDto))
+        // Invalidate index cache if remote note was deleted
+        if (message.authorId !== 'local') {
+          invalidateRemoteIndexCache()
+        }
+
+        // Re-query notes to return fresh list
+        if (message.authorId === 'local') {
+          const localNotes = await mustardNotesManager.queryLocalNotesFor(message.pageUrl)
+          sendResponse(localNotes.map(DtoMustardNote.toDto))
+        } else {
+          const userId = session?.did
+          const allNotes = await mustardNotesManager.queryMustardNotesFor(message.pageUrl, userId)
+          sendResponse(allNotes.map(DtoMustardNote.toDto))
+        }
       })
       return true // Keep channel open for async response
     }
@@ -123,7 +146,10 @@ chrome.runtime.onMessage.addListener(
     if (message.type === 'ATPROTO_LOGIN') {
       login(message.handle)
         .then((session) => {
+          invalidateRemoteIndexCache() // Clear cached index for new user
           sendResponse({ did: session.did })
+          // Broadcast session change to all tabs
+          broadcastSessionChanged(session.did)
         })
         .catch((err) => {
           console.error('ATPROTO_LOGIN failed:', err)
@@ -146,7 +172,12 @@ chrome.runtime.onMessage.addListener(
 
     if (message.type === 'ATPROTO_LOGOUT') {
       logout(message.did)
-        .then(() => sendResponse(null))
+        .then(() => {
+          invalidateRemoteIndexCache() // Clear cached index
+          sendResponse(null)
+          // Broadcast session change to all tabs
+          broadcastSessionChanged(null)
+        })
         .catch((err) => {
           console.error('ATPROTO_LOGOUT failed:', err)
           sendResponse(null)

@@ -75,11 +75,12 @@ export async function getSession(): Promise<StoredSession | undefined> {
 }
 
 /**
- * Logout - revokes the session and clears stored state
- * @param did - The user's DID to revoke
+ * Logout - clears stored state
+ * @param _did - The user's DID (unused, kept for API compatibility)
+ *
+ * NOTE: We don't call client.revoke() because BrowserOAuthClient uses localStorage
+ * internally, which isn't available in service workers. Our tokens will simply expire.
  */
-export async function logout(did: string): Promise<void> {
-  const client = await getOAuthClient()
+export async function logout(_did: string): Promise<void> {
   await chrome.storage.local.remove(STORAGE_KEY)
-  await client.revoke(did)
 }
