@@ -1,18 +1,57 @@
 <script setup lang="ts">
-import { computed, inject } from 'vue'
+import { computed, inject, ref, onUnmounted } from 'vue'
 import type { MustardNote } from '@/shared/model/MustardNote'
 import type { MustardState } from '../mustard-state'
 import IconButton from '../IconButton.vue'
 import MustardNoteHeader from '../MustardNoteHeader.vue'
+import AuthorAvatar from './AuthorAvatar.vue'
 
 const props = defineProps<{
   note: MustardNote
+  dragOffset: { x: number; y: number }
 }>()
 
 const emit = defineEmits<{
   (e: 'pressed-publish', note: MustardNote): void
   (e: 'pressed-delete', note: MustardNote): void
+  (e: 'drag', offset: { x: number; y: number }): void
 }>()
+
+// Drag state
+const isDragging = ref(false)
+const dragStart = ref({ x: 0, y: 0 })
+const offsetAtDragStart = ref({ x: 0, y: 0 })
+
+function onDragStart(e: MouseEvent) {
+  e.preventDefault()
+  isDragging.value = true
+  dragStart.value = { x: e.clientX, y: e.clientY }
+  offsetAtDragStart.value = { x: props.dragOffset.x, y: props.dragOffset.y }
+  document.addEventListener('mousemove', onDragMove)
+  document.addEventListener('mouseup', onDragEnd)
+}
+
+function onDragMove(e: MouseEvent) {
+  if (!isDragging.value) return
+  const deltaX = e.clientX - dragStart.value.x
+  const deltaY = e.clientY - dragStart.value.y
+  emit('drag', {
+    x: offsetAtDragStart.value.x + deltaX,
+    y: offsetAtDragStart.value.y + deltaY,
+  })
+}
+
+function onDragEnd() {
+  if (!isDragging.value) return
+  isDragging.value = false
+  document.removeEventListener('mousemove', onDragMove)
+  document.removeEventListener('mouseup', onDragEnd)
+}
+
+onUnmounted(() => {
+  document.removeEventListener('mousemove', onDragMove)
+  document.removeEventListener('mouseup', onDragEnd)
+})
 
 const mustardState = inject<MustardState>('mustardState')!
 
@@ -42,28 +81,45 @@ const formattedDate = computed(() => {
     day: 'numeric',
   })
 })
+
+const authorProfile = computed(() => {
+  if (!isRemoteNote.value) return null
+  return mustardState.profiles[props.note.authorId] ?? null
+})
 </script>
 
 <template>
   <div
     class="mustard-note mustard-plastic mustard-rounded mustard-text-content mustard-padding"
+    :class="{ 'is-dragging': isDragging }"
     style="width: fit-content; padding-top: 8px; padding-bottom: 4px"
+    @mousedown="onDragStart"
   >
     <!-- Header -->
-    <MustardNoteHeader style="translate: 5px; margin-bottom: 8px">
-      <template v-if="isMyOwnNote">
-        <!-- Local note: show publish action -->
-        <IconButton
-          v-if="isLocalNote"
-          icon="publish"
-          :disabled="isPending"
-          @click="emit('pressed-publish', note)"
-        />
-        <!-- Remote note: show published indicator (non-interactive) -->
-        <IconButton v-if="isRemoteNote" icon="published" :static="true" />
-        <IconButton icon="trash" :disabled="isPending" @click="emit('pressed-delete', note)" />
-      </template>
-    </MustardNoteHeader>
+    <div class="mustard-note-header">
+      <!-- Author avatar (remote notes only) -->
+      <AuthorAvatar v-if="isRemoteNote" :profile="authorProfile" />
+      <MustardNoteHeader style="translate: 5px; flex: 1">
+        <template v-if="isMyOwnNote">
+          <!-- Local note: show publish action -->
+          <IconButton
+            v-if="isLocalNote"
+            icon="publish"
+            :disabled="isPending"
+            @click="emit('pressed-publish', note)"
+            @mousedown.stop
+          />
+          <!-- Remote note: show published indicator (non-interactive) -->
+          <IconButton v-if="isRemoteNote" icon="published" :static="true" />
+          <IconButton
+            icon="trash"
+            :disabled="isPending"
+            @click="emit('pressed-delete', note)"
+            @mousedown.stop
+          />
+        </template>
+      </MustardNoteHeader>
+    </div>
     <!-- Note Content (read-only) -->
     <div class="mustard-note-content" style="width: 260px">
       {{ note.content }}
@@ -76,6 +132,15 @@ const formattedDate = computed(() => {
 </template>
 
 <style scoped>
+.mustard-note {
+  cursor: grab;
+  user-select: none;
+}
+
+.mustard-note.is-dragging {
+  cursor: grabbing;
+}
+
 .mustard-note-content {
   white-space: pre-wrap;
   word-break: break-word;

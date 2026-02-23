@@ -2,13 +2,16 @@
 import {
   createQueryNotesMessage,
   createGetAtprotoSessionMessage,
+  createGetProfilesMessage,
   type Message,
   type MustardNoteAnchorData,
   type AtprotoSessionResponse,
+  type GetProfilesResponse,
 } from '@/shared/messaging'
 import { DtoMustardNote } from '@/shared/dto/DtoMustardNote'
 import MustardContent from '@/ui/content/MustardContent.vue'
 import { createMustardState } from '@/ui/content/mustard-state'
+import type { MustardNote } from '@/shared/model/MustardNote'
 import { Observable } from '@fettstorch/jule'
 import { createApp } from 'vue'
 
@@ -17,6 +20,22 @@ const mustardState = createMustardState()
 
 function clearPendingNoteIds() {
   Object.keys(mustardState.pendingNoteIds).forEach(key => delete mustardState.pendingNoteIds[key])
+}
+
+/** Fetches profiles for remote note authors that aren't already cached */
+function fetchProfilesForNotes(notes: MustardNote[]) {
+  const remoteAuthorIds = notes
+    .filter(n => n.authorId !== 'local')
+    .map(n => n.authorId)
+    .filter(id => !(id in mustardState.profiles))
+
+  const uniqueIds = [...new Set(remoteAuthorIds)]
+  if (uniqueIds.length === 0) return
+
+  chrome.runtime.sendMessage(createGetProfilesMessage(uniqueIds), (response: GetProfilesResponse) => {
+    console.debug('mustard [content-script] received profiles:', response)
+    Object.assign(mustardState.profiles, response ?? {})
+  })
 }
 
 // The page's URL (used for storing/retrieving notes)
@@ -38,7 +57,9 @@ function handleUrlChange() {
   mustardState.notes = []
   chrome.runtime.sendMessage(createQueryNotesMessage(newUrl), (dtos: DtoMustardNote[]) => {
     console.debug('mustard [content-script] received notes for new URL:', dtos)
-    mustardState.notes = (dtos ?? []).map(DtoMustardNote.fromDto)
+    const notes = (dtos ?? []).map(DtoMustardNote.fromDto)
+    mustardState.notes = notes
+    fetchProfilesForNotes(notes)
   })
 }
 
@@ -74,7 +95,9 @@ chrome.runtime.onMessage.addListener((message: Message) => {
     // Re-query notes now that login state changed (may have remote notes available)
     chrome.runtime.sendMessage(createQueryNotesMessage(getCurrentPageUrl()), (dtos: DtoMustardNote[]) => {
       console.debug('mustard [content-script] received notes after session change:', dtos)
-      mustardState.notes = (dtos ?? []).map(DtoMustardNote.fromDto)
+      const notes = (dtos ?? []).map(DtoMustardNote.fromDto)
+      mustardState.notes = notes
+      fetchProfilesForNotes(notes)
     })
     return
   }
@@ -89,7 +112,9 @@ chrome.runtime.sendMessage(createGetAtprotoSessionMessage(), (response: AtprotoS
 // Query notes for the current page (response comes via sendResponse callback)
 chrome.runtime.sendMessage(createQueryNotesMessage(getCurrentPageUrl()), (dtos: DtoMustardNote[]) => {
   console.debug('mustard [content-script] received notes:', dtos)
-  mustardState.notes = (dtos ?? []).map(DtoMustardNote.fromDto)
+  const notes = (dtos ?? []).map(DtoMustardNote.fromDto)
+  mustardState.notes = notes
+  fetchProfilesForNotes(notes)
 })
 
 // Single host element for all Mustard UI
@@ -120,6 +145,7 @@ event.subscribe((message) => {
       } else {
         // For remote publish, response includes all notes
         mustardState.notes = newNotes
+        fetchProfilesForNotes(newNotes)
       }
       clearPendingNoteIds()
     })

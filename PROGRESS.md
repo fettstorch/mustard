@@ -123,6 +123,7 @@ flowchart TB
 - `pendingNoteIds` state disables action buttons while syncing
 - Published icon rendered as static (non-interactive) indicator
 - Publish flow: local note kept visible until remote publish confirmed, then deleted
+- Notes draggable: click and drag anywhere on note to reposition (temporary, not persisted)
 
 ## AT Protocol OAuth Flow
 

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { inject, computed, onMounted, onUnmounted, ref } from 'vue'
+import { inject, computed, onMounted, onUnmounted, ref, reactive } from 'vue'
 import type { MustardState } from './mustard-state'
 import { calculateAnchorPosition } from './anchor-utils'
 import MustardNoteEditor from './note-editor/MustardNoteEditor.vue'
@@ -14,6 +14,15 @@ const event = inject<Observable<Message>>('event')!
 // Reactive trigger for recalculating positions on resize
 const resizeTick = ref(0)
 
+/**
+ * Temporary drag offsets per note. Allows users to reposition notes on screen
+ * without persisting the change. Resets on page reload or navigation.
+ *
+ * Key: MustardNote.id (the note's unique identifier)
+ * Value: { x, y } pixel offset from the calculated anchor position
+ */
+const dragOffsets = reactive<Record<string, { x: number; y: number }>>({})
+
 const editorPosition = computed(() => {
   // eslint-disable-next-line @typescript-eslint/no-unused-expressions
   resizeTick.value // dependency to trigger recalculation
@@ -21,14 +30,34 @@ const editorPosition = computed(() => {
   return calculateAnchorPosition(mustardState.editor.anchor)
 })
 
-/** Compute positions for all notes */
+/** Get drag offset for a note, defaulting to {0,0} */
+function getDragOffset(noteId: string | null): { x: number; y: number } {
+  if (!noteId) return { x: 0, y: 0 }
+  return dragOffsets[noteId] ?? { x: 0, y: 0 }
+}
+
+/** Set drag offset for a note */
+function setDragOffset(noteId: string | null, offset: { x: number; y: number }) {
+  if (!noteId) return
+  dragOffsets[noteId] = offset
+}
+
+/** Compute positions for all notes (including drag offset) */
 const notesWithPositions = computed(() => {
   // eslint-disable-next-line @typescript-eslint/no-unused-expressions
   resizeTick.value // dependency to trigger recalculation
-  return mustardState.notes.map((note) => ({
-    note,
-    position: calculateAnchorPosition(note.anchorData),
-  }))
+  return mustardState.notes.map((note) => {
+    const anchorPos = calculateAnchorPosition(note.anchorData)
+    const offset = getDragOffset(note.id)
+    return {
+      note,
+      position: {
+        x: anchorPos.x + offset.x,
+        y: anchorPos.y + offset.y,
+      },
+      dragOffset: offset,
+    }
+  })
 })
 
 function handleResize() {
@@ -134,13 +163,15 @@ function onNoteDelete(note: MustardNoteType) {
     <!-- Existing notes -->
     <TransitionGroup name="mustard-note">
       <MustardNote
-        v-for="({ note, position }, index) in notesWithPositions"
+        v-for="({ note, position, dragOffset }, index) in notesWithPositions"
         :key="note.id ?? `unsaved-${index}`"
         :note="note"
+        :drag-offset="dragOffset"
         class="mustard-positioned"
         :style="{ left: `${position.x}px`, top: `${position.y}px` }"
         @pressed-publish="onNotePublish"
         @pressed-delete="onNoteDelete"
+        @drag="(offset) => setDragOffset(note.id, offset)"
       />
     </TransitionGroup>
 
