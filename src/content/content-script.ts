@@ -15,8 +15,45 @@ import { createApp } from 'vue'
 // Reactive state shared with Vue app
 const mustardState = createMustardState()
 
+function clearPendingNoteIds() {
+  Object.keys(mustardState.pendingNoteIds).forEach(key => delete mustardState.pendingNoteIds[key])
+}
+
 // The page's URL (used for storing/retrieving notes)
-const normalizedPageUrl = normalizePageUrl(window.location.href)
+// This is updated when the URL changes (SPA navigation)
+let currentPageUrl = normalizePageUrl(window.location.href)
+
+function getCurrentPageUrl(): string {
+  return currentPageUrl
+}
+
+function handleUrlChange() {
+  const newUrl = normalizePageUrl(window.location.href)
+  if (newUrl === currentPageUrl) return
+
+  console.debug('mustard [content-script] URL changed:', currentPageUrl, '->', newUrl)
+  currentPageUrl = newUrl
+
+  // Clear existing notes and re-query for the new page
+  mustardState.notes = []
+  chrome.runtime.sendMessage(createQueryNotesMessage(newUrl), (dtos: DtoMustardNote[]) => {
+    console.debug('mustard [content-script] received notes for new URL:', dtos)
+    mustardState.notes = (dtos ?? []).map(DtoMustardNote.fromDto)
+  })
+}
+
+// Listen for SPA navigation (history API)
+window.addEventListener('popstate', handleUrlChange)
+
+// Inject script into page's main world to intercept pushState/replaceState
+// Content scripts run in isolated world and can't directly intercept the page's history API
+// We use an external script file to avoid CSP inline script restrictions
+const injectedScript = document.createElement('script')
+injectedScript.src = chrome.runtime.getURL('url-change-detector.js')
+document.documentElement.appendChild(injectedScript)
+
+// Listen for URL change events from the injected script
+window.addEventListener('mustard-url-change', handleUrlChange)
 
 // Capture context menu data when user right-clicks on a page
 // In order for us to get the click-data
@@ -32,6 +69,15 @@ chrome.runtime.onMessage.addListener((message: Message) => {
     mustardState.editor.isOpen = true
     return
   }
+  if (message.type === 'SESSION_CHANGED') {
+    mustardState.currentUserDid = message.did
+    // Re-query notes now that login state changed (may have remote notes available)
+    chrome.runtime.sendMessage(createQueryNotesMessage(getCurrentPageUrl()), (dtos: DtoMustardNote[]) => {
+      console.debug('mustard [content-script] received notes after session change:', dtos)
+      mustardState.notes = (dtos ?? []).map(DtoMustardNote.fromDto)
+    })
+    return
+  }
 })
 
 // Fetch current session to know if user is logged in (for note ownership checks)
@@ -41,7 +87,7 @@ chrome.runtime.sendMessage(createGetAtprotoSessionMessage(), (response: AtprotoS
 })
 
 // Query notes for the current page (response comes via sendResponse callback)
-chrome.runtime.sendMessage(createQueryNotesMessage(normalizedPageUrl), (dtos: DtoMustardNote[]) => {
+chrome.runtime.sendMessage(createQueryNotesMessage(getCurrentPageUrl()), (dtos: DtoMustardNote[]) => {
   console.debug('mustard [content-script] received notes:', dtos)
   mustardState.notes = (dtos ?? []).map(DtoMustardNote.fromDto)
 })
@@ -63,16 +109,36 @@ app.mount(mustardHost)
 // it can receive messages from the vue app via the event observable which it will relay to the service-worker
 event.subscribe((message) => {
   if (message.type === 'UPSERT_NOTE') {
+    const isLocalOperation = message.target === 'local'
     chrome.runtime.sendMessage(message, (dtos: DtoMustardNote[]) => {
       console.debug('mustard [content-script] received notes after upsert:', dtos)
-      mustardState.notes = (dtos ?? []).map(DtoMustardNote.fromDto)
+      const newNotes = (dtos ?? []).map(DtoMustardNote.fromDto)
+      if (isLocalOperation) {
+        // For local saves, merge: keep existing remote notes, replace local notes
+        const remoteNotes = mustardState.notes.filter(n => n.authorId !== 'local')
+        mustardState.notes = [...newNotes, ...remoteNotes]
+      } else {
+        // For remote publish, response includes all notes
+        mustardState.notes = newNotes
+      }
+      clearPendingNoteIds()
     })
   }
 
   if (message.type === 'DELETE_NOTE') {
+    const isLocalDelete = message.authorId === 'local'
     chrome.runtime.sendMessage(message, (dtos: DtoMustardNote[]) => {
       console.debug('mustard [content-script] received notes after delete:', dtos)
-      mustardState.notes = (dtos ?? []).map(DtoMustardNote.fromDto)
+      const newNotes = (dtos ?? []).map(DtoMustardNote.fromDto)
+      if (isLocalDelete) {
+        // For local deletes, merge: keep existing remote notes, replace local notes
+        const remoteNotes = mustardState.notes.filter(n => n.authorId !== 'local')
+        mustardState.notes = [...newNotes, ...remoteNotes]
+      } else {
+        // For remote delete, response includes all notes
+        mustardState.notes = newNotes
+      }
+      clearPendingNoteIds()
     })
   }
 })
@@ -87,8 +153,7 @@ document.addEventListener('contextmenu', (event) => {
   const rect = target.getBoundingClientRect()
 
   lastContextMenuData = {
-    pageUrl: normalizedPageUrl,
-    elementId: target.id || null,
+    pageUrl: getCurrentPageUrl(),
     elementSelector: generateSelector(target),
     relativePosition: {
       xP: ((event.clientX - rect.left) / rect.width) * 100,

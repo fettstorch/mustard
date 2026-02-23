@@ -18,4 +18,19 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./src', import.meta.url))
     },
   },
+  build: {
+    rollupOptions: {
+      input: {
+        'url-change-detector': 'src/content/url-change-detector.ts',
+      },
+      output: {
+        entryFileNames: (chunkInfo) => {
+          if (chunkInfo.name === 'url-change-detector') {
+            return 'url-change-detector.js'
+          }
+          return '[name]-[hash].js'
+        },
+      },
+    },
+  },
 })

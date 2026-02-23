@@ -38,4 +38,11 @@ export default {
       js: ['src/content/content-script.ts'],
     },
   ],
+
+  web_accessible_resources: [
+    {
+      resources: ['url-change-detector.js'],
+      matches: ['<all_urls>'],
+    },
+  ],
 } satisfies ManifestV3Export
