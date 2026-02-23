@@ -134,6 +134,7 @@ flowchart TB
 - Oversized local notes show character count and disable publish button (local saves unrestricted)
 - Selector length validation returns `null` for fallback to click position
 - Database migration files: 001 (table structure), 002 (CHECK constraints)
+- Notes use fixed positioning + scroll listeners: anchor to elements without affecting page layout or causing scrollbars
 
 ## AT Protocol OAuth Flow
 

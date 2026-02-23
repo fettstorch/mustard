@@ -12,7 +12,7 @@ import { LIMITS } from '@/shared/constants'
 const mustardState = inject<MustardState>('mustardState')!
 const event = inject<Observable<Message>>('event')!
 
-// Reactive trigger for recalculating positions on resize
+// Reactive trigger for recalculating positions on resize/scroll
 const resizeTick = ref(0)
 
 /**
@@ -65,14 +65,20 @@ function handleResize() {
   resizeTick.value++
 }
 
+function handleScroll() {
+  resizeTick.value++
+}
+
 onMounted(() => {
   document.addEventListener('keydown', handleKeyDown)
   window.addEventListener('resize', handleResize)
+  window.addEventListener('scroll', handleScroll, true) // useCapture=true to catch all scroll events
 })
 
 onUnmounted(() => {
   document.removeEventListener('keydown', handleKeyDown)
   window.removeEventListener('resize', handleResize)
+  window.removeEventListener('scroll', handleScroll, true)
 })
 
 function handleKeyDown(event: KeyboardEvent) {
@@ -216,7 +222,7 @@ function onNoteDelete(note: MustardNoteType) {
 }
 
 .mustard-positioned {
-  position: absolute;
+  position: fixed;
 }
 
 .mustard-note-enter-active,
