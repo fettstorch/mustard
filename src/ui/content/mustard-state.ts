@@ -9,6 +9,8 @@ export type MustardState = {
     anchor: MustardNoteAnchorData | null
   }
   notes: MustardNote[]
+  /** Note IDs currently being synced (publishing, deleting) - actions should be disabled */
+  pendingNoteIds: Record<string, boolean>
 }
 
 export function createMustardState(): MustardState {
@@ -19,5 +21,6 @@ export function createMustardState(): MustardState {
       anchor: null,
     },
     notes: [],
+    pendingNoteIds: {},
   })
 }

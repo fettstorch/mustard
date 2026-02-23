@@ -31,6 +31,10 @@ const isRemoteNote = computed(() => {
   return props.note.authorId !== 'local'
 })
 
+const isPending = computed(() => {
+  return props.note.id ? !!mustardState.pendingNoteIds[props.note.id] : false
+})
+
 const formattedDate = computed(() => {
   return props.note.updatedAt.toLocaleDateString(undefined, {
     year: 'numeric',
@@ -49,10 +53,15 @@ const formattedDate = computed(() => {
     <MustardNoteHeader style="translate: 5px; margin-bottom: 8px">
       <template v-if="isMyOwnNote">
         <!-- Local note: show publish action -->
-        <IconButton v-if="isLocalNote" icon="publish" @click="emit('pressed-publish', note)" />
-        <!-- Remote note: show published indicator -->
-        <IconButton v-if="isRemoteNote" icon="published" />
-        <IconButton icon="trash" @click="emit('pressed-delete', note)" />
+        <IconButton
+          v-if="isLocalNote"
+          icon="publish"
+          :disabled="isPending"
+          @click="emit('pressed-publish', note)"
+        />
+        <!-- Remote note: show published indicator (non-interactive) -->
+        <IconButton v-if="isRemoteNote" icon="published" :static="true" />
+        <IconButton icon="trash" :disabled="isPending" @click="emit('pressed-delete', note)" />
       </template>
     </MustardNoteHeader>
     <!-- Note Content (read-only) -->

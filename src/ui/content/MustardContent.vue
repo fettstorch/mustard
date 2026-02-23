@@ -89,8 +89,8 @@ function onNotePublish(note: MustardNoteType) {
 
 /**
  * Core publish logic: creates a remote note.
- * @param localNoteIdToDelete - If provided, deletes this local note after publishing
- *                              (used when converting a local note to remote)
+ * @param localNoteIdToDelete - If provided, the service worker will delete this local note
+ *                              after the remote publish succeeds (used when converting local to remote)
  */
 function publishToRemote(
   content: string,
@@ -98,15 +98,14 @@ function publishToRemote(
   localNoteIdToDelete?: string,
 ) {
   if (!mustardState.currentUserDid) {
-    chrome.action.openPopup().catch(() => {
-      console.warn('Could not open popup, user needs to click extension icon to login')
-      alert('Please log in via the extension popup to publish notes')
-    })
+    // User not logged in - prompt them to login
+    alert('Please log in via the extension popup to publish notes')
     return
   }
 
+  // Mark the note as pending (if converting from local)
   if (localNoteIdToDelete) {
-    event.emit(createDeleteNoteMessage(localNoteIdToDelete, anchorData.pageUrl))
+    mustardState.pendingNoteIds[localNoteIdToDelete] = true
   }
 
   event.emit(
@@ -117,6 +116,7 @@ function publishToRemote(
         updatedAt: Date.now(),
       },
       'remote',
+      localNoteIdToDelete,
     ),
   )
 }
@@ -124,7 +124,8 @@ function publishToRemote(
 /** Note: user clicked delete icon on a note */
 function onNoteDelete(note: MustardNoteType) {
   if (!note.id) return
-  event.emit(createDeleteNoteMessage(note.id, note.anchorData.pageUrl))
+  mustardState.pendingNoteIds[note.id] = true
+  event.emit(createDeleteNoteMessage(note.id, note.anchorData.pageUrl, note.authorId))
 }
 </script>
 
