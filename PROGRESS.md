@@ -24,14 +24,14 @@ flowchart TB
         Manager["MustardNotesManager"]
         ServiceInterface["MustardNotesService"]
         LocalService["MustardNotesServiceLocal"]
-        RemoteService["MustardNotesServiceRemote (PLANNED)"]
+        RemoteService["MustardNotesServiceRemote"]
         ProfileService["MustardProfileServiceBsky"]
     end
 
     subgraph Storage["Storage"]
         ChromeStorage[("chrome.storage.local")]
-        API["REST API (PLANNED)"]
-        DB[("PostgreSQL (PLANNED)")]
+        Supabase["Supabase Edge Functions"]
+        DB[("Supabase PostgreSQL")]
     end
 
     subgraph DTOs["DTOs"]
@@ -55,21 +55,18 @@ flowchart TB
     ProfileService -->|"app.bsky.actor.getProfiles"| BSkyAPI["bsky.social API"]
     Manager --> ServiceInterface
     ServiceInterface --> LocalService
-    ServiceInterface -.-> RemoteService
+    ServiceInterface --> RemoteService
 
     LocalService <-->|"serialize via"| DtoNote
     LocalService <-->|"serialize via"| DtoIndex
     LocalService <--> ChromeStorage
 
-    RemoteService -.->|"fetch (PLANNED)"| API
-    API -.-> DB
+    RemoteService -->|"fetch"| Supabase
+    Supabase --> DB
 
     CS -->|"DOM injection"| Notes
     Notes -->|"anchored to"| Elements
 
-    style RemoteService stroke-dasharray: 5 5
-    style API stroke-dasharray: 5 5
-    style DB stroke-dasharray: 5 5
 ```
 
 ## Completed
@@ -115,6 +112,17 @@ flowchart TB
 - `currentUserDid` in content script state for note ownership checks (`authorId === 'local' || authorId === currentUserDid`)
 - Note icons: publish arrow for local notes, cloud checkmark for remote notes (edit icon removed)
 - Editor has Save (local) and Publish (remote) buttons; publish opens login popup if not authenticated
+- `MustardNotesServiceRemote` implementation using Supabase client + Edge Functions
+- Supabase Edge Functions: `auth-bridge` (mints JWTs from DIDs), `get-index` (fetches follows + notes index)
+- `SupabaseAuth.ts`: JWT caching with 55min TTL, automatic refresh
+- Remote index caching with 30s TTL, invalidated on login/logout/mutations
+- Session broadcast: `SESSION_CHANGED` message to all tabs on login/logout
+- Content scripts re-query notes when session changes (no page reload needed)
+- SPA navigation detection via injected `url-change-detector.js` (intercepts pushState/replaceState)
+- Notes cleared and re-queried when URL changes (works on Bluesky and other SPAs)
+- `pendingNoteIds` state disables action buttons while syncing
+- Published icon rendered as static (non-interactive) indicator
+- Publish flow: local note kept visible until remote publish confirmed, then deleted
 
 ## AT Protocol OAuth Flow
 
