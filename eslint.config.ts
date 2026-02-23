@@ -23,6 +23,13 @@ export default defineConfigWithVueTs(
     name: 'app/custom-rules',
     rules: {
       '@typescript-eslint/no-namespace': 'off',
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        {
+          argsIgnorePattern: '^_',
+          varsIgnorePattern: '^_',
+        },
+      ],
     },
   },
 
