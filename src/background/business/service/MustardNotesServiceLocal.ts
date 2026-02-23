@@ -4,7 +4,7 @@ import { MustardIndex } from '@/shared/model/MustardIndex'
 import { DtoMustardIndex } from '@/shared/dto/DtoMustardIndex'
 import { DtoMustardNote } from '@/shared/dto/DtoMustardNote'
 
-const LOCAL_USER_ID = 'local'
+const LOCAL_AUTHOR_ID = 'local'
 const storageKey = `mustard-notes-${chrome.runtime.id}`
 const storageIndexKey = `${storageKey}-index`
 
@@ -13,40 +13,23 @@ function notesKey(pageUrl: string): string {
   return `${storageKey}-notes-${pageUrl}`
 }
 
+/**
+ * Local storage service for mustard notes.
+ * Stores the user's own local/draft notes in chrome.storage.local.
+ * All notes here have authorId='local' — no follows filtering needed.
+ */
 export class MustardNotesServiceLocal implements MustardNotesService {
-  /** Returns the user's follows (including self). For local, user only follows themselves. */
-  private getFollows(userId: string): string[] {
-    // Local user follows only themselves
-    // A remote service would fetch this from the database
-    return [userId]
-  }
-
-  async queryIndex(userId: string): Promise<MustardIndex> {
-    const follows = this.getFollows(userId)
-
+  async queryIndex(): Promise<MustardIndex> {
     const result = await chrome.storage.local.get(storageIndexKey)
     const dto = (result[storageIndexKey] ?? {}) as DtoMustardIndex
-
-    // Filter to only include follows (same as remote would do)
-    const filtered: DtoMustardIndex = {}
-    for (const followId of follows) {
-      if (dto[followId]) {
-        filtered[followId] = dto[followId]
-      }
-    }
-
-    return DtoMustardIndex.fromDto(filtered)
+    return DtoMustardIndex.fromDto(dto)
   }
 
-  async queryNotes(pageUrl: string, userId: string): Promise<MustardNote[]> {
-    const follows = this.getFollows(userId)
-
+  async queryNotes(pageUrl: string): Promise<MustardNote[]> {
     const key = notesKey(pageUrl)
     const result = await chrome.storage.local.get(key)
     const dtos = (result[key] ?? []) as DtoMustardNote[]
-
-    // Filter by authorId matching follows (same as remote would do)
-    return dtos.filter((dto) => follows.includes(dto.authorId)).map(DtoMustardNote.fromDto)
+    return dtos.map(DtoMustardNote.fromDto)
   }
 
   async upsertNote(note: MustardNote): Promise<void> {
@@ -96,9 +79,9 @@ export class MustardNotesServiceLocal implements MustardNotesService {
     const result = await chrome.storage.local.get(storageIndexKey)
     const dto = (result[storageIndexKey] ?? {}) as DtoMustardIndex
 
-    const pages = dto[LOCAL_USER_ID] ?? []
+    const pages = dto[LOCAL_AUTHOR_ID] ?? []
     if (!pages.includes(pageUrl)) {
-      dto[LOCAL_USER_ID] = [...pages, pageUrl]
+      dto[LOCAL_AUTHOR_ID] = [...pages, pageUrl]
       await chrome.storage.local.set({ [storageIndexKey]: dto })
     }
   }
@@ -107,11 +90,11 @@ export class MustardNotesServiceLocal implements MustardNotesService {
     const result = await chrome.storage.local.get(storageIndexKey)
     const dto = (result[storageIndexKey] ?? {}) as DtoMustardIndex
 
-    const pages = dto[LOCAL_USER_ID] ?? []
-    dto[LOCAL_USER_ID] = pages.filter((p) => p !== pageUrl)
+    const pages = dto[LOCAL_AUTHOR_ID] ?? []
+    dto[LOCAL_AUTHOR_ID] = pages.filter((p) => p !== pageUrl)
 
-    if (dto[LOCAL_USER_ID].length === 0) {
-      delete dto[LOCAL_USER_ID]
+    if (dto[LOCAL_AUTHOR_ID].length === 0) {
+      delete dto[LOCAL_AUTHOR_ID]
     }
 
     await chrome.storage.local.set({ [storageIndexKey]: dto })

@@ -1,8 +1,10 @@
 // Content script
 import {
   createQueryNotesMessage,
+  createGetAtprotoSessionMessage,
   type Message,
   type MustardNoteAnchorData,
+  type AtprotoSessionResponse,
 } from '@/shared/messaging'
 import { DtoMustardNote } from '@/shared/dto/DtoMustardNote'
 import MustardContent from '@/ui/content/MustardContent.vue'
@@ -30,6 +32,12 @@ chrome.runtime.onMessage.addListener((message: Message) => {
     mustardState.editor.isOpen = true
     return
   }
+})
+
+// Fetch current session to know if user is logged in (for note ownership checks)
+chrome.runtime.sendMessage(createGetAtprotoSessionMessage(), (response: AtprotoSessionResponse) => {
+  console.debug('mustard [content-script] session:', response)
+  mustardState.currentUserDid = response?.did ?? null
 })
 
 // Query notes for the current page (response comes via sendResponse callback)

@@ -8,26 +8,49 @@ import { MustardNotesServiceLocal } from './service/MustardNotesServiceLocal'
 const localService: MustardNotesService = new MustardNotesServiceLocal()
 
 // Remote service: stores notes on the server (published, visible to followers)
-// TODO: Implement MustardNotesServiceRemote
-const remoteService: MustardNotesService | null = null // new MustardNotesServiceRemote()
+// TODO: Implement MustardNotesServiceRemote and set this to an instance
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const remoteService: MustardNotesService | null = null
 
-// All services to query from (both local drafts and published notes)
-const allServices: MustardNotesService[] = [localService, ...(remoteService ? [remoteService] : [])]
-
-const myself = 'local' // TODO: Pass userId from service worker based on session
-
+/**
+ * Facade that coordinates local and remote mustard notes services.
+ * - Local notes are always available (user's drafts)
+ * - Remote notes are available when logged in (followed users' published notes)
+ */
 export const mustardNotesManager = {
-  async queryMustardNotesFor(pageUrl: string): Promise<MustardNote[]> {
-    // Query all services and merge results (local + remote notes)
-    const results = await Promise.all(allServices.map((s) => s.queryNotes(pageUrl, myself)))
-    return results.flat()
+  /**
+   * Query notes for a page from all services.
+   * @param pageUrl - The page URL to query notes for
+   * @param _userId - The logged-in user's ID (DID), used for remote service queries (unused until remote is implemented)
+   */
+  async queryMustardNotesFor(pageUrl: string, _userId?: string): Promise<MustardNote[]> {
+    // Always query local notes
+    const localNotes = await localService.queryNotes(pageUrl)
+
+    // TODO: When remote service is implemented, also query remote notes:
+    // const remoteNotes = remoteService && _userId
+    //   ? await remoteService.queryNotes(pageUrl, _userId)
+    //   : []
+    // return [...localNotes, ...remoteNotes]
+
+    return localNotes
   },
 
-  async queryMustardIndex(): Promise<MustardIndex> {
-    return (await Promise.all(allServices.map((s) => s.queryIndex(myself)))).reduce(
-      (acc, index) => acc.merge(index),
-      new MustardIndex(new Map()),
-    )
+  /**
+   * Query the index of pages with notes from all services.
+   * @param _userId - The logged-in user's ID (DID), used for remote service queries (unused until remote is implemented)
+   */
+  async queryMustardIndex(_userId?: string): Promise<MustardIndex> {
+    // Always get local index
+    const localIndex = await localService.queryIndex()
+
+    // TODO: When remote service is implemented, also get remote index:
+    // const remoteIndex = remoteService && _userId
+    //   ? await remoteService.queryIndex(_userId)
+    //   : new MustardIndex(new Map())
+    // return localIndex.merge(remoteIndex)
+
+    return localIndex
   },
 
   /**
@@ -36,16 +59,12 @@ export const mustardNotesManager = {
    * - 'remote': Publish to server (visible to followers)
    */
   async upsertNote(note: MustardNote, target: 'local' | 'remote'): Promise<void> {
-    if (target === 'remote') {
-      // TODO: When remoteService is implemented, uncomment:
-      // await remoteService.upsertNote(note)
-      // For now, fall back to local with a warning
-      if (!remoteService) {
-        console.warn('Remote service not implemented yet, falling back to local')
-      }
+    if (target === 'local') {
       await localService.upsertNote(note)
-    } else {
-      await localService.upsertNote(note)
+    } else if (target === 'remote') {
+      // target === 'remote'
+      // TODO: When remoteService is implemented, call remoteService.upsertNote(note)
+      console.warn('Remote service not implemented yet - note not saved')
     }
   },
 
@@ -54,7 +73,9 @@ export const mustardNotesManager = {
    * TODO: Determine which service the note belongs to (by noteId prefix or lookup)
    */
   async deleteNote(noteId: string, pageUrl: string): Promise<void> {
-    // For now, try deleting from all services
-    await Promise.all(allServices.map((s) => s.deleteNote(noteId, pageUrl)))
+    // For now, delete from local (all local notes have authorId='local')
+    // TODO: When remote is implemented, determine which service owns the note
+    await localService.deleteNote(noteId, pageUrl)
+    // if (remoteService) await remoteService.deleteNote(noteId, pageUrl)
   },
 }

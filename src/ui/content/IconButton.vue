@@ -7,11 +7,12 @@ const upvoteIconUrl = chrome.runtime.getURL('upvote_blue_48.png')
 const eyeOpenIconUrl = chrome.runtime.getURL('eye_open_48.png')
 const eyeClosedIconUrl = chrome.runtime.getURL('eye_closed_48.png')
 const saveIconUrl = chrome.runtime.getURL('save_disk_48.png')
-const editIconUrl = chrome.runtime.getURL('edit_pen_48.png')
 const trashIconUrl = chrome.runtime.getURL('delete_bin_48.png')
+const publishIconUrl = chrome.runtime.getURL('publish_arrow_blue_48.png')
+const publishedIconUrl = chrome.runtime.getURL('published_cloud_check_48.png')
 
 const props = defineProps<{
-  icon: 'x' | 'upvote' | 'eye-open' | 'eye-closed' | 'save' | 'edit' | 'trash'
+  icon: 'x' | 'upvote' | 'eye-open' | 'eye-closed' | 'save' | 'trash' | 'publish' | 'published'
 }>()
 
 const iconUrl = computed(() => {
@@ -25,10 +26,12 @@ const iconUrl = computed(() => {
     return eyeClosedIconUrl
   } else if (props.icon === 'save') {
     return saveIconUrl
-  } else if (props.icon === 'edit') {
-    return editIconUrl
   } else if (props.icon === 'trash') {
     return trashIconUrl
+  } else if (props.icon === 'publish') {
+    return publishIconUrl
+  } else if (props.icon === 'published') {
+    return publishedIconUrl
   }
   throw new Error(`Invalid icon: ${props.icon}`)
 })

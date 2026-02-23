@@ -6,6 +6,7 @@ import MustardNoteHeader from '../MustardNoteHeader.vue'
 const emit = defineEmits<{
   (e: 'pressed-x'): void
   (e: 'pressed-save', data: { content: string }): void
+  (e: 'pressed-publish', data: { content: string }): void
 }>()
 
 const editorContainerRef = useTemplateRef<HTMLDivElement>('editorContainer')
@@ -58,6 +59,10 @@ function getEditorContent(): string {
     <!-- Header -->
     <MustardNoteHeader style="translate: 5px; margin-bottom: 8px">
       <IconButton icon="save" @click="emit('pressed-save', { content: getEditorContent() })" />
+      <IconButton
+        icon="publish"
+        @click="emit('pressed-publish', { content: getEditorContent() })"
+      />
       <IconButton icon="x" @click="emit('pressed-x')" />
     </MustardNoteHeader>
     <!-- User-Writable Textarea -->

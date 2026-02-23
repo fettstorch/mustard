@@ -50,12 +50,22 @@ chrome.runtime.onMessage.addListener(
     console.debug('mustard [service-worker] onMessage:', message)
 
     if (message.type === 'UPSERT_NOTE') {
-      // Auto-select local/remote based on session state
       getSession().then(async (session) => {
-        // Determine target service and authorId based on login state
-        const isLoggedIn = !!session
-        const target = isLoggedIn ? 'remote' : 'local'
-        const authorId = session?.did ?? 'local'
+        const target = message.target
+
+        // Set authorId based on target
+        let authorId: string
+        if (target === 'local') {
+          authorId = 'local'
+        } else {
+          // target === 'remote'
+          if (!session) {
+            console.error('Cannot publish note - user not logged in')
+            sendResponse([])
+            return
+          }
+          authorId = session.did
+        }
 
         const note = DtoMustardNote.fromDto({
           id: crypto.randomUUID(),
@@ -66,32 +76,36 @@ chrome.runtime.onMessage.addListener(
         })
 
         await mustardNotesManager.upsertNote(note, target)
+
         // Re-query and return fresh notes
-        const notes = await mustardNotesManager.queryMustardNotesFor(note.anchorData.pageUrl)
+        const userId = session?.did
+        const notes = await mustardNotesManager.queryMustardNotesFor(note.anchorData.pageUrl, userId)
         sendResponse(notes.map(DtoMustardNote.toDto))
       })
       return true // Keep channel open for async response
     }
 
     if (message.type === 'QUERY_NOTES') {
-      mustardIndex.then((index) => {
+      Promise.all([mustardIndex, getSession()]).then(async ([index, session]) => {
         console.debug('mustard [service-worker] QUERY_NOTES index:', index)
         // Check index first - if no notes for this page, return early
         if (index.getUsersForPage(message.pageUrl).length === 0) {
           sendResponse([])
           return
         }
-        mustardNotesManager.queryMustardNotesFor(message.pageUrl).then((notes) => {
-          sendResponse(notes.map(DtoMustardNote.toDto))
-        })
+        const userId = session?.did
+        const notes = await mustardNotesManager.queryMustardNotesFor(message.pageUrl, userId)
+        sendResponse(notes.map(DtoMustardNote.toDto))
       })
       return true // Keep channel open for async response
     }
 
     if (message.type === 'DELETE_NOTE') {
-      mustardNotesManager.deleteNote(message.noteId, message.pageUrl).then(async () => {
+      getSession().then(async (session) => {
+        await mustardNotesManager.deleteNote(message.noteId, message.pageUrl)
         // Re-query and return fresh notes
-        const notes = await mustardNotesManager.queryMustardNotesFor(message.pageUrl)
+        const userId = session?.did
+        const notes = await mustardNotesManager.queryMustardNotesFor(message.pageUrl, userId)
         sendResponse(notes.map(DtoMustardNote.toDto))
       })
       return true // Keep channel open for async response

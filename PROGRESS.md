@@ -111,6 +111,10 @@ flowchart TB
 - Profile fetching via service worker `GET_PROFILES` message (bulk fetch using `app.bsky.actor.getProfiles`)
 - Notes auto-select `authorId` based on session (DID if logged in, `'local'` otherwise)
 - Service routing stubbed: `upsertNote(note, 'local' | 'remote')` with fallback to local until remote implemented
+- `MustardNotesManager` acts as facade: always queries local, merges remote when logged in (remote stubbed)
+- `currentUserDid` in content script state for note ownership checks (`authorId === 'local' || authorId === currentUserDid`)
+- Note icons: publish arrow for local notes, cloud checkmark for remote notes (edit icon removed)
+- Editor has Save (local) and Publish (remote) buttons; publish opens login popup if not authenticated
 
 ## AT Protocol OAuth Flow
 
@@ -127,12 +131,12 @@ sequenceDiagram
 
     User->>Popup: Enter handle, click Login
     Popup->>Auth: login(handle)
-    
+
     Note over Auth,Client: Step 1: Initialize OAuth Client
     Auth->>Client: BrowserOAuthClient.load({clientId})
     Client->>GH: Fetch client-metadata.json
     GH-->>Client: {client_id, redirect_uris, scope, ...}
-    
+
     Note over Auth,IDB: Step 2: Generate Auth URL
     Auth->>Client: authorize(handle, {redirect_uri})
     Client->>Client: Generate PKCE verifier/challenge

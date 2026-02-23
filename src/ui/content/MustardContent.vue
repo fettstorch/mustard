@@ -53,27 +53,76 @@ function handleKeyDown(event: KeyboardEvent) {
   }
 }
 
-function handlePressedSave(data: { content: string }) {
+/** Editor: user clicked save button to create a local note */
+function onEditorSave(data: { content: string }) {
   if (!mustardState.editor.anchor) {
     console.warn('No anchor data found when trying to save note')
     return
   }
   event.emit(
-    createUpsertNoteMessage({
-      content: data.content,
-      anchorData: mustardState.editor.anchor,
-      updatedAt: Date.now(),
-    }),
+    createUpsertNoteMessage(
+      {
+        content: data.content,
+        anchorData: mustardState.editor.anchor,
+        updatedAt: Date.now(),
+      },
+      'local',
+    ),
   )
   mustardState.editor.isOpen = false
 }
 
-function handleEditNote(note: MustardNoteType) {
-  // TODO: Open editor with existing note content for editing
-  console.log('Edit note:', note)
+/** Editor: user clicked publish button to create a new remote note */
+function onEditorPublish(data: { content: string }) {
+  if (!mustardState.editor.anchor) {
+    console.warn('No anchor data found when trying to publish note')
+    return
+  }
+  publishToRemote(data.content, mustardState.editor.anchor)
+  mustardState.editor.isOpen = false
 }
 
-function handleDeleteNote(note: MustardNoteType) {
+/** Note: user clicked publish icon on an existing local note to upload it */
+function onNotePublish(note: MustardNoteType) {
+  publishToRemote(note.content, note.anchorData, note.id ?? undefined)
+}
+
+/**
+ * Core publish logic: creates a remote note.
+ * @param localNoteIdToDelete - If provided, deletes this local note after publishing
+ *                              (used when converting a local note to remote)
+ */
+function publishToRemote(
+  content: string,
+  anchorData: MustardNoteType['anchorData'],
+  localNoteIdToDelete?: string,
+) {
+  if (!mustardState.currentUserDid) {
+    chrome.action.openPopup().catch(() => {
+      console.warn('Could not open popup, user needs to click extension icon to login')
+      alert('Please log in via the extension popup to publish notes')
+    })
+    return
+  }
+
+  if (localNoteIdToDelete) {
+    event.emit(createDeleteNoteMessage(localNoteIdToDelete, anchorData.pageUrl))
+  }
+
+  event.emit(
+    createUpsertNoteMessage(
+      {
+        content,
+        anchorData,
+        updatedAt: Date.now(),
+      },
+      'remote',
+    ),
+  )
+}
+
+/** Note: user clicked delete icon on a note */
+function onNoteDelete(note: MustardNoteType) {
   if (!note.id) return
   event.emit(createDeleteNoteMessage(note.id, note.anchorData.pageUrl))
 }
@@ -89,8 +138,8 @@ function handleDeleteNote(note: MustardNoteType) {
         :note="note"
         class="mustard-positioned"
         :style="{ left: `${position.x}px`, top: `${position.y}px` }"
-        @pressed-edit="handleEditNote"
-        @pressed-delete="handleDeleteNote"
+        @pressed-publish="onNotePublish"
+        @pressed-delete="onNoteDelete"
       />
     </TransitionGroup>
 
@@ -101,7 +150,8 @@ function handleDeleteNote(note: MustardNoteType) {
         class="mustard-positioned"
         :style="{ left: `${editorPosition.x}px`, top: `${editorPosition.y}px` }"
         @pressed-x="mustardState.editor.isOpen = false"
-        @pressed-save="handlePressedSave"
+        @pressed-save="onEditorSave"
+        @pressed-publish="onEditorPublish"
       />
     </Transition>
   </div>

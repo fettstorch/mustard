@@ -30,12 +30,12 @@ export type OpenNoteEditorMessage = Satisfies<
 >
 
 // Message to create or update a mustard note
-// Service worker auto-selects local/remote based on session state
 export type UpsertNoteMessage = Satisfies<
   BaseMessage,
   {
     type: 'UPSERT_NOTE'
     data: Omit<DtoMustardNote, 'id' | 'authorId'>
+    target: 'local' | 'remote'
   }
 >
 
@@ -116,10 +116,14 @@ export function createOpenNoteEditorMessage(): OpenNoteEditorMessage {
   }
 }
 
-export function createUpsertNoteMessage(data: Omit<DtoMustardNote, 'id' | 'authorId'>): UpsertNoteMessage {
+export function createUpsertNoteMessage(
+  data: Omit<DtoMustardNote, 'id' | 'authorId'>,
+  target: 'local' | 'remote',
+): UpsertNoteMessage {
   return {
     type: 'UPSERT_NOTE',
     data,
+    target,
   }
 }
 
