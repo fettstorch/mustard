@@ -6,7 +6,7 @@ import type { MustardNote } from '@/shared/model/MustardNote'
  * Date is stored as Unix timestamp (milliseconds)
  */
 export type DtoMustardNote = {
-  id: string
+  id: string | null
   authorId: string
   content: string
   anchorData: MustardNoteAnchorData
@@ -16,7 +16,7 @@ export type DtoMustardNote = {
 export namespace DtoMustardNote {
   export function toDto(note: MustardNote): DtoMustardNote {
     return {
-      id: note.id ?? crypto.randomUUID(),
+      id: note.id,
       authorId: note.authorId,
       content: note.content,
       anchorData: note.anchorData,

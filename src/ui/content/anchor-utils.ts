@@ -23,11 +23,6 @@ export function calculateAnchorPosition(anchor: MustardNoteAnchorData): { x: num
 //--- module private utility
 
 function findAnchorElement(anchor: MustardNoteAnchorData): HTMLElement | null {
-  if (anchor.elementId) {
-    const el = document.getElementById(anchor.elementId)
-    if (el) return el
-  }
-
   if (anchor.elementSelector) {
     const el = document.querySelector<HTMLElement>(anchor.elementSelector)
     if (el) return el
