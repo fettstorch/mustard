@@ -35,5 +35,5 @@ coverage
 # Vitest
 __screenshots__/
 
-# Supabase local dev
-supabase/
+# Supabase local dev (keep functions, ignore temp files)
+supabase/.temp/
