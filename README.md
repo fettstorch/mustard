@@ -13,143 +13,70 @@ The name "mustard" comes from the German saying _"seinen Senf dazu geben"_ (to a
 #### Note Creation & Management
 
 - Users can annotate any part of any webpage with notes
-- Notes can contain:
-  - Text (up to 300 characters)
-  - Images
-  - Videos (future)
-- **Creation workflow**: Right-click on any element → "Add Mustard" → Creation popup opens
-- **Note editor**: GitHub-style comment interface (text + image support)
-- Users can edit and delete their own notes
-- Notes are public by default
+- Notes can contain text (up to 300 characters), images planned for future
+- **Creation workflow**: Right-click on any element → "Add Mustard" → Note editor opens
+- **Two save modes**:
+  - **Save locally**: Stored in browser only (no login required)
+  - **Publish**: Stored on server, visible to followers (requires Bluesky login)
+- Users can delete their own notes
 
 #### Social Graph & Following
 
-- Users can follow other users to see their mustard
-- When visiting a page where a followed user has added mustard, those notes appear at the exact same locations
+- Uses **Bluesky's social graph** - users you follow on Bluesky can see your published mustard
+- When visiting a page where a followed user has added mustard, those notes appear at the anchored locations
 - Multiple follows' notes can appear on the same page simultaneously
-- Users can hide individual notes or hide all notes from a specific user
-- **Authentication**: Atproto and/or Google login for profiles and social graph
-- Users can search for people to follow (e.g., via Atproto DIDs)
-
-#### User Interface
-
-- **Individual note menu**: Each note has a menu with options:
-  - Hide note
-  - Hide all notes from this user
-  - Unfollow user
-  - Edit (own notes only)
-  - Delete (own notes only)
-  - Report (for moderation)
-- **Extension popup**: More elaborate menu showing:
-  - All people who have mustard on the current webpage
-  - Search for people to follow
-  - Show/hide mustard toggle for the current page
-- Easy show/hide toggle for mustard on any page
+- **Authentication**: AT Protocol OAuth via Bluesky
 
 #### Page Identification & Note Positioning
 
 - **Page matching**: URLs normalized without query parameters
 - **Element anchoring**:
-  - Primary: Element ID (if present)
-  - Fallback: Text content hash (if no ID)
-  - Relies on user common sense for SPAs and dynamic content
-- Notes persist at the same locations for all users viewing the same page
-- **Dynamic content detection**:
-  - Extension monitors for dynamically loaded content via:
-    - MutationObserver watching DOM changes
-    - Intercepted fetch/XMLHttpRequest requests
-  - When new elements are detected, mustard matching is re-executed
-  - Allows mustard to appear on elements loaded after initial page load (SPAs, infinite scroll, etc.)
-  - Debounced to avoid excessive re-matching
+  - Primary: CSS selector (generated from element hierarchy)
+  - Fallback: Absolute click position (viewport % + scroll offset)
+- **SPA support**: Detects client-side navigation (pushState/replaceState) and re-queries notes
 
-#### Content Moderation
+## Technical Architecture
 
-- Report button on each note
-- Admin center for reviewing reports
-- Warning in creation popup about not storing sensitive information (passwords, etc.)
+### Frontend (Chrome Extension)
 
-### Technical Architecture
+- **Content Script**: Injects mustard notes into web pages, handles SPA navigation
+- **Background Service Worker**: Manages messaging, authentication, note operations
+- **Popup**: Login/logout, user profile display
+- **Options Page**: Settings (placeholder)
 
-#### Frontend (Chrome Extension)
+### Backend (Supabase)
 
-- **Content Script**: Injects mustard notes into web pages
-- **Background Service Worker**: Manages index fetching, follow relationships
-- **Popup**: User interface for managing follows and viewing page-specific mustard
-- **Options Page**: Settings and preferences
+- **PostgreSQL Database**: Stores all published notes with RLS policies
+- **Edge Functions**:
+  - `auth-bridge`: Mints Supabase JWTs from AT Protocol DIDs
+  - `get-index`: Fetches user's Bluesky follows and returns notes index
+- **Authentication**: Custom JWT strategy using AT Protocol DIDs as user IDs
 
-#### Backend Architecture
+### Data Flow
 
-- **Database**: Stores all mustard notes and user data
-- **Index System**:
-  - Maps users → list of URLs where they have mustard
-  - Loaded on browser start (if possible)
-  - Backend provides freshly calculated index on request
-  - Reduces database load by only fetching notes for pages where followed users have annotations
-- **API**: RESTful API for all operations
-- **Authentication**: Atproto and/or Google OAuth
-
-#### Data Flow
-
-1. User opens browser → Extension fetches follow index
-2. User navigates to page → Extension checks index for followed users with mustard on this URL
-3. If matches found → Extension fetches specific notes for this page
-4. Notes are injected into the page at their anchored positions
-
-### Technical Recommendations
-
-#### Database Choice
-
-**Recommendation: PostgreSQL** (but MySQL is fine if you're more comfortable)
-
-**Why PostgreSQL:**
-
-- Superior JSON support for storing note metadata and element selectors
-- Better full-text search capabilities (useful for searching notes)
-- More robust handling of complex queries
-- Better performance for read-heavy workloads
-
-**MySQL is acceptable** if you're more familiar with it, especially for MVP. Both can handle the use case.
-
-#### API Architecture
-
-**Recommendation: Start with REST, consider GraphQL later**
-
-**REST is fine for MVP because:**
-
-- Simpler to implement and understand
-- Easier to debug
-- Standard HTTP caching works well
-- You already know it
-
-**GraphQL could be beneficial later for:**
-
-- Reducing over-fetching (only get fields you need)
-- More flexible queries
-- Better for complex social graph queries
-- But adds complexity and learning curve
-
-**Recommendation**: Start with REST, migrate to GraphQL if you find yourself making many round trips or over-fetching data.
-
-#### Hosting
-
-- Considering Koyeb (not yet decided)
-- Not self-hosted
-
-### Implementation Notes
-
-- **MVP approach**: Discover iteratively what the smallest best thing to build next is
-- **No WebSocket connections** for now (polling/on-demand fetching)
-- **Caching**: Consider Redis for index caching later if needed, but start simple
-- **Performance**: Index system designed to minimize database queries on every page load
+1. User logs in via Bluesky OAuth → Extension receives DID
+2. Extension calls `auth-bridge` → Receives Supabase JWT
+3. User navigates to page → Extension calls `get-index` with DID
+4. `get-index` fetches user's Bluesky follows, queries DB for notes from those users
+5. Extension fetches specific notes for current page URL
+6. Notes injected into page at anchored positions
 
 ## Technical Stack
 
 - **Vue 3** - Frontend framework
 - **TypeScript** - Type safety
 - **Vite** - Build tool
-- **@crxjs/vite-plugin** - Chrome extension build plugin
+- **@crxjs/vite-plugin** - Chrome extension build plugin with HMR
+- **Tailwind CSS v4** - Styling
+- **Supabase** - PostgreSQL database + Edge Functions
+- **AT Protocol** - Bluesky authentication and social graph
 
 ## Development
+
+### Prerequisites
+
+- Node.js 18+
+- A Supabase project (see [SUPABASE_SETUP.md](./SUPABASE_SETUP.md))
 
 ### Setup
 
@@ -157,17 +84,23 @@ The name "mustard" comes from the German saying _"seinen Senf dazu geben"_ (to a
 npm install
 ```
 
-### Development Commands
+### Run Development Server
 
 ```sh
 npm run dev
 ```
 
-### Build
+This starts Vite with HMR. The extension is built to `dist/`.
 
-```sh
-npm run build
-```
+### Load Extension in Chrome
+
+1. Open `chrome://extensions/`
+2. Enable "Developer mode" (top right)
+3. Click "Load unpacked"
+4. Select the `dist/` folder
+5. The extension icon (mustard bottle) appears in toolbar
+
+When running `npm run dev`, changes hot-reload automatically. For manifest changes, click the refresh icon on the extension card.
 
 ### Type Check
 
@@ -181,12 +114,83 @@ npm run type-check
 npm run lint
 ```
 
-## Recommended IDE Setup
+### Build for Production
 
-[VS Code](https://code.visualstudio.com/) + [Vue (Official)](https://marketplace.visualstudio.com/items?itemName=Vue.volar) (and disable Vetur).
+```sh
+npm run build
+```
 
-## Recommended Browser Setup
+## Supabase Deployment
 
-- Chromium-based browsers (Chrome, Edge, Brave, etc.):
-  - [Vue.js devtools](https://chromewebstore.google.com/detail/vuejs-devtools/nhdogjmejiglipccpnnnanhbledajbpd)
-  - [Turn on Custom Object Formatter in Chrome DevTools](http://bit.ly/object-formatters)
+### Deploy Edge Functions
+
+The Supabase CLI is required. Install it globally or use npx:
+
+```sh
+# Install Supabase CLI (if not installed)
+npm install -g supabase
+
+# Login to Supabase
+supabase login
+
+# Link to your project (run from project root)
+supabase link --project-ref YOUR_PROJECT_REF
+
+# Deploy Edge Functions
+supabase functions deploy auth-bridge
+supabase functions deploy get-index
+```
+
+### Set Edge Function Secrets
+
+The `auth-bridge` function needs the JWT signing secret:
+
+```sh
+supabase secrets set JWT_SIGNING_SECRET=your-jwt-secret-from-supabase-dashboard
+```
+
+Find your JWT secret in Supabase Dashboard → Settings → API → JWT Settings → JWT Secret.
+
+### Database Migration
+
+Apply the notes table schema:
+
+```sh
+supabase db push
+```
+
+Or run the SQL manually from `supabase/migrations/001_create_notes.sql`.
+
+See [SUPABASE_SETUP.md](./SUPABASE_SETUP.md) for detailed setup instructions.
+
+## Project Structure
+
+```
+src/
+├── background/           # Service worker
+│   ├── auth/             # AtprotoAuth, SupabaseAuth
+│   ├── business/         # MustardNotesManager, services
+│   └── service-worker.ts
+├── content/              # Content script
+│   ├── content-script.ts
+│   └── url-change-detector.ts  # SPA navigation detection
+├── shared/               # Shared types, DTOs, models
+│   ├── dto/
+│   ├── model/
+│   └── messaging.ts
+├── ui/                   # Vue components
+│   ├── content/          # Note rendering (MustardNote, MustardContent)
+│   ├── popup/            # Extension popup
+│   └── options/          # Options page
+└── manifest.ts           # Chrome extension manifest
+
+supabase/
+├── functions/
+│   ├── auth-bridge/      # JWT minting from AT Protocol DIDs
+│   └── get-index/        # Fetches follows + notes index
+└── migrations/           # Database schema
+```
+
+## Implementation Status
+
+See [PROGRESS.md](./PROGRESS.md) for detailed implementation status and architecture diagrams.
