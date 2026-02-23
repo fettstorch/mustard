@@ -14,15 +14,33 @@ const URL_REGEX = /(https?:\/\/[^\s]+)/g
 
 /**
  * Image extensions we recognize for inline rendering
- * Query parameters are allowed after the extension (e.g., .jpg?width=500)
+ * Matches: .png, .jpg, .jpeg, .gif, .webp
+ * Optionally followed by:
+ * - Twitter/X size suffix (:large, :medium, :small, :orig, :thumb)
+ * - Query params (?...)
+ * - Fragment (#...)
  */
-const IMAGE_EXTENSION_REGEX = /\.(png|jpe?g|gif|webp)(\?[^\s]*)?$/i
+const IMAGE_EXTENSION_REGEX =
+  /\.(png|jpe?g|gif|webp)(:(?:large|medium|small|orig|thumb))?(\?[^#\s]*)?(\#[^\s]*)?$/i
+
+/**
+ * Trailing punctuation that commonly gets captured by the URL regex
+ * but isn't actually part of the URL (e.g., "check this: https://example.com/cat.png.")
+ */
+const TRAILING_PUNCTUATION_REGEX = /[.,;!?)]+$/
+
+/**
+ * Cleans a URL by removing trailing punctuation that was incorrectly captured
+ */
+function cleanUrl(url: string): string {
+  return url.replace(TRAILING_PUNCTUATION_REGEX, '')
+}
 
 /**
  * Determines if a URL points to an image based on its file extension
  */
 function isImageUrl(url: string): boolean {
-  return IMAGE_EXTENSION_REGEX.test(url)
+  return IMAGE_EXTENSION_REGEX.test(cleanUrl(url))
 }
 
 /**
@@ -67,10 +85,12 @@ export function parseContent(text: string): ContentSegment[] {
     }
 
     // Add URL segment (image or link)
+    // Use cleaned URL for the value to remove trailing punctuation
+    const cleanedUrl = cleanUrl(url)
     if (isImageUrl(url)) {
-      segments.push({ type: 'image', value: url })
+      segments.push({ type: 'image', value: cleanedUrl })
     } else {
-      segments.push({ type: 'link', value: url })
+      segments.push({ type: 'link', value: cleanedUrl })
     }
 
     // Update last index to after this URL

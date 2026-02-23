@@ -134,6 +134,7 @@ const parsedContent = computed(() => {
           :src="segment.value"
           :alt="segment.value"
           draggable="false"
+          referrerpolicy="no-referrer"
           class="mustard-note-image"
           @mousedown.stop
         />
