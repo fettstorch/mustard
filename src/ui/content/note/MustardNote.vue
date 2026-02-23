@@ -5,6 +5,7 @@ import type { MustardState } from '../mustard-state'
 import IconButton from '../IconButton.vue'
 import MustardNoteHeader from '../MustardNoteHeader.vue'
 import AuthorAvatar from './AuthorAvatar.vue'
+import { parseContent } from './parse-content'
 
 const props = defineProps<{
   note: MustardNote
@@ -86,6 +87,10 @@ const authorProfile = computed(() => {
   if (!isRemoteNote.value) return null
   return mustardState.profiles[props.note.authorId] ?? null
 })
+
+const parsedContent = computed(() => {
+  return parseContent(props.note.content)
+})
 </script>
 
 <template>
@@ -122,7 +127,27 @@ const authorProfile = computed(() => {
     </div>
     <!-- Note Content (read-only) -->
     <div class="mustard-note-content" style="width: 260px">
-      {{ note.content }}
+      <template v-for="(segment, i) in parsedContent" :key="i">
+        <span v-if="segment.type === 'text'">{{ segment.value }}</span>
+        <img
+          v-else-if="segment.type === 'image'"
+          :src="segment.value"
+          :alt="segment.value"
+          draggable="false"
+          class="mustard-note-image"
+          @mousedown.stop
+        />
+        <a
+          v-else
+          :href="segment.value"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="mustard-note-link"
+          @mousedown.stop
+        >
+          {{ segment.value }}
+        </a>
+      </template>
     </div>
     <!-- Date footer -->
     <div class="mustard-note-date">
@@ -152,6 +177,20 @@ const authorProfile = computed(() => {
 .mustard-note-content {
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.mustard-note-image {
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+  display: block;
+  margin: 4px 0;
+  pointer-events: none;
+  user-select: none;
+}
+
+.mustard-note-link {
+  word-break: break-all;
 }
 
 .mustard-note-date {

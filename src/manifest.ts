@@ -32,6 +32,10 @@ export default {
 
   host_permissions: ['<all_urls>'],
 
+  content_security_policy: {
+    extension_pages: "script-src 'self'; object-src 'self'; img-src 'self' https: data:",
+  },
+
   content_scripts: [
     {
       matches: ['<all_urls>'],

@@ -125,6 +125,9 @@ flowchart TB
 - Publish flow: local note kept visible until remote publish confirmed, then deleted
 - Notes draggable: click and drag anywhere on note to reposition (temporary, not persisted)
 - Remote notes display author avatar (clickable link to their Bluesky profile)
+- Rich content in notes: URLs auto-detected and rendered as inline images (png/jpg/jpeg/gif/webp) or clickable links
+- Images constrained to note width (260px max), non-draggable, don't interfere with note dragging
+- CSP configured to allow loading images from HTTPS sources
 
 ## AT Protocol OAuth Flow
 
