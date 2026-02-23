@@ -6,7 +6,6 @@ import {
   type GetProfilesResponse,
 } from '@/shared/messaging'
 import type { MustardIndex } from '@/shared/model/MustardIndex'
-import { awaitable } from '@fettstorch/jule'
 import { mustardNotesManager } from './business/MustardNotesManager'
 import { DtoMustardNote } from '@/shared/dto/DtoMustardNote'
 import { login, getSession, logout } from './auth/AtprotoAuth'
@@ -15,14 +14,19 @@ import { MustardProfileServiceBsky } from './business/service/MustardProfileServ
 const profileService = new MustardProfileServiceBsky()
 
 console.log('Mustard background service worker loaded')
-const mustardIndex = awaitable<MustardIndex>()
 
-const initializeIndex = () => {
-  mustardNotesManager.queryMustardIndex().then((index) => mustardIndex.resolve(index))
+let cachedIndex: MustardIndex | null = null
+
+async function getIndex(userId?: string): Promise<MustardIndex> {
+  if (!cachedIndex) {
+    cachedIndex = await mustardNotesManager.queryMustardIndex(userId)
+  }
+  return cachedIndex
 }
 
-chrome.runtime.onStartup.addListener(initializeIndex)
-chrome.runtime.onInstalled.addListener(initializeIndex)
+function invalidateIndex() {
+  cachedIndex = null
+}
 
 // Create context menu item when extension is installed
 chrome.runtime.onInstalled.addListener(() => {
@@ -76,6 +80,7 @@ chrome.runtime.onMessage.addListener(
         })
 
         await mustardNotesManager.upsertNote(note, target)
+        invalidateIndex()
 
         // Re-query and return fresh notes
         const userId = session?.did
@@ -86,14 +91,15 @@ chrome.runtime.onMessage.addListener(
     }
 
     if (message.type === 'QUERY_NOTES') {
-      Promise.all([mustardIndex, getSession()]).then(async ([index, session]) => {
-        console.debug('mustard [service-worker] QUERY_NOTES index:', index)
-        // Check index first - if no notes for this page, return early
+      getSession().then(async (session) => {
+        const userId = session?.did
+        const index = await getIndex(userId)
+
         if (index.getUsersForPage(message.pageUrl).length === 0) {
           sendResponse([])
           return
         }
-        const userId = session?.did
+
         const notes = await mustardNotesManager.queryMustardNotesFor(message.pageUrl, userId)
         sendResponse(notes.map(DtoMustardNote.toDto))
       })
@@ -103,6 +109,8 @@ chrome.runtime.onMessage.addListener(
     if (message.type === 'DELETE_NOTE') {
       getSession().then(async (session) => {
         await mustardNotesManager.deleteNote(message.noteId, message.pageUrl)
+        invalidateIndex()
+
         // Re-query and return fresh notes
         const userId = session?.did
         const notes = await mustardNotesManager.queryMustardNotesFor(message.pageUrl, userId)
