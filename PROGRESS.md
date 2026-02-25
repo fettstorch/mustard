@@ -135,6 +135,10 @@ flowchart TB
 - Selector length validation returns `null` for fallback to click position
 - Database migration files: 001 (table structure), 002 (CHECK constraints)
 - Notes use fixed positioning + scroll listeners: anchor to elements without affecting page layout or causing scrollbars
+- Note rendering: `white-space: pre-wrap` removed from `.mustard-note-content` (was causing markdown-it's inter-tag `\n` to render as visible blank lines)
+- Note rendering: empty/whitespace-only `<p>` tags stripped from markdown-it output via `EMPTY_P_REGEX` (CSS `p:empty` missed `<p>\n</p>`)
+- Note content trimmed before render and before save to prevent trailing newlines creating phantom `<br>` elements
+- `knip` added as devDep with `knip.json` config; `nr knip` / `nr knip:fix` scripts available for dead code detection
 
 ## AT Protocol OAuth Flow
 

@@ -5,7 +5,7 @@ import type { MustardState } from '../mustard-state'
 import IconButton from '../IconButton.vue'
 import MustardNoteHeader from '../MustardNoteHeader.vue'
 import AuthorAvatar from './AuthorAvatar.vue'
-import { parseContent } from './parse-content'
+import { renderContent } from './render-content'
 import { LIMITS } from '@/shared/constants'
 
 const props = defineProps<{
@@ -23,6 +23,13 @@ const emit = defineEmits<{
 const isDragging = ref(false)
 const dragStart = ref({ x: 0, y: 0 })
 const offsetAtDragStart = ref({ x: 0, y: 0 })
+
+/** Only stop propagation for links — let other content clicks start a drag */
+function onContentMousedown(e: MouseEvent) {
+  if ((e.target as HTMLElement).closest('a')) {
+    e.stopPropagation()
+  }
+}
 
 function onDragStart(e: MouseEvent) {
   e.preventDefault()
@@ -89,8 +96,8 @@ const authorProfile = computed(() => {
   return mustardState.profiles[props.note.authorId] ?? null
 })
 
-const parsedContent = computed(() => {
-  return parseContent(props.note.content)
+const renderedContent = computed(() => {
+  return renderContent(props.note.content)
 })
 
 const isOverLimit = computed(() => {
@@ -140,31 +147,9 @@ const shouldShowCharacterCount = computed(() => {
         </template>
       </MustardNoteHeader>
     </div>
-    <!-- Note Content (read-only) -->
-    <div class="mustard-note-content" style="width: 260px">
-      <template v-for="(segment, i) in parsedContent" :key="i">
-        <span v-if="segment.type === 'text'">{{ segment.value }}</span>
-        <img
-          v-else-if="segment.type === 'image'"
-          :src="segment.value"
-          :alt="segment.value"
-          draggable="false"
-          referrerpolicy="no-referrer"
-          class="mustard-note-image"
-          @mousedown.stop
-        />
-        <a
-          v-else
-          :href="segment.value"
-          target="_blank"
-          rel="noopener noreferrer"
-          class="mustard-note-link"
-          @mousedown.stop
-        >
-          {{ segment.value }}
-        </a>
-      </template>
-    </div>
+    <!-- Note Content (read-only, rendered markdown) -->
+    <!-- eslint-disable-next-line vue/no-v-html -->
+    <div class="mustard-note-content" style="width: 260px" v-html="renderedContent" @mousedown="onContentMousedown" />
     <!-- Character count (for oversized local notes) -->
     <div v-if="shouldShowCharacterCount" class="character-count over-limit">
       {{ characterCountText }}
@@ -196,11 +181,18 @@ const shouldShowCharacterCount = computed(() => {
 }
 
 .mustard-note-content {
-  white-space: pre-wrap;
   word-break: break-word;
 }
 
-.mustard-note-image {
+:deep(.mustard-note-content p) {
+  margin: 0 !important;
+}
+
+:deep(.mustard-note-content p:empty) {
+  display: none;
+}
+
+:deep(.mustard-note-image) {
   max-width: 100%;
   height: auto;
   border-radius: 4px;
@@ -210,7 +202,7 @@ const shouldShowCharacterCount = computed(() => {
   user-select: none;
 }
 
-.mustard-note-link {
+:deep(.mustard-note-link) {
   word-break: break-all;
 }
 

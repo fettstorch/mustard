@@ -32,7 +32,7 @@
 
 /* Standard padding */
 .mustard-notes-padding {
-  padding: 1em;
+  padding: 1em 0.5em 0.5em;
 }
 
 /* Glass button: translucent bg, brown border */
