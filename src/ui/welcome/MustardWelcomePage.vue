@@ -21,21 +21,6 @@ const logoUrl = chrome.runtime.getURL('mustard_bottle_smile_512.png')
       </section>
 
       <section>
-        <h2>How to use</h2>
-        <ol>
-          <li>
-            <strong>Right-click</strong> on any element on a webpage and select
-            <strong>"Add Mustard"</strong>
-          </li>
-          <li>Write your note (up to 300 characters)</li>
-          <li>
-            <strong>Save locally</strong> (no account needed) or
-            <strong>Publish</strong> (requires Bluesky login) to share with your followers
-          </li>
-        </ol>
-      </section>
-
-      <section>
         <h2>Ideas for your Mustard</h2>
         <ul>
           <li>Share your thoughts on something you just read</li>
@@ -46,7 +31,19 @@ const logoUrl = chrome.runtime.getURL('mustard_bottle_smile_512.png')
       </section>
 
       <section>
-        <h2>Good to know</h2>
+        <h2>How to use</h2>
+        <ol>
+          <li>
+            <strong>Right-click</strong> on any element on a webpage and select
+            <strong>"Add Mustard"</strong>
+          </li>
+          <li>Write your note (up to 300 characters)</li>
+          <li>
+            Click the <strong>floppy disk</strong> to save locally (no account needed) or the
+            <strong>blue arrow</strong> to publish (requires Bluesky login)
+          </li>
+        </ol>
+        <h3>Tips</h3>
         <ul>
           <li>
             <strong>Drag notes around</strong> if they're covering something you want to see
@@ -56,13 +53,11 @@ const logoUrl = chrome.runtime.getURL('mustard_bottle_smile_512.png')
             in your toolbar
           </li>
           <li>
+            <strong>Markdown supported</strong> — use <code>**bold**</code>,
+            <code>*italic*</code>, <code>[links](url)</code>, and more
+          </li>
+          <li>
             <strong>Add images &amp; gifs</strong> by pasting an image link into your note
-          </li>
-          <li>
-            <strong>Save locally</strong> by clicking the floppy disk icon — no account needed
-          </li>
-          <li>
-            <strong>Publish</strong> a note by clicking the blue arrow icon
           </li>
           <li>
             <strong>Delete</strong> your own notes by clicking the bin icon
@@ -90,10 +85,6 @@ const logoUrl = chrome.runtime.getURL('mustard_bottle_smile_512.png')
           <li>
             <strong>Local notes are truly local:</strong> Notes saved locally never leave your
             browser. They're stored in Chrome's extension storage.
-          </li>
-          <li>
-            <strong>Published notes are public:</strong> When you publish a note, it's stored on our
-            server and visible to anyone who follows you on Bluesky.
           </li>
           <li>
             <strong>Early stage:</strong> Mustard is in early development. Expect rough edges, and
@@ -180,8 +171,21 @@ ul {
   gap: 8px;
 }
 
+h3 {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 16px 0 8px;
+}
+
 em {
   font-style: italic;
+}
+
+code {
+  background: var(--mustard-glass);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 13px;
 }
 
 .warning {
