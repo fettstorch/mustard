@@ -20,14 +20,14 @@
 
   &:hover {
     background:
-      radial-gradient(ellipse 50% 100% at 0% 50%, #5c3a1e50 0%, #5c3a1e00 50%),
-      radial-gradient(ellipse 50% 100% at 100% 50%, #5c3a1e50 0%, #5c3a1e00 50%);
+      radial-gradient(ellipse 50% 100% at 0% 50%, var(--mustard-border-faded) 0%, transparent 50%),
+      radial-gradient(ellipse 50% 100% at 100% 50%, var(--mustard-border-faded) 0%, transparent 50%);
   }
 
   &:active {
     background:
-      radial-gradient(ellipse 100% 100% at 0% 50%, #5c3a1e50 0%, #5c3a1e00 50%),
-      radial-gradient(ellipse 100% 100% at 100% 50%, #5c3a1e50 0%, #5c3a1e00 50%);
+      radial-gradient(ellipse 100% 100% at 0% 50%, var(--mustard-border-faded) 0%, transparent 50%),
+      radial-gradient(ellipse 100% 100% at 100% 50%, var(--mustard-border-faded) 0%, transparent 50%);
 
     .content {
       transform: scale(0.9);

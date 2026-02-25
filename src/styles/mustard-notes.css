@@ -1,0 +1,101 @@
+/* Shared mustard-notes component classes.
+ * Prefixed with mustard-notes- to avoid collisions with host page styles
+ * (content script injects into pages without Shadow DOM).
+ */
+
+/* Mustard tube gradient background + plastic shine shadow */
+.mustard-notes-bg {
+  background: var(--mustard-gradient);
+  box-shadow: var(--mustard-plastic-shadow);
+}
+
+/* Brown border with rounded corners */
+.mustard-notes-border {
+  border: 3px solid var(--mustard-border);
+  border-radius: 16px;
+}
+
+/* Base text: monospace font + brown color */
+.mustard-notes-txt {
+  font-size: 14px;
+  color: var(--mustard-text);
+  font-family: var(--mustard-font);
+}
+
+/* Header text: larger, medium weight */
+.mustard-notes-txt-header {
+  font-size: 18px;
+  color: var(--mustard-text);
+  font-family: var(--mustard-font);
+  font-weight: 500;
+}
+
+/* Standard padding */
+.mustard-notes-padding {
+  padding: 1em;
+}
+
+/* Glass button: translucent bg, brown border */
+.mustard-notes-btn {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  font-family: var(--mustard-font);
+  color: var(--mustard-text);
+  background-color: var(--mustard-glass);
+  border: 2px solid var(--mustard-border);
+  border-radius: 8px;
+  transition: background-color 0.15s;
+  cursor: pointer;
+}
+
+.mustard-notes-btn:hover {
+  background-color: var(--mustard-glass-hover);
+}
+
+/* Primary button: inverted colors (brown bg, yellow text) */
+.mustard-notes-btn-primary {
+  padding: 0.625rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  font-family: var(--mustard-font);
+  color: var(--mustard-yellow-light);
+  background-color: var(--mustard-border);
+  border: 2px solid var(--mustard-border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.mustard-notes-btn-primary:hover {
+  background-color: var(--mustard-brown-dark);
+}
+
+.mustard-notes-btn-primary:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Input field: translucent bg, brown border */
+.mustard-notes-input {
+  padding: 0.625rem 0.75rem;
+  border: 2px solid var(--mustard-border);
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-family: var(--mustard-font);
+  color: var(--mustard-text);
+  background-color: var(--mustard-glass-hover);
+  outline: none;
+  transition: background-color 0.15s;
+}
+
+.mustard-notes-input::placeholder {
+  color: var(--mustard-border-faded);
+}
+
+.mustard-notes-input:focus {
+  background-color: var(--mustard-glass-strong);
+}
+
+.mustard-notes-input:disabled {
+  opacity: 0.5;
+}

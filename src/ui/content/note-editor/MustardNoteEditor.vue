@@ -78,7 +78,7 @@ function handlePublish() {
   <div
     ref="editorContainer"
     tabindex="-1"
-    class="mustard-note-editor mustard-plastic mustard-rounded mustard-text-content mustard-padding"
+    class="mustard-note-editor mustard-notes-bg mustard-notes-border mustard-notes-txt mustard-notes-padding"
     style="width: fit-content; padding-top: 8px"
     @focusout="handleFocusOut"
   >
@@ -92,7 +92,7 @@ function handlePublish() {
     <div
       id="mustard-editor-el"
       contenteditable="true"
-      style="width: 260px; caret-color: #5c3a1e"
+      style="width: 260px; caret-color: var(--mustard-border)"
     ></div>
     <!-- Character count -->
     <div class="character-count" :class="{ 'over-limit': isOverLimit }">
@@ -104,7 +104,7 @@ function handlePublish() {
 <style scoped>
 #mustard-editor-el:empty::before {
   content: 'Write your note...';
-  color: #5c3a1e50;
+  color: var(--mustard-border-faded);
   pointer-events: none;
 }
 

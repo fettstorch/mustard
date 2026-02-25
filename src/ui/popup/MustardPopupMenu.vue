@@ -60,15 +60,19 @@ function openOptions() {
 }
 
 const gearIconUrl = chrome.runtime.getURL('gear_128.png')
+const logoUrl = chrome.runtime.getURL('mustard_bottle_smile_512.png')
 </script>
 
 <template>
-  <div class="w-75 p-4">
+  <div class="mustard-popup mustard-notes-bg mustard-notes-txt">
     <div class="flex justify-between items-center mb-4">
-      <h1 class="text-xl font-semibold">🌭 Mustard</h1>
+      <h1 class="mustard-title flex items-center gap-1.5">
+        <img :src="logoUrl" alt="Mustard" class="w-6 h-6" />
+        Mustard
+      </h1>
       <button
         @click="openOptions"
-        class="p-1 rounded hover:bg-gray-100 active:bg-gray-200 transition-colors"
+        class="mustard-icon-btn"
         title="Options"
       >
         <img :src="gearIconUrl" alt="Settings" class="w-5 h-5 block" />
@@ -82,21 +86,21 @@ const gearIconUrl = chrome.runtime.getURL('gear_128.png')
           v-if="profile?.avatarUrl"
           :src="profile.avatarUrl"
           alt="Profile picture"
-          class="w-10 h-10 rounded-full object-cover"
+          class="w-10 h-10 rounded-full object-cover border-2 border-[var(--mustard-border)]"
         />
-        <div v-else class="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center">
-          <span class="text-gray-500 text-sm">?</span>
+        <div v-else class="w-10 h-10 rounded-full flex items-center justify-center border-2 avatar-placeholder">
+          <span class="text-sm">?</span>
         </div>
         <div class="flex flex-col min-w-0">
-          <span class="text-sm font-medium text-gray-900 truncate">
+          <span class="mustard-label font-medium truncate">
             {{ profile?.displayName ?? 'Loading...' }}
           </span>
-          <span class="text-xs text-gray-500 truncate"> @{{ profile?.handle ?? '...' }} </span>
+          <span class="text-xs opacity-60 truncate"> @{{ profile?.handle ?? '...' }} </span>
         </div>
       </div>
       <button
         @click="handleLogout"
-        class="px-3 py-2 bg-gray-100 border border-gray-300 rounded-md text-sm hover:bg-gray-200 transition-colors"
+        class="mustard-notes-btn"
       >
         Logout
       </button>
@@ -106,3 +110,38 @@ const gearIconUrl = chrome.runtime.getURL('gear_128.png')
     <BlueskyLogin v-else @success="onLoginSuccess" />
   </div>
 </template>
+
+<style scoped>
+.mustard-popup {
+  width: 300px;
+  padding: 1em;
+}
+
+.mustard-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.mustard-label {
+  font-size: 0.875rem;
+}
+
+.mustard-icon-btn {
+  padding: 4px;
+  border-radius: 6px;
+  transition: background-color 0.15s;
+}
+
+.mustard-icon-btn:hover {
+  background-color: var(--mustard-glass);
+}
+
+.mustard-icon-btn:active {
+  background-color: var(--mustard-glass-hover);
+}
+
+.avatar-placeholder {
+  background-color: var(--mustard-orange-dark);
+  border-color: var(--mustard-border);
+}
+</style>

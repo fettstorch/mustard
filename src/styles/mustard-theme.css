@@ -1,0 +1,43 @@
+/* Mustard design tokens — imported by all entry points */
+:root {
+  /* Core palette */
+  --mustard-brown: #3d2200;
+  --mustard-brown-border: #5c3a1e;
+  --mustard-brown-dark: #4a2e17;
+  --mustard-yellow-light: #ffe066;
+  --mustard-yellow: #ffcc33;
+  --mustard-yellow-mid: #ffb800;
+  --mustard-orange: #f5a200;
+  --mustard-orange-dark: #e08c00;
+
+  /* Semantic tokens */
+  --mustard-text: var(--mustard-brown);
+  --mustard-border: var(--mustard-brown-border);
+  --mustard-font: 'Azeret Mono', monospace;
+
+  /* Surfaces */
+  --mustard-glass: rgba(255, 255, 255, 0.3);
+  --mustard-glass-hover: rgba(255, 255, 255, 0.5);
+  --mustard-glass-strong: rgba(255, 255, 255, 0.7);
+  --mustard-border-subtle: rgba(92, 58, 30, 0.25);
+  --mustard-border-faded: #5c3a1e50; /* ~31% opacity, used for hover/placeholder effects */
+
+  /* Gradient */
+  --mustard-gradient: linear-gradient(
+    180deg,
+    var(--mustard-yellow-light) 0%,
+    var(--mustard-yellow) 25%,
+    var(--mustard-yellow-mid) 50%,
+    var(--mustard-orange) 75%,
+    var(--mustard-orange-dark) 100%
+  );
+
+  /* Plastic tube box-shadow */
+  --mustard-plastic-shadow:
+    inset 0 3px 0 rgba(255, 255, 255, 0.6),
+    inset 0 15px 25px rgba(255, 255, 255, 0.3),
+    inset 8px 0 20px rgba(255, 255, 255, 0.25),
+    inset 0 -15px 25px rgba(140, 70, 0, 0.3),
+    inset -5px 0 15px rgba(120, 60, 0, 0.15),
+    0 4px 12px rgba(0, 0, 0, 0.25);
+}

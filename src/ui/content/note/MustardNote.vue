@@ -112,7 +112,7 @@ const shouldShowCharacterCount = computed(() => {
 
 <template>
   <div
-    class="mustard-note mustard-plastic mustard-rounded mustard-text-content mustard-padding"
+    class="mustard-note mustard-notes-bg mustard-notes-border mustard-notes-txt mustard-notes-padding"
     :class="{ 'is-dragging': isDragging }"
     style="width: fit-content; padding-top: 8px; padding-bottom: 4px"
     @mousedown="onDragStart"

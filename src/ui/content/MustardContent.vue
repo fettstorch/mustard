@@ -214,7 +214,7 @@ function onNoteDelete(note: MustardNoteType) {
   height: 0;
   z-index: 2147483647;
   pointer-events: none;
-  font-family: 'Azeret Mono', monospace;
+  font-family: var(--mustard-font);
 }
 
 .mustard-root > * {

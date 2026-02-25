@@ -42,22 +42,30 @@ async function submit() {
 
 <template>
   <div class="flex flex-col gap-3">
-    <p class="text-sm font-medium text-gray-700">Login with Bluesky</p>
+    <p class="login-label">Login with Bluesky</p>
     <input
       v-model="blueskyHandle"
       type="text"
       placeholder="your.handle.bsky.social"
-      class="px-3 py-2.5 border border-gray-300 rounded-md text-sm outline-none focus:border-amber-600 disabled:bg-gray-100 transition-colors"
+      class="mustard-notes-input"
       @keyup.enter="submit"
       :disabled="isLoggingIn"
     />
     <button
       @click="submit"
-      class="px-4 py-2.5 bg-amber-600 text-white rounded-md text-sm font-medium hover:bg-amber-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+      class="mustard-notes-btn-primary"
       :disabled="isLoggingIn || !blueskyHandle.trim()"
     >
       {{ isLoggingIn ? 'Logging in...' : 'Login' }}
     </button>
-    <p v-if="errorMessage" class="text-sm text-red-600">{{ errorMessage }}</p>
+    <p v-if="errorMessage" class="text-sm text-red-700 font-medium">{{ errorMessage }}</p>
   </div>
 </template>
+
+<style scoped>
+.login-label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--mustard-text);
+}
+</style>
