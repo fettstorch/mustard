@@ -83,10 +83,22 @@ window.addEventListener('mustard-url-change', handleUrlChange)
 // but the service-worker can't access the page's click-target
 let lastContextMenuData: MustardNoteAnchorData | null = null
 
-// Handle messages from service worker
-chrome.runtime.onMessage.addListener((message: Message) => {
+// Handle messages from service worker and popup
+chrome.runtime.onMessage.addListener((message: Message, _sender, sendResponse) => {
   console.debug('mustard [content-script] onMessage:', message)
+  if (message.type === 'GET_NOTES_VISIBLE') {
+    sendResponse(mustardState.areNotesVisible)
+    return
+  }
+  if (message.type === 'SET_NOTES_VISIBLE') {
+    mustardState.areNotesVisible = message.visible
+    sendResponse(mustardState.areNotesVisible)
+    return
+  }
   if (message.type === 'OPEN_NOTE_EDITOR') {
+    if (!mustardState.areNotesVisible) {
+      mustardState.areNotesVisible = true
+    }
     mustardState.editor.anchor = lastContextMenuData
     mustardState.editor.isOpen = true
     return

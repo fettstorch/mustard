@@ -47,6 +47,7 @@ function setDragOffset(noteId: string | null, offset: { x: number; y: number }) 
 const notesWithPositions = computed(() => {
   // eslint-disable-next-line @typescript-eslint/no-unused-expressions
   resizeTick.value // dependency to trigger recalculation
+  if (!mustardState.areNotesVisible) return []
   return mustardState.notes.map((note) => {
     const anchorPos = calculateAnchorPosition(note.anchorData)
     const offset = getDragOffset(note.id)
@@ -172,7 +173,7 @@ function onNoteDelete(note: MustardNoteType) {
 
 <template>
   <div class="mustard-root">
-    <!-- Existing notes -->
+    <!-- Existing notes (TransitionGroup animates notes in/out when visibility toggles) -->
     <TransitionGroup name="mustard-note">
       <MustardNote
         v-for="({ note, position, dragOffset }, index) in notesWithPositions"

@@ -115,6 +115,23 @@ export type AtprotoSessionResponse = {
 // Response type for GET_PROFILES - map of userId to profile (null if not found)
 export type GetProfilesResponse = Record<string, UserProfile | null>
 
+// Popup → content script: query whether notes are visible on this page
+export type GetNotesVisibleMessage = Satisfies<
+  BaseMessage,
+  {
+    type: 'GET_NOTES_VISIBLE'
+  }
+>
+
+// Popup → content script: set whether notes are visible on this page
+export type SetNotesVisibleMessage = Satisfies<
+  BaseMessage,
+  {
+    type: 'SET_NOTES_VISIBLE'
+    visible: boolean
+  }
+>
+
 // Message broadcast to content scripts when session changes (login/logout)
 export type SessionChangedMessage = Satisfies<
   BaseMessage,
@@ -134,6 +151,8 @@ export type Message =
   | GetAtprotoSessionMessage
   | AtprotoLogoutMessage
   | GetProfilesMessage
+  | GetNotesVisibleMessage
+  | SetNotesVisibleMessage
   | SessionChangedMessage
 
 export function createOpenNoteEditorMessage(): OpenNoteEditorMessage {
@@ -195,5 +214,18 @@ export function createGetProfilesMessage(userIds: UserId[]): GetProfilesMessage 
   return {
     type: 'GET_PROFILES',
     userIds,
+  }
+}
+
+export function createGetNotesVisibleMessage(): GetNotesVisibleMessage {
+  return {
+    type: 'GET_NOTES_VISIBLE',
+  }
+}
+
+export function createSetNotesVisibleMessage(visible: boolean): SetNotesVisibleMessage {
+  return {
+    type: 'SET_NOTES_VISIBLE',
+    visible,
   }
 }

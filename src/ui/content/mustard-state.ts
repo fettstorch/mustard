@@ -14,6 +14,8 @@ export type MustardState = {
   pendingNoteIds: Record<string, boolean>
   /** Cached profiles for note authors (authorId -> profile) */
   profiles: Record<string, UserProfile | null>
+  /** Whether notes are currently shown on this page (toggled via popup, in-memory only) */
+  areNotesVisible: boolean
 }
 
 export function createMustardState(): MustardState {
@@ -26,5 +28,6 @@ export function createMustardState(): MustardState {
     notes: [],
     pendingNoteIds: {},
     profiles: {},
+    areNotesVisible: true,
   })
 }

@@ -10,6 +10,8 @@ import {
   createGetAtprotoSessionMessage,
   createAtprotoLogoutMessage,
   createGetProfilesMessage,
+  createGetNotesVisibleMessage,
+  createSetNotesVisibleMessage,
   type AtprotoSessionResponse,
   type GetProfilesResponse,
 } from '@/shared/messaging'
@@ -18,6 +20,8 @@ import BlueskyLogin from './auth/BlueskyLogin.vue'
 
 const session = ref<AtprotoSessionResponse>(null)
 const profile = ref<UserProfile | null>(null)
+const areNotesVisible = ref(true)
+const activeTabId = ref<number | null>(null)
 
 onMounted(async () => {
   // Get session via service worker (auth state lives there)
@@ -27,7 +31,22 @@ onMounted(async () => {
   if (existingSession) {
     session.value = existingSession
   }
+
+  // Get active tab and query its notes visibility state
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+  if (tab?.id && tab.url && !tab.url.startsWith('chrome://')) {
+    activeTabId.value = tab.id
+    const visible = await chrome.tabs.sendMessage(tab.id, createGetNotesVisibleMessage())
+    areNotesVisible.value = visible
+  }
 })
+
+async function toggleNotesVisibility() {
+  if (!activeTabId.value) return
+  const newVisible = !areNotesVisible.value
+  await chrome.tabs.sendMessage(activeTabId.value, createSetNotesVisibleMessage(newVisible))
+  areNotesVisible.value = newVisible
+}
 
 // Fetch profile when session changes
 watch(
@@ -76,6 +95,18 @@ const logoUrl = chrome.runtime.getURL('mustard_bottle_smile_512.png')
         title="Options"
       >
         <img :src="gearIconUrl" alt="Settings" class="w-5 h-5 block" />
+      </button>
+    </div>
+
+    <!-- Notes visibility toggle -->
+    <div v-if="activeTabId" class="mustard-toggle-row">
+      <span class="mustard-label">Show notes</span>
+      <button
+        @click="toggleNotesVisibility"
+        :class="['mustard-toggle', areNotesVisible ? 'is-on' : 'is-off']"
+        :title="areNotesVisible ? 'Hide notes on this page' : 'Show notes on this page'"
+      >
+        <span class="mustard-toggle-knob" />
       </button>
     </div>
 
@@ -138,6 +169,52 @@ const logoUrl = chrome.runtime.getURL('mustard_bottle_smile_512.png')
 
 .mustard-icon-btn:active {
   background-color: var(--mustard-glass-hover);
+}
+
+.mustard-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0;
+  margin-bottom: 0.75rem;
+  border-bottom: 1px solid var(--mustard-border-subtle);
+}
+
+.mustard-toggle {
+  position: relative;
+  display: inline-flex;
+  height: 24px;
+  width: 44px;
+  align-items: center;
+  border-radius: 9999px;
+  transition: background-color 0.2s;
+  border: 2px solid var(--mustard-border);
+}
+
+.mustard-toggle.is-on {
+  background-color: var(--mustard-border);
+}
+
+.mustard-toggle.is-off {
+  background-color: var(--mustard-glass);
+}
+
+.mustard-toggle-knob {
+  display: inline-block;
+  height: 16px;
+  width: 16px;
+  border-radius: 9999px;
+  background-color: var(--mustard-yellow-light);
+  transition: transform 0.2s;
+  border: 1px solid var(--mustard-border);
+}
+
+.mustard-toggle.is-on .mustard-toggle-knob {
+  transform: translateX(22px);
+}
+
+.mustard-toggle.is-off .mustard-toggle-knob {
+  transform: translateX(2px);
 }
 
 .avatar-placeholder {
