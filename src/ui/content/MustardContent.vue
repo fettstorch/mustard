@@ -4,10 +4,13 @@ import type { MustardState } from './mustard-state'
 import { calculateAnchorPosition } from './anchor-utils'
 const MustardNoteEditor = defineAsyncComponent(() => import('./note-editor/MustardNoteEditor.vue'))
 import MustardNote from './note/MustardNote.vue'
+import PublishConfirmBubble from './PublishConfirmBubble.vue'
 import type { MustardNote as MustardNoteType } from '@/shared/model/MustardNote'
 import type { Observable } from '@fettstorch/jule'
 import { createUpsertNoteMessage, createDeleteNoteMessage, type Message } from '@/shared/messaging'
 import { LIMITS } from '@/shared/constants'
+
+const PUBLISH_CONFIRM_DISMISSED_KEY = 'mustard-publish-confirm-dismissed'
 
 const mustardState = inject<MustardState>('mustardState')!
 const event = inject<Observable<Message>>('event')!
@@ -23,6 +26,21 @@ const resizeTick = ref(0)
  * Value: { x, y } pixel offset from the calculated anchor position
  */
 const dragOffsets = reactive<Record<string, { x: number; y: number }>>({})
+
+// Publish confirmation state
+const skipPublishConfirm = ref(false)
+const pendingPublish = ref<{
+  content: string
+  anchorData: MustardNoteType['anchorData']
+  localNoteIdToDelete?: string
+  /** 'editor' or note ID — used to position the bubble */
+  source: string
+} | null>(null)
+
+// Load "don't show again" preference
+chrome.storage.local.get(PUBLISH_CONFIRM_DISMISSED_KEY, (result) => {
+  skipPublishConfirm.value = !!result[PUBLISH_CONFIRM_DISMISSED_KEY]
+})
 
 const editorPosition = computed(() => {
   // eslint-disable-next-line @typescript-eslint/no-unused-expressions
@@ -120,13 +138,43 @@ function onEditorPublish(data: { content: string }) {
     console.warn(`Content exceeds ${LIMITS.CONTENT_MAX_LENGTH} character limit`)
     return
   }
-  publishToRemote(data.content, mustardState.editor.anchor)
-  mustardState.editor.isOpen = false
+  requestPublish(data.content, mustardState.editor.anchor, undefined, 'editor')
 }
 
 /** Note: user clicked publish icon on an existing local note to upload it */
 function onNotePublish(note: MustardNoteType) {
-  publishToRemote(note.content, note.anchorData, note.id ?? undefined)
+  requestPublish(note.content, note.anchorData, note.id ?? undefined, note.id ?? 'note')
+}
+
+/** Gate publish behind a confirmation bubble (unless user dismissed it) */
+function requestPublish(
+  content: string,
+  anchorData: MustardNoteType['anchorData'],
+  localNoteIdToDelete?: string,
+  source?: string,
+) {
+  if (skipPublishConfirm.value) {
+    publishToRemote(content, anchorData, localNoteIdToDelete)
+    if (source === 'editor') mustardState.editor.isOpen = false
+    return
+  }
+  pendingPublish.value = { content, anchorData, localNoteIdToDelete, source: source ?? 'editor' }
+}
+
+function onPublishConfirm(dontShowAgain: boolean) {
+  if (!pendingPublish.value) return
+  if (dontShowAgain) {
+    skipPublishConfirm.value = true
+    chrome.storage.local.set({ [PUBLISH_CONFIRM_DISMISSED_KEY]: true })
+  }
+  const { content, anchorData, localNoteIdToDelete, source } = pendingPublish.value
+  pendingPublish.value = null
+  publishToRemote(content, anchorData, localNoteIdToDelete)
+  if (source === 'editor') mustardState.editor.isOpen = false
+}
+
+function onPublishCancel() {
+  pendingPublish.value = null
 }
 
 /**
@@ -175,29 +223,51 @@ function onNoteDelete(note: MustardNoteType) {
   <div class="mustard-root">
     <!-- Existing notes (TransitionGroup animates notes in/out when visibility toggles) -->
     <TransitionGroup name="mustard-note">
-      <MustardNote
+      <div
         v-for="({ note, position, dragOffset }, index) in notesWithPositions"
         :key="note.id ?? `unsaved-${index}`"
-        :note="note"
-        :drag-offset="dragOffset"
         class="mustard-positioned"
         :style="{ left: `${position.x}px`, top: `${position.y}px` }"
-        @pressed-publish="onNotePublish"
-        @pressed-delete="onNoteDelete"
-        @drag="(offset) => setDragOffset(note.id, offset)"
-      />
+        style="position: relative"
+      >
+        <MustardNote
+          :note="note"
+          :drag-offset="dragOffset"
+          @pressed-publish="onNotePublish"
+          @pressed-delete="onNoteDelete"
+          @drag="(offset) => setDragOffset(note.id, offset)"
+        />
+        <Transition name="mustard-note">
+          <PublishConfirmBubble
+            v-if="pendingPublish && pendingPublish.source === note.id"
+            @confirm="onPublishConfirm"
+            @cancel="onPublishCancel"
+          />
+        </Transition>
+      </div>
     </TransitionGroup>
 
     <!-- Note editor -->
     <Transition name="mustard-note">
-      <MustardNoteEditor
+      <div
         v-if="mustardState.editor.isOpen"
         class="mustard-positioned"
         :style="{ left: `${editorPosition.x}px`, top: `${editorPosition.y}px` }"
-        @pressed-x="mustardState.editor.isOpen = false"
-        @pressed-save="onEditorSave"
-        @pressed-publish="onEditorPublish"
-      />
+        style="position: relative"
+      >
+        <MustardNoteEditor
+          @pressed-x="mustardState.editor.isOpen = false"
+          @pressed-save="onEditorSave"
+          @pressed-publish="onEditorPublish"
+        />
+        <Transition name="mustard-note">
+          <PublishConfirmBubble
+            v-if="pendingPublish && pendingPublish.source === 'editor'"
+            @confirm="onPublishConfirm"
+            @cancel="onPublishCancel"
+          />
+        </Transition>
+      </div>
     </Transition>
   </div>
 </template>
