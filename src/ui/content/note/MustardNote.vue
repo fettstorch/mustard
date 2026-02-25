@@ -131,8 +131,6 @@ const shouldShowCharacterCount = computed(() => {
             @click="emit('pressed-publish', note)"
             @mousedown.stop
           />
-          <!-- Remote note: show published indicator (non-interactive) -->
-          <IconButton v-if="isRemoteNote" icon="published" :static="true" />
           <IconButton
             icon="trash"
             :disabled="isPending"
@@ -174,6 +172,7 @@ const shouldShowCharacterCount = computed(() => {
     <!-- Date footer -->
     <div class="mustard-note-date">
       {{ formattedDate }}
+      <IconButton v-if="isRemoteNote && isMyOwnNote" icon="published" :static="true" />
     </div>
   </div>
 </template>
@@ -228,7 +227,10 @@ const shouldShowCharacterCount = computed(() => {
 }
 
 .mustard-note-date {
-  text-align: right;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 4px;
   font-size: 0.75em;
   opacity: 0.5;
   margin-top: 8px;
