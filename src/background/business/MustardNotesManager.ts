@@ -4,6 +4,11 @@ import type { MustardNotesService } from './service/MustardNotesService'
 import { MustardNotesServiceLocal } from './service/MustardNotesServiceLocal'
 import { MustardNotesServiceRemote } from './service/MustardNotesServiceRemote'
 
+/** Sort notes by date ascending so newest notes render last (on top). */
+function sortByCreationDateAsc(notes: MustardNote[]): MustardNote[] {
+  return [...notes].sort((a, b) => a.updatedAt.getTime() - b.updatedAt.getTime())
+}
+
 // Local service: stores notes in chrome.storage.local (offline, not published)
 const localService: MustardNotesService = new MustardNotesServiceLocal()
 
@@ -28,7 +33,7 @@ export const mustardNotesManager = {
     // Query remote notes if user is logged in
     const remoteNotes = userId ? await remoteService.queryNotes(pageUrl, userId) : []
 
-    return [...localNotes, ...remoteNotes]
+    return sortByCreationDateAsc([...localNotes, ...remoteNotes])
   },
 
   /**
@@ -36,7 +41,8 @@ export const mustardNotesManager = {
    * Used for immediate responses after local operations.
    */
   async queryLocalNotesFor(pageUrl: string): Promise<MustardNote[]> {
-    return localService.queryNotes(pageUrl)
+    const notes = await localService.queryNotes(pageUrl)
+    return sortByCreationDateAsc(notes)
   },
 
   /**
