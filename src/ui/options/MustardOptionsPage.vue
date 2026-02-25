@@ -16,6 +16,7 @@
  */
 
 const logoUrl = chrome.runtime.getURL('mustard_bottle_smile_512.png')
+const welcomeUrl = chrome.runtime.getURL('src/ui/welcome/index.html')
 
 function openKofi() {
   window.open('https://ko-fi.com/fettstorch', '_blank')
@@ -42,6 +43,13 @@ function openKofi() {
           </svg>
           Buy me a coffee on Ko-fi
         </button>
+      </section>
+
+      <section class="link-section">
+        <h2 class="section-title">Resources</h2>
+        <a :href="welcomeUrl" target="_blank" class="welcome-link">
+          View welcome page &amp; getting started guide
+        </a>
       </section>
     </div>
   </div>
