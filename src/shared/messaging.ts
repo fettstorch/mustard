@@ -181,7 +181,11 @@ export function createQueryNotesMessage(pageUrl: string): QueryNotesMessage {
   }
 }
 
-export function createDeleteNoteMessage(noteId: string, pageUrl: string, authorId: string): DeleteNoteMessage {
+export function createDeleteNoteMessage(
+  noteId: string,
+  pageUrl: string,
+  authorId: string,
+): DeleteNoteMessage {
   return {
     type: 'DELETE_NOTE',
     noteId,

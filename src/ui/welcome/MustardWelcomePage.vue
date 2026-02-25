@@ -45,23 +45,17 @@ const logoUrl = chrome.runtime.getURL('mustard_bottle_smile_512.png')
         </ol>
         <h3>Tips</h3>
         <ul>
+          <li><strong>Drag notes around</strong> if they're covering something you want to see</li>
           <li>
-            <strong>Drag notes around</strong> if they're covering something you want to see
+            <strong>Toggle notes off</strong> via the extension popup — click the Mustard bottle
+            icon in your toolbar
           </li>
           <li>
-            <strong>Toggle notes off</strong> via the extension popup — click the Mustard bottle icon
-            in your toolbar
+            <strong>Markdown supported</strong> — use <code>**bold**</code>, <code>*italic*</code>,
+            <code>[links](url)</code>, and more
           </li>
-          <li>
-            <strong>Markdown supported</strong> — use <code>**bold**</code>,
-            <code>*italic*</code>, <code>[links](url)</code>, and more
-          </li>
-          <li>
-            <strong>Add images &amp; gifs</strong> by pasting an image link into your note
-          </li>
-          <li>
-            <strong>Delete</strong> your own notes by clicking the bin icon
-          </li>
+          <li><strong>Add images &amp; gifs</strong> by pasting an image link into your note</li>
+          <li><strong>Delete</strong> your own notes by clicking the bin icon</li>
         </ul>
       </section>
 

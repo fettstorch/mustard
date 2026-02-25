@@ -8,21 +8,17 @@ import manifest from './src/manifest'
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [
-    vue(),
-    tailwindcss(),
-    crx({ manifest }),
-  ],
+  plugins: [vue(), tailwindcss(), crx({ manifest })],
   resolve: {
     alias: {
-      '@': fileURLToPath(new URL('./src', import.meta.url))
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },
   build: {
     rollupOptions: {
       input: {
         'url-change-detector': 'src/content/url-change-detector.ts',
-        'welcome': 'src/ui/welcome/index.html',
+        welcome: 'src/ui/welcome/index.html',
       },
       output: {
         entryFileNames: (chunkInfo) => {

@@ -26,7 +26,9 @@ async function submit() {
 
   try {
     // Send to service worker - it handles OAuth and persists across popup close
-    const session = await chrome.runtime.sendMessage(createAtprotoLoginMessage(handle)) as AtprotoSessionResponse
+    const session = (await chrome.runtime.sendMessage(
+      createAtprotoLoginMessage(handle),
+    )) as AtprotoSessionResponse
     if (session) {
       emit('success', session)
     } else {

@@ -20,23 +20,26 @@ import { createApp } from 'vue'
 const mustardState = createMustardState()
 
 function clearPendingNoteIds() {
-  Object.keys(mustardState.pendingNoteIds).forEach(key => delete mustardState.pendingNoteIds[key])
+  Object.keys(mustardState.pendingNoteIds).forEach((key) => delete mustardState.pendingNoteIds[key])
 }
 
 /** Fetches profiles for remote note authors that aren't already cached */
 function fetchProfilesForNotes(notes: MustardNote[]) {
   const remoteAuthorIds = notes
-    .filter(n => n.authorId !== 'local')
-    .map(n => n.authorId)
-    .filter(id => !(id in mustardState.profiles))
+    .filter((n) => n.authorId !== 'local')
+    .map((n) => n.authorId)
+    .filter((id) => !(id in mustardState.profiles))
 
   const uniqueIds = [...new Set(remoteAuthorIds)]
   if (uniqueIds.length === 0) return
 
-  chrome.runtime.sendMessage(createGetProfilesMessage(uniqueIds), (response: GetProfilesResponse) => {
-    console.debug('mustard [content-script] received profiles:', response)
-    Object.assign(mustardState.profiles, response ?? {})
-  })
+  chrome.runtime.sendMessage(
+    createGetProfilesMessage(uniqueIds),
+    (response: GetProfilesResponse) => {
+      console.debug('mustard [content-script] received profiles:', response)
+      Object.assign(mustardState.profiles, response ?? {})
+    },
+  )
 }
 
 // The page's URL (used for storing/retrieving notes)
@@ -106,12 +109,15 @@ chrome.runtime.onMessage.addListener((message: Message, _sender, sendResponse) =
   if (message.type === 'SESSION_CHANGED') {
     mustardState.currentUserDid = message.did
     // Re-query notes now that login state changed (may have remote notes available)
-    chrome.runtime.sendMessage(createQueryNotesMessage(getCurrentPageUrl()), (dtos: DtoMustardNote[]) => {
-      console.debug('mustard [content-script] received notes after session change:', dtos)
-      const notes = (dtos ?? []).map(DtoMustardNote.fromDto)
-      mustardState.notes = notes
-      fetchProfilesForNotes(notes)
-    })
+    chrome.runtime.sendMessage(
+      createQueryNotesMessage(getCurrentPageUrl()),
+      (dtos: DtoMustardNote[]) => {
+        console.debug('mustard [content-script] received notes after session change:', dtos)
+        const notes = (dtos ?? []).map(DtoMustardNote.fromDto)
+        mustardState.notes = notes
+        fetchProfilesForNotes(notes)
+      },
+    )
     return
   }
 })
@@ -123,12 +129,15 @@ chrome.runtime.sendMessage(createGetAtprotoSessionMessage(), (response: AtprotoS
 })
 
 // Query notes for the current page (response comes via sendResponse callback)
-chrome.runtime.sendMessage(createQueryNotesMessage(getCurrentPageUrl()), (dtos: DtoMustardNote[]) => {
-  console.debug('mustard [content-script] received notes:', dtos)
-  const notes = (dtos ?? []).map(DtoMustardNote.fromDto)
-  mustardState.notes = notes
-  fetchProfilesForNotes(notes)
-})
+chrome.runtime.sendMessage(
+  createQueryNotesMessage(getCurrentPageUrl()),
+  (dtos: DtoMustardNote[]) => {
+    console.debug('mustard [content-script] received notes:', dtos)
+    const notes = (dtos ?? []).map(DtoMustardNote.fromDto)
+    mustardState.notes = notes
+    fetchProfilesForNotes(notes)
+  },
+)
 
 // Single host element for all Mustard UI
 const mustardHost = document.createElement('div')
@@ -153,7 +162,7 @@ event.subscribe((message) => {
       const newNotes = (dtos ?? []).map(DtoMustardNote.fromDto)
       if (isLocalOperation) {
         // For local saves, merge: keep existing remote notes, replace local notes
-        const remoteNotes = mustardState.notes.filter(n => n.authorId !== 'local')
+        const remoteNotes = mustardState.notes.filter((n) => n.authorId !== 'local')
         mustardState.notes = [...newNotes, ...remoteNotes]
       } else {
         // For remote publish, response includes all notes
@@ -171,7 +180,7 @@ event.subscribe((message) => {
       const newNotes = (dtos ?? []).map(DtoMustardNote.fromDto)
       if (isLocalDelete) {
         // For local deletes, merge: keep existing remote notes, replace local notes
-        const remoteNotes = mustardState.notes.filter(n => n.authorId !== 'local')
+        const remoteNotes = mustardState.notes.filter((n) => n.authorId !== 'local')
         mustardState.notes = [...newNotes, ...remoteNotes]
       } else {
         // For remote delete, response includes all notes

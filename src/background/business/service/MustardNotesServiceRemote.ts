@@ -6,7 +6,8 @@ import { MustardIndex as MustardIndexClass } from '@/shared/model/MustardIndex'
 import { LIMITS } from '@/shared/constants'
 
 const SUPABASE_PROJECT_ID = 'dexvrkxjgitrebqetvjw'
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRleHZya3hqZ2l0cmVicWV0dmp3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc5ODQwMTcsImV4cCI6MjA4MzU2MDAxN30.2hzb5-dpI0XYbklfqFsK5CkDeNXXlE1V78Q1eEgV4iI'
+const SUPABASE_ANON_KEY =
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRleHZya3hqZ2l0cmVicWV0dmp3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc5ODQwMTcsImV4cCI6MjA4MzU2MDAxN30.2hzb5-dpI0XYbklfqFsK5CkDeNXXlE1V78Q1eEgV4iI'
 const GET_INDEX_URL = `https://${SUPABASE_PROJECT_ID}.supabase.co/functions/v1/get-index`
 
 // Index cache with TTL (30 seconds for dev, increase for production)
@@ -49,7 +50,7 @@ export class MustardNotesServiceRemote implements MustardNotesService {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
         },
         body: JSON.stringify({ did: userId }),
       })
@@ -107,7 +108,7 @@ export class MustardNotesServiceRemote implements MustardNotesService {
     }
   }
 
-async upsertNote(note: MustardNote): Promise<void> {
+  async upsertNote(note: MustardNote): Promise<void> {
     // Validate content length
     if (note.content.length > LIMITS.CONTENT_MAX_LENGTH) {
       throw new Error(`Content exceeds ${LIMITS.CONTENT_MAX_LENGTH} character limit`)

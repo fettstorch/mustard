@@ -89,11 +89,7 @@ const logoUrl = chrome.runtime.getURL('mustard_bottle_smile_512.png')
         <img :src="logoUrl" alt="Mustard" class="w-6 h-6" />
         Mustard
       </h1>
-      <button
-        @click="openOptions"
-        class="mustard-icon-btn"
-        title="Options"
-      >
+      <button @click="openOptions" class="mustard-icon-btn" title="Options">
         <img :src="gearIconUrl" alt="Settings" class="w-5 h-5 block" />
       </button>
     </div>
@@ -119,7 +115,10 @@ const logoUrl = chrome.runtime.getURL('mustard_bottle_smile_512.png')
           alt="Profile picture"
           class="w-10 h-10 rounded-full object-cover border-2 border-[var(--mustard-border)]"
         />
-        <div v-else class="w-10 h-10 rounded-full flex items-center justify-center border-2 avatar-placeholder">
+        <div
+          v-else
+          class="w-10 h-10 rounded-full flex items-center justify-center border-2 avatar-placeholder"
+        >
           <span class="text-sm">?</span>
         </div>
         <div class="flex flex-col min-w-0">
@@ -129,12 +128,7 @@ const logoUrl = chrome.runtime.getURL('mustard_bottle_smile_512.png')
           <span class="text-xs opacity-60 truncate"> @{{ profile?.handle ?? '...' }} </span>
         </div>
       </div>
-      <button
-        @click="handleLogout"
-        class="mustard-notes-btn"
-      >
-        Logout
-      </button>
+      <button @click="handleLogout" class="mustard-notes-btn">Logout</button>
     </div>
 
     <!-- Not logged in -->

@@ -23,13 +23,10 @@ Deno.serve(async (req) => {
     const { did } = await req.json()
 
     if (!did || typeof did !== 'string') {
-      return new Response(
-        JSON.stringify({ error: 'Invalid request: did is required' }),
-        {
-          status: 400,
-          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-        },
-      )
+      return new Response(JSON.stringify({ error: 'Invalid request: did is required' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      })
     }
 
     // TODO: Verify the AT Protocol session is valid
