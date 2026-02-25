@@ -35,6 +35,15 @@ const logoUrl = chrome.runtime.getURL('mustard_bottle_smile_512.png')
         </ol>
       </section>
 
+      <section class="warning">
+        <h2>Do not publish sensitive information</h2>
+        <p>
+          Never include passwords, API keys, personal addresses, or other private data in published
+          notes. Published notes are stored on our server and <strong>visible to anyone</strong> who
+          follows you. Treat them like public posts.
+        </p>
+      </section>
+
       <section>
         <h2>Heads up</h2>
         <ul>
@@ -56,15 +65,6 @@ const logoUrl = chrome.runtime.getURL('mustard_bottle_smile_512.png')
             please report any bugs!
           </li>
         </ul>
-      </section>
-
-      <section class="warning">
-        <h2>Do not publish sensitive information</h2>
-        <p>
-          Never include passwords, API keys, personal addresses, or other private data in published
-          notes. Published notes are stored on our server and <strong>visible to anyone</strong> who
-          follows you. Treat them like public posts.
-        </p>
       </section>
 
       <section class="get-started">
