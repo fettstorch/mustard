@@ -24,6 +24,13 @@ const isDragging = ref(false)
 const dragStart = ref({ x: 0, y: 0 })
 const offsetAtDragStart = ref({ x: 0, y: 0 })
 
+/** Only stop propagation for links — let other content clicks start a drag */
+function onContentMousedown(e: MouseEvent) {
+  if ((e.target as HTMLElement).closest('a')) {
+    e.stopPropagation()
+  }
+}
+
 function onDragStart(e: MouseEvent) {
   e.preventDefault()
   isDragging.value = true
@@ -142,7 +149,7 @@ const shouldShowCharacterCount = computed(() => {
     </div>
     <!-- Note Content (read-only, rendered markdown) -->
     <!-- eslint-disable-next-line vue/no-v-html -->
-    <div class="mustard-note-content" style="width: 260px" v-html="renderedContent" @mousedown.stop />
+    <div class="mustard-note-content" style="width: 260px" v-html="renderedContent" @mousedown="onContentMousedown" />
     <!-- Character count (for oversized local notes) -->
     <div v-if="shouldShowCharacterCount" class="character-count over-limit">
       {{ characterCountText }}
