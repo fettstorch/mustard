@@ -1,5 +1,5 @@
 <script setup lang="ts">
-const logoUrl = chrome.runtime.getURL('mustard_bottle_smile_128.png')
+const logoUrl = chrome.runtime.getURL('mustard_bottle_smile_512.png')
 </script>
 
 <template>
