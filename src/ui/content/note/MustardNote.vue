@@ -230,9 +230,13 @@ const shouldShowCharacterCount = computed(() => {
   display: flex;
   justify-content: flex-end;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
   font-size: 0.75em;
   opacity: 0.5;
   margin-top: 8px;
+}
+
+.mustard-note-date :deep(.icon-static) {
+  padding: 0;
 }
 </style>
