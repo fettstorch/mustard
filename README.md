@@ -102,6 +102,14 @@ This starts Vite with HMR. The extension is built to `dist/`.
 
 When running `npm run dev`, changes hot-reload automatically. For manifest changes, click the refresh icon on the extension card.
 
+### Testing the Post-Install Welcome Page
+
+The welcome page opens automatically when the extension is first installed. To test it during development:
+
+1. **Simulate first install**: Remove the extension from `chrome://extensions/` and re-add it via "Load unpacked". The welcome page should open in a new tab automatically.
+2. **Direct navigation**: Open the welcome page manually at `chrome-extension://<extension-id>/src/ui/welcome/index.html`. Find your extension ID on the `chrome://extensions/` page.
+3. **Note**: The welcome page does _not_ open on extension updates, only on first install.
+
 ### Type Check
 
 ```sh

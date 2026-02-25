@@ -67,4 +67,23 @@ h1 {
   font-size: 14px;
   margin: 0;
 }
+
+.link-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.welcome-link {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--mustard-brown);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.welcome-link:hover {
+  color: var(--mustard-border);
+}
 </style>

@@ -28,13 +28,17 @@ async function broadcastSessionChanged(did: string | null) {
 }
 
 
-// Create context menu item when extension is installed
-chrome.runtime.onInstalled.addListener(() => {
+// Create context menu item when extension is installed, and open welcome page on first install
+chrome.runtime.onInstalled.addListener((details) => {
   chrome.contextMenus.create({
     id: 'mustard-add-note',
     title: 'Add Mustard',
     contexts: ['all'], // Shows on any right-click context
   })
+
+  if (details.reason === 'install') {
+    chrome.tabs.create({ url: chrome.runtime.getURL('src/ui/welcome/index.html') })
+  }
 })
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
