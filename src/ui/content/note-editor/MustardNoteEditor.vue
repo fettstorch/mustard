@@ -1,7 +1,13 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, useTemplateRef, ref, computed } from 'vue'
+import { onMounted, onUnmounted, useTemplateRef, computed } from 'vue'
+import { useEditor, EditorContent } from '@tiptap/vue-3'
+import StarterKit from '@tiptap/starter-kit'
+import { Image } from '@tiptap/extension-image'
+import { Placeholder, CharacterCount } from '@tiptap/extensions'
+import { Markdown } from '@tiptap/markdown'
 import IconButton from '../IconButton.vue'
 import MustardNoteHeader from '../MustardNoteHeader.vue'
+import { ImageUrlAutoConvert } from './image-url-auto-convert'
 import { LIMITS } from '@/shared/constants'
 
 const emit = defineEmits<{
@@ -11,31 +17,55 @@ const emit = defineEmits<{
 }>()
 
 const editorContainerRef = useTemplateRef<HTMLDivElement>('editorContainer')
-const currentLength = ref(0)
+
+const editor = useEditor({
+  extensions: [
+    StarterKit.configure({
+      blockquote: false,
+      codeBlock: false,
+      heading: false,
+      horizontalRule: false,
+      bulletList: false,
+      orderedList: false,
+      listItem: false,
+      code: false,
+      strike: false,
+    }),
+    Image.configure({
+      inline: false,
+      HTMLAttributes: {
+        class: 'mustard-note-image',
+        draggable: 'false',
+        referrerpolicy: 'no-referrer',
+      },
+    }),
+    Placeholder.configure({
+      placeholder: 'Write your note...',
+    }),
+    CharacterCount,
+    Markdown,
+    ImageUrlAutoConvert,
+  ],
+  autofocus: true,
+  onBlur({ event }) {
+    handleFocusOut(event as FocusEvent)
+  },
+})
+
+const currentLength = computed(() => {
+  return editor.value?.storage.characterCount.characters() ?? 0
+})
 
 const isOverLimit = computed(() => currentLength.value > LIMITS.CONTENT_MAX_LENGTH)
 const characterCountText = computed(() => `${currentLength.value}/${LIMITS.CONTENT_MAX_LENGTH}`)
 
 onMounted(() => {
-  const editorEl = document.getElementById('mustard-editor-el')
-  if (!editorEl) return
-  editorEl.innerHTML = ''
-  editorEl.focus()
-  editorEl.addEventListener('input', updateCharacterCount)
   document.addEventListener('keydown', handleKeyDown)
 })
 
 onUnmounted(() => {
-  const editorEl = document.getElementById('mustard-editor-el')
-  if (editorEl) {
-    editorEl.removeEventListener('input', updateCharacterCount)
-  }
   document.removeEventListener('keydown', handleKeyDown)
 })
-
-function updateCharacterCount() {
-  currentLength.value = getEditorContent().length
-}
 
 function handleKeyDown(event: KeyboardEvent) {
   if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
@@ -56,9 +86,8 @@ function handleFocusOut(event: FocusEvent) {
 }
 
 function getEditorContent(): string {
-  const editorEl = document.getElementById('mustard-editor-el')
-  if (!editorEl) return ''
-  return editorEl.textContent || ''
+  if (!editor.value) return ''
+  return editor.value.getMarkdown()
 }
 
 function handleSave() {
@@ -80,7 +109,6 @@ function handlePublish() {
     tabindex="-1"
     class="mustard-note-editor mustard-notes-bg mustard-notes-border mustard-notes-txt mustard-notes-padding"
     style="width: fit-content; padding-top: 8px"
-    @focusout="handleFocusOut"
   >
     <!-- Header -->
     <MustardNoteHeader style="translate: 5px; margin-bottom: 8px">
@@ -88,12 +116,8 @@ function handlePublish() {
       <IconButton icon="publish" :disabled="isOverLimit" @click="handlePublish" />
       <IconButton icon="x" @click="emit('pressed-x')" />
     </MustardNoteHeader>
-    <!-- User-Writable Textarea -->
-    <div
-      id="mustard-editor-el"
-      contenteditable="true"
-      style="width: 260px; caret-color: var(--mustard-border)"
-    ></div>
+    <!-- Rich Text Editor -->
+    <EditorContent :editor="editor" />
     <!-- Character count -->
     <div class="character-count" :class="{ 'over-limit': isOverLimit }">
       {{ characterCountText }}
@@ -102,14 +126,33 @@ function handlePublish() {
 </template>
 
 <style scoped>
-#mustard-editor-el:empty::before {
-  content: 'Write your note...';
-  color: var(--mustard-border-faded);
-  pointer-events: none;
+:deep(.ProseMirror) {
+  width: 260px;
+  caret-color: var(--mustard-border);
+  outline: none;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
-#mustard-editor-el:focus {
-  outline: none;
+:deep(.ProseMirror p) {
+  margin: 0;
+}
+
+:deep(.ProseMirror p.is-editor-empty:first-child::before) {
+  content: attr(data-placeholder);
+  color: var(--mustard-border-faded);
+  pointer-events: none;
+  float: left;
+  height: 0;
+}
+
+:deep(.mustard-note-image) {
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+  display: block;
+  margin: 4px 0;
+  pointer-events: none;
 }
 
 .character-count {

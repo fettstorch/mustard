@@ -189,7 +189,8 @@ src/
 ├── ui/                   # Vue components
 │   ├── content/          # Note rendering (MustardNote, MustardContent)
 │   ├── popup/            # Extension popup
-│   └── options/          # Options page
+│   ├── options/          # Options page
+│   └── welcome/          # Post-install welcome page
 └── manifest.ts           # Chrome extension manifest
 
 supabase/

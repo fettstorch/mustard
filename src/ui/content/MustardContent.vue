@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { inject, computed, onMounted, onUnmounted, ref, reactive } from 'vue'
+import { inject, computed, onMounted, onUnmounted, ref, reactive, defineAsyncComponent } from 'vue'
 import type { MustardState } from './mustard-state'
 import { calculateAnchorPosition } from './anchor-utils'
-import MustardNoteEditor from './note-editor/MustardNoteEditor.vue'
+const MustardNoteEditor = defineAsyncComponent(
+  () => import('./note-editor/MustardNoteEditor.vue'),
+)
 import MustardNote from './note/MustardNote.vue'
 import type { MustardNote as MustardNoteType } from '@/shared/model/MustardNote'
 import type { Observable } from '@fettstorch/jule'
