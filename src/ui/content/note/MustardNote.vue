@@ -189,6 +189,10 @@ const shouldShowCharacterCount = computed(() => {
   margin: 0 !important;
 }
 
+:deep(.mustard-note-content p:empty) {
+  display: none;
+}
+
 :deep(.mustard-note-image) {
   max-width: 100%;
   height: auto;
