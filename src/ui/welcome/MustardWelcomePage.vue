@@ -35,6 +35,38 @@ const logoUrl = chrome.runtime.getURL('mustard_bottle_smile_512.png')
         </ol>
       </section>
 
+      <section>
+        <h2>Ideas for your Mustard</h2>
+        <ul>
+          <li>Share your thoughts on something you just read</li>
+          <li>Provide additional context to a blog post</li>
+          <li>Fact-check a news article</li>
+          <li>Just slap a funny gif on something</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Good to know</h2>
+        <ul>
+          <li>
+            <strong>Drag notes around</strong> if they're covering something you want to see
+          </li>
+          <li>
+            <strong>Toggle notes off</strong> via the extension popup — click the Mustard bottle icon
+            in your toolbar
+          </li>
+          <li>
+            <strong>Add images &amp; gifs</strong> by pasting an image link into your note
+          </li>
+          <li>
+            <strong>Publish</strong> a note by clicking the blue arrow icon
+          </li>
+          <li>
+            <strong>Delete</strong> your own notes by clicking the bin icon
+          </li>
+        </ul>
+      </section>
+
       <section class="warning">
         <h2>Do not publish sensitive information</h2>
         <p>
