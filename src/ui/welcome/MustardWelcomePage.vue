@@ -58,6 +58,15 @@ const logoUrl = chrome.runtime.getURL('mustard_bottle_smile_128.png')
         </ul>
       </section>
 
+      <section class="warning">
+        <h2>Do not publish sensitive information</h2>
+        <p>
+          Never include passwords, API keys, personal addresses, or other private data in published
+          notes. Published notes are stored on our server and <strong>visible to anyone</strong> who
+          follows you. Treat them like public posts.
+        </p>
+      </section>
+
       <section class="get-started">
         <p>
           Click the <strong>Mustard bottle icon</strong> in your toolbar to get started, or
@@ -138,6 +147,16 @@ ul {
 
 em {
   font-style: italic;
+}
+
+.warning {
+  background: #fff0f0;
+  border: 3px solid #c0392b;
+  box-shadow: none;
+}
+
+.warning h2 {
+  color: #c0392b;
 }
 
 .get-started {
