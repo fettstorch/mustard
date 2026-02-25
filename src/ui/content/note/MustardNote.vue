@@ -181,7 +181,6 @@ const shouldShowCharacterCount = computed(() => {
 }
 
 .mustard-note-content {
-  white-space: pre-wrap;
   word-break: break-word;
 }
 

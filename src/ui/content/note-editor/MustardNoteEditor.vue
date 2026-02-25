@@ -87,7 +87,7 @@ function handleFocusOut(event: FocusEvent) {
 
 function getEditorContent(): string {
   if (!editor.value) return ''
-  return editor.value.getMarkdown()
+  return editor.value.getMarkdown().trim()
 }
 
 function handleSave() {

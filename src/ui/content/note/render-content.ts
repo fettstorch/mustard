@@ -47,6 +47,10 @@ function preprocessContent(content: string): string {
  * Renders note content as sanitized HTML.
  * Handles both old-format (bare URLs) and new-format (markdown) notes.
  */
+// Matches <p> elements containing only whitespace and/or <br> tags.
+// p:empty in CSS misses these since they have text/element children.
+const EMPTY_P_REGEX = /<p>(\s|<br\s*\/?>)*<\/p>/gi
+
 export function renderContent(content: string): string {
-  return md.render(preprocessContent(content))
+  return md.render(preprocessContent(content.trim())).replace(EMPTY_P_REGEX, '')
 }
