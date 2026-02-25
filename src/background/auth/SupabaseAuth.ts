@@ -73,7 +73,7 @@ export async function getSupabaseJwt(): Promise<string | null> {
 /**
  * Clear the cached JWT (e.g., on logout)
  */
-export async function clearSupabaseJwt(): Promise<void> {
+async function clearSupabaseJwt(): Promise<void> {
   await chrome.storage.local.remove(STORAGE_KEY)
 }
 
