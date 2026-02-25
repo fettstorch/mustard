@@ -59,6 +59,9 @@ const logoUrl = chrome.runtime.getURL('mustard_bottle_smile_512.png')
             <strong>Add images &amp; gifs</strong> by pasting an image link into your note
           </li>
           <li>
+            <strong>Save locally</strong> by clicking the floppy disk icon — no account needed
+          </li>
+          <li>
             <strong>Publish</strong> a note by clicking the blue arrow icon
           </li>
           <li>
