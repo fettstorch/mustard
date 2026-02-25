@@ -38,8 +38,14 @@ function openKofi() {
         </p>
         <button class="kofi-btn" @click="openKofi">
           <svg class="kofi-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M5 11.5C5 9.567 6.567 8 8.5 8H16V11.5C16 14.538 13.538 17 10.5 17C7.462 17 5 14.538 5 11.5Z" fill="currentColor"/>
-            <path d="M16 8H17.5C19.433 8 21 9.567 21 11.5C21 13.433 19.433 15 17.5 15H16V8Z" fill="currentColor"/>
+            <path
+              d="M5 11.5C5 9.567 6.567 8 8.5 8H16V11.5C16 14.538 13.538 17 10.5 17C7.462 17 5 14.538 5 11.5Z"
+              fill="currentColor"
+            />
+            <path
+              d="M16 8H17.5C19.433 8 21 9.567 21 11.5C21 13.433 19.433 15 17.5 15H16V8Z"
+              fill="currentColor"
+            />
           </svg>
           Buy me a coffee on Ko-fi
         </button>
