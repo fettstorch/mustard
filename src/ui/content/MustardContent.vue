@@ -80,6 +80,15 @@ const notesWithPositions = computed(() => {
   })
 })
 
+/** Position for the confirmation bubble — same as source note/editor */
+const bubblePosition = computed(() => {
+  if (!pendingPublish.value) return { x: 0, y: 0 }
+  const source = pendingPublish.value.source
+  if (source === 'editor') return editorPosition.value
+  const entry = notesWithPositions.value.find((n) => n.note.id === source)
+  return entry?.position ?? { x: 0, y: 0 }
+})
+
 function handleResize() {
   resizeTick.value++
 }
@@ -102,10 +111,17 @@ onUnmounted(() => {
 
 function handleKeyDown(event: KeyboardEvent) {
   if (event.key === 'Escape') {
-    if (mustardState.editor.isOpen) {
+    if (pendingPublish.value) {
+      pendingPublish.value = null
+    } else if (mustardState.editor.isOpen) {
       mustardState.editor.isOpen = false
     }
   }
+}
+
+function onEditorClose() {
+  pendingPublish.value = null
+  mustardState.editor.isOpen = false
 }
 
 /** Editor: user clicked save button to create a local note */
@@ -223,51 +239,40 @@ function onNoteDelete(note: MustardNoteType) {
   <div class="mustard-root">
     <!-- Existing notes (TransitionGroup animates notes in/out when visibility toggles) -->
     <TransitionGroup name="mustard-note">
-      <div
+      <MustardNote
         v-for="({ note, position, dragOffset }, index) in notesWithPositions"
         :key="note.id ?? `unsaved-${index}`"
+        :note="note"
+        :drag-offset="dragOffset"
         class="mustard-positioned"
         :style="{ left: `${position.x}px`, top: `${position.y}px` }"
-        style="position: relative"
-      >
-        <MustardNote
-          :note="note"
-          :drag-offset="dragOffset"
-          @pressed-publish="onNotePublish"
-          @pressed-delete="onNoteDelete"
-          @drag="(offset) => setDragOffset(note.id, offset)"
-        />
-        <Transition name="mustard-note">
-          <PublishConfirmBubble
-            v-if="pendingPublish && pendingPublish.source === note.id"
-            @confirm="onPublishConfirm"
-            @cancel="onPublishCancel"
-          />
-        </Transition>
-      </div>
+        @pressed-publish="onNotePublish"
+        @pressed-delete="onNoteDelete"
+        @drag="(offset) => setDragOffset(note.id, offset)"
+      />
     </TransitionGroup>
 
     <!-- Note editor -->
     <Transition name="mustard-note">
-      <div
+      <MustardNoteEditor
         v-if="mustardState.editor.isOpen"
         class="mustard-positioned"
         :style="{ left: `${editorPosition.x}px`, top: `${editorPosition.y}px` }"
-        style="position: relative"
-      >
-        <MustardNoteEditor
-          @pressed-x="mustardState.editor.isOpen = false"
-          @pressed-save="onEditorSave"
-          @pressed-publish="onEditorPublish"
-        />
-        <Transition name="mustard-note">
-          <PublishConfirmBubble
-            v-if="pendingPublish && pendingPublish.source === 'editor'"
-            @confirm="onPublishConfirm"
-            @cancel="onPublishCancel"
-          />
-        </Transition>
-      </div>
+        @pressed-x="onEditorClose"
+        @pressed-save="onEditorSave"
+        @pressed-publish="onEditorPublish"
+      />
+    </Transition>
+
+    <!-- Publish confirmation bubble (standalone, fixed-positioned near source) -->
+    <Transition name="mustard-note">
+      <PublishConfirmBubble
+        v-if="pendingPublish"
+        class="mustard-positioned"
+        :style="{ left: `${bubblePosition.x}px`, top: `${bubblePosition.y}px` }"
+        @confirm="onPublishConfirm"
+        @cancel="onPublishCancel"
+      />
     </Transition>
   </div>
 </template>
