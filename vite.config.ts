@@ -22,6 +22,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         'url-change-detector': 'src/content/url-change-detector.ts',
+        'welcome': 'src/ui/welcome/index.html',
       },
       output: {
         entryFileNames: (chunkInfo) => {
