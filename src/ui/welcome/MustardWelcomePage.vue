@@ -95,8 +95,9 @@ const logoUrl = chrome.runtime.getURL('mustard_bottle_smile_512.png')
 
       <section class="get-started">
         <p>
-          Click the <strong>Mustard bottle icon</strong> in your toolbar to get started, or
-          right-click on any page element to add your first note.
+          Ready to try it out? Head over to our
+          <a href="https://fettstorch.github.io/mustard/" target="_blank">Hello Mustard</a>
+          page and leave your very first note!
         </p>
       </section>
     </div>
@@ -200,5 +201,16 @@ code {
 
 .get-started {
   text-align: center;
+}
+
+.get-started a {
+  color: var(--mustard-brown);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.get-started a:hover {
+  color: var(--mustard-border);
 }
 </style>
