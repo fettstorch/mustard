@@ -3,7 +3,7 @@ import { onMounted, onUnmounted, useTemplateRef, computed } from 'vue'
 import { useEditor, EditorContent } from '@tiptap/vue-3'
 import StarterKit from '@tiptap/starter-kit'
 import { Image } from '@tiptap/extension-image'
-import { Placeholder, CharacterCount } from '@tiptap/extensions'
+import { Placeholder } from '@tiptap/extensions'
 import { Markdown } from '@tiptap/markdown'
 import IconButton from '../IconButton.vue'
 import MustardNoteHeader from '../MustardNoteHeader.vue'
@@ -42,7 +42,6 @@ const editor = useEditor({
     Placeholder.configure({
       placeholder: 'Write your note...',
     }),
-    CharacterCount,
     Markdown,
     ImageUrlAutoConvert,
   ],
@@ -53,7 +52,8 @@ const editor = useEditor({
 })
 
 const currentLength = computed(() => {
-  return editor.value?.storage.characterCount.characters() ?? 0
+  if (!editor.value) return 0
+  return editor.value.getMarkdown().trim().length
 })
 
 const isOverLimit = computed(() => currentLength.value > LIMITS.CONTENT_MAX_LENGTH)
