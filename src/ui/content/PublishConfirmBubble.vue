@@ -26,7 +26,11 @@ const dontShowAgain = ref(false)
 
     <div class="bubble-actions">
       <button class="mustard-notes-btn" @click="emit('cancel')" @mousedown.stop>Cancel</button>
-      <button class="mustard-notes-btn-primary" @click="emit('confirm', dontShowAgain)" @mousedown.stop>
+      <button
+        class="mustard-notes-btn-primary"
+        @click="emit('confirm', dontShowAgain)"
+        @mousedown.stop
+      >
         Publish
       </button>
     </div>
