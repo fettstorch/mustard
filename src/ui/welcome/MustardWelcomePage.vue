@@ -11,11 +11,7 @@ const logoUrl = chrome.runtime.getURL('mustard_bottle_smile_512.png')
     </div>
 
     <div class="content">
-      <a
-        href="https://fettstorch.github.io/mustard/"
-        target="_blank"
-        class="cta-banner"
-      >
+      <a href="https://fettstorch.github.io/mustard/" target="_blank" class="cta-banner">
         <span class="cta-text">
           Ready to try it out?<br />
           Head over to <strong>Hello Mustard</strong> and leave your very first note!
@@ -98,7 +94,6 @@ const logoUrl = chrome.runtime.getURL('mustard_bottle_smile_512.png')
           </li>
         </ul>
       </section>
-
     </div>
   </div>
 </template>
@@ -211,7 +206,9 @@ code {
   transform: rotate(-1.5deg);
   text-decoration: none;
   color: var(--mustard-brown);
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
 }
 
 .cta-banner:hover {
@@ -241,7 +238,9 @@ code {
     color: #e5e5e5;
   }
 
-  h1, h2, h3 {
+  h1,
+  h2,
+  h3 {
     color: var(--mustard-yellow-light);
   }
 
@@ -252,12 +251,14 @@ code {
   section {
     background: linear-gradient(180deg, #2a2200 0%, #1f1a00 100%);
     border-color: var(--mustard-yellow-mid);
-    box-shadow: inset 0 3px 0 rgba(255, 255, 255, 0.05),
+    box-shadow:
+      inset 0 3px 0 rgba(255, 255, 255, 0.05),
       inset 0 15px 25px rgba(255, 255, 255, 0.03),
       0 4px 12px rgba(0, 0, 0, 0.5);
   }
 
-  section p, section li {
+  section p,
+  section li {
     color: #d4d4d4;
   }
 
@@ -279,7 +280,8 @@ code {
     background: linear-gradient(180deg, #2a2200 0%, #1f1a00 100%);
     border-color: var(--mustard-yellow-mid);
     color: var(--mustard-yellow-light);
-    box-shadow: inset 0 3px 0 rgba(255, 255, 255, 0.05),
+    box-shadow:
+      inset 0 3px 0 rgba(255, 255, 255, 0.05),
       0 4px 12px rgba(0, 0, 0, 0.5);
   }
 }
