@@ -1,4 +1,15 @@
 // Content script
+
+// Vite's __vitePreload tries to load CSS for dynamic chunks using root-relative paths
+// (e.g. /assets/MustardNoteEditor-*.css). In a content script running on a web page,
+// these paths resolve against the page origin (e.g. https://bsky.app/assets/...) and
+// fail with a 404. The CSS is already injected by Chrome via the manifest's
+// content_scripts.css array, so we can safely suppress these preload errors and let the
+// actual JS dynamic import proceed normally.
+window.addEventListener('vite:preloadError', (event) => {
+  event.preventDefault()
+})
+
 import {
   createQueryNotesMessage,
   createGetAtprotoSessionMessage,
