@@ -150,6 +150,25 @@ chrome.runtime.sendMessage(
   },
 )
 
+// Detect when extension context is invalidated (extension reloaded/updated while tab is open).
+// When this happens, clean up Mustard UI so the orphaned script doesn't leave broken UI behind.
+function isContextInvalidated(): boolean {
+  return !chrome.runtime.id
+}
+
+function showRefreshBanner() {
+  if (document.getElementById('mustard-refresh-banner')) return
+  const banner = document.createElement('div')
+  banner.id = 'mustard-refresh-banner'
+  banner.style.cssText =
+    'position:fixed;top:0;left:50%;transform:translateX(-50%);background:#ffb800;color:#3d2200;' +
+    'padding:8px 20px;border-radius:0 0 10px 10px;font-family:monospace;font-size:13px;font-weight:600;' +
+    'z-index:2147483647;box-shadow:0 2px 8px rgba(0,0,0,0.25);cursor:pointer'
+  banner.textContent = '🟡 Mustard was updated — please refresh this page'
+  banner.onclick = () => banner.remove()
+  document.body.appendChild(banner)
+}
+
 // Single host element for all Mustard UI
 const mustardHost = document.createElement('div')
 mustardHost.id = 'mustard-host'
@@ -161,6 +180,20 @@ const event = new Observable<Message>()
 app.provide('mustardState', mustardState)
 app.provide('event', event)
 app.mount(mustardHost)
+
+// When extension context is invalidated (hot-reload / update), unmount and prompt refresh.
+// We check on user interaction (mousemove/click) to avoid polling.
+function handlePotentialInvalidation() {
+  if (isContextInvalidated()) {
+    app.unmount()
+    mustardHost.remove()
+    showRefreshBanner()
+    window.removeEventListener('mousemove', handlePotentialInvalidation)
+    window.removeEventListener('keydown', handlePotentialInvalidation)
+  }
+}
+window.addEventListener('mousemove', handlePotentialInvalidation, { passive: true })
+window.addEventListener('keydown', handlePotentialInvalidation, { passive: true })
 
 // content-script will act as a message relay between the vue app and the service worker
 // it can alter the mustardState which is reactive and the vue app will act on it

@@ -40,11 +40,14 @@ chrome.runtime.onInstalled.addListener((details) => {
   }
 })
 
-chrome.contextMenus.onClicked.addListener((info, tab) => {
-  if (info.menuItemId === 'mustard-add-note' && tab?.id) {
-    chrome.tabs.sendMessage(tab.id, createOpenNoteEditorMessage()).catch(() => {
-      // Tab may not have content script loaded (e.g. chrome:// pages or tabs opened before extension load)
-    })
+chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+  if (info.menuItemId !== 'mustard-add-note' || !tab?.id) return
+  try {
+    await chrome.tabs.sendMessage(tab.id, createOpenNoteEditorMessage())
+  } catch {
+    // Content script not available (tab predates extension load, or context was invalidated).
+    // The content script handles its own invalidation detection and will show a refresh banner
+    // on the next user interaction. Nothing to do here.
   }
 })
 
