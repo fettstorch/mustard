@@ -4,10 +4,13 @@ import type { MustardState } from './mustard-state'
 import { calculateAnchorPosition } from './anchor-utils'
 const MustardNoteEditor = defineAsyncComponent(() => import('./note-editor/MustardNoteEditor.vue'))
 import MustardNote from './note/MustardNote.vue'
+import PublishConfirmBubble from './PublishConfirmBubble.vue'
 import type { MustardNote as MustardNoteType } from '@/shared/model/MustardNote'
 import type { Observable } from '@fettstorch/jule'
 import { createUpsertNoteMessage, createDeleteNoteMessage, type Message } from '@/shared/messaging'
 import { LIMITS } from '@/shared/constants'
+
+const PUBLISH_CONFIRM_DISMISSED_KEY = 'mustard-publish-confirm-dismissed'
 
 const mustardState = inject<MustardState>('mustardState')!
 const event = inject<Observable<Message>>('event')!
@@ -23,6 +26,28 @@ const resizeTick = ref(0)
  * Value: { x, y } pixel offset from the calculated anchor position
  */
 const dragOffsets = reactive<Record<string, { x: number; y: number }>>({})
+
+// Publish confirmation state
+const skipPublishConfirm = ref(false)
+const pendingPublish = ref<{
+  content: string
+  anchorData: MustardNoteType['anchorData']
+  localNoteIdToDelete?: string
+  /** 'editor' or note ID — used to position the bubble */
+  source: string
+} | null>(null)
+
+// Load "don't show again" preference
+chrome.storage.local.get(PUBLISH_CONFIRM_DISMISSED_KEY, (result) => {
+  skipPublishConfirm.value = !!result[PUBLISH_CONFIRM_DISMISSED_KEY]
+})
+
+// Keep in sync when changed from the options page
+function onStorageChanged(changes: Record<string, chrome.storage.StorageChange>) {
+  if (PUBLISH_CONFIRM_DISMISSED_KEY in changes) {
+    skipPublishConfirm.value = !!changes[PUBLISH_CONFIRM_DISMISSED_KEY].newValue
+  }
+}
 
 const editorPosition = computed(() => {
   // eslint-disable-next-line @typescript-eslint/no-unused-expressions
@@ -74,20 +99,29 @@ onMounted(() => {
   document.addEventListener('keydown', handleKeyDown)
   window.addEventListener('resize', handleResize)
   window.addEventListener('scroll', handleScroll, true) // useCapture=true to catch all scroll events
+  chrome.storage.onChanged.addListener(onStorageChanged)
 })
 
 onUnmounted(() => {
   document.removeEventListener('keydown', handleKeyDown)
   window.removeEventListener('resize', handleResize)
   window.removeEventListener('scroll', handleScroll, true)
+  chrome.storage.onChanged.removeListener(onStorageChanged)
 })
 
 function handleKeyDown(event: KeyboardEvent) {
   if (event.key === 'Escape') {
-    if (mustardState.editor.isOpen) {
+    if (pendingPublish.value) {
+      pendingPublish.value = null
+    } else if (mustardState.editor.isOpen) {
       mustardState.editor.isOpen = false
     }
   }
+}
+
+function onEditorClose() {
+  pendingPublish.value = null
+  mustardState.editor.isOpen = false
 }
 
 /** Editor: user clicked save button to create a local note */
@@ -120,13 +154,43 @@ function onEditorPublish(data: { content: string }) {
     console.warn(`Content exceeds ${LIMITS.CONTENT_MAX_LENGTH} character limit`)
     return
   }
-  publishToRemote(data.content, mustardState.editor.anchor)
-  mustardState.editor.isOpen = false
+  requestPublish(data.content, mustardState.editor.anchor, undefined, 'editor')
 }
 
 /** Note: user clicked publish icon on an existing local note to upload it */
 function onNotePublish(note: MustardNoteType) {
-  publishToRemote(note.content, note.anchorData, note.id ?? undefined)
+  requestPublish(note.content, note.anchorData, note.id ?? undefined, note.id ?? 'note')
+}
+
+/** Gate publish behind a confirmation bubble (unless user dismissed it) */
+function requestPublish(
+  content: string,
+  anchorData: MustardNoteType['anchorData'],
+  localNoteIdToDelete?: string,
+  source?: string,
+) {
+  if (skipPublishConfirm.value) {
+    publishToRemote(content, anchorData, localNoteIdToDelete)
+    if (source === 'editor') mustardState.editor.isOpen = false
+    return
+  }
+  pendingPublish.value = { content, anchorData, localNoteIdToDelete, source: source ?? 'editor' }
+}
+
+function onPublishConfirm(dontShowAgain: boolean) {
+  if (!pendingPublish.value) return
+  if (dontShowAgain) {
+    skipPublishConfirm.value = true
+    chrome.storage.local.set({ [PUBLISH_CONFIRM_DISMISSED_KEY]: true })
+  }
+  const { content, anchorData, localNoteIdToDelete, source } = pendingPublish.value
+  pendingPublish.value = null
+  publishToRemote(content, anchorData, localNoteIdToDelete)
+  if (source === 'editor') mustardState.editor.isOpen = false
+}
+
+function onPublishCancel() {
+  pendingPublish.value = null
 }
 
 /**
@@ -185,7 +249,15 @@ function onNoteDelete(note: MustardNoteType) {
         @pressed-publish="onNotePublish"
         @pressed-delete="onNoteDelete"
         @drag="(offset) => setDragOffset(note.id, offset)"
-      />
+      >
+        <PublishConfirmBubble
+          v-if="pendingPublish?.source === note.id"
+          variant="danger"
+          title="Attention!"
+          @confirm="onPublishConfirm"
+          @cancel="onPublishCancel"
+        />
+      </MustardNote>
     </TransitionGroup>
 
     <!-- Note editor -->
@@ -194,10 +266,18 @@ function onNoteDelete(note: MustardNoteType) {
         v-if="mustardState.editor.isOpen"
         class="mustard-positioned"
         :style="{ left: `${editorPosition.x}px`, top: `${editorPosition.y}px` }"
-        @pressed-x="mustardState.editor.isOpen = false"
+        @pressed-x="onEditorClose"
         @pressed-save="onEditorSave"
         @pressed-publish="onEditorPublish"
-      />
+      >
+        <PublishConfirmBubble
+          v-if="pendingPublish?.source === 'editor'"
+          variant="danger"
+          title="Attention!"
+          @confirm="onPublishConfirm"
+          @cancel="onPublishCancel"
+        />
+      </MustardNoteEditor>
     </Transition>
   </div>
 </template>

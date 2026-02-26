@@ -86,4 +86,29 @@ h1 {
 .welcome-link:hover {
   color: var(--mustard-border);
 }
+
+.prefs-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.pref-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  width: fit-content;
+}
+
+.pref-checkbox {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--mustard-border);
+  cursor: pointer;
+}
+
+.pref-label {
+  font-size: 0.875rem;
+}
 </style>

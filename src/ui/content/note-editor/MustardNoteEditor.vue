@@ -122,6 +122,7 @@ function handlePublish() {
     <div class="character-count" :class="{ 'over-limit': isOverLimit }">
       {{ characterCountText }}
     </div>
+    <slot />
   </div>
 </template>
 

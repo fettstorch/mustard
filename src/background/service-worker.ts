@@ -42,7 +42,9 @@ chrome.runtime.onInstalled.addListener((details) => {
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
   if (info.menuItemId === 'mustard-add-note' && tab?.id) {
-    chrome.tabs.sendMessage(tab.id, createOpenNoteEditorMessage())
+    chrome.tabs.sendMessage(tab.id, createOpenNoteEditorMessage()).catch(() => {
+      // Tab may not have content script loaded (e.g. chrome:// pages or tabs opened before extension load)
+    })
   }
 })
 
