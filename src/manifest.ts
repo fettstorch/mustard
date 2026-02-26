@@ -45,17 +45,7 @@ export default {
 
   web_accessible_resources: [
     {
-      resources: [
-        'url-change-detector.js',
-        'close_x_red_48.png',
-        'upvote_blue_48.png',
-        'eye_open_48.png',
-        'eye_closed_48.png',
-        'save_disk_48.png',
-        'delete_bin_48.png',
-        'publish_arrow_blue_48.png',
-        'published_cloud_check_48.png',
-      ],
+      resources: ['url-change-detector.js'],
       matches: ['<all_urls>'],
     },
   ],

@@ -14,9 +14,9 @@ Simple learnings discovered during development that document how things actually
 
 ## Content Script Icons & CSP
 
-- `fetch()` from a content script to a `chrome-extension://` URL requires the resource to be listed in `web_accessible_resources` — content scripts run in the page's renderer process, not the extension process, so they face the same restrictions as web pages
-- crxjs does NOT auto-add `public/` files to `web_accessible_resources`; it only adds the JS bundle chunks it generates for the content script loader
-- Fix: list the PNG files explicitly in `web_accessible_resources`, then `fetch()` + `FileReader.readAsDataURL()` converts them to data URLs that pass any `img-src` CSP
+- `<img src="chrome-extension://...">` injected by a content script is blocked by the host page's `img-src` CSP — `chrome.runtime.getURL()` directly as `src` won't work on strict pages
+- `assetsInlineLimit` only applies to production builds — in dev mode Vite serves assets as URLs, which with crxjs become `chrome-extension://` URLs and fail CSP the same way
+- Fix: a Vite `transform` plugin that converts PNG imports from `src/assets/icons/` to `data:image/png;base64,...` strings at transform time — works in both dev and prod, no `web_accessible_resources` needed, no runtime fetch needed
 
 ## Content Script Styling
 

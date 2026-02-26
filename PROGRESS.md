@@ -140,7 +140,7 @@ flowchart TB
 - Note content trimmed before render and before save to prevent trailing newlines creating phantom `<br>` elements
 - `knip` added as devDep with `knip.json` config; `nr knip` / `nr knip:fix` scripts available for dead code detection
 - Context invalidation detection: app unmounts and shows refresh banner when extension is reloaded while a tab is open
-- Content script icons loaded as data URLs via `icon-loader.ts` to bypass host page `img-src` CSP
+- Content script icons inlined as base64 data URIs via `inlineIcons` Vite plugin (bypasses host page `img-src` CSP in both dev and prod)
 
 ## AT Protocol OAuth Flow
 

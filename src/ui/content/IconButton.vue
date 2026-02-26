@@ -1,16 +1,14 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import ClickableEl from './ClickableEl.vue'
-import { iconUrl as getIconUrl } from '@/content/icon-loader'
-
-const xIconUrl = getIconUrl('close_x_red_48.png')
-const upvoteIconUrl = getIconUrl('upvote_blue_48.png')
-const eyeOpenIconUrl = getIconUrl('eye_open_48.png')
-const eyeClosedIconUrl = getIconUrl('eye_closed_48.png')
-const saveIconUrl = getIconUrl('save_disk_48.png')
-const trashIconUrl = getIconUrl('delete_bin_48.png')
-const publishIconUrl = getIconUrl('publish_arrow_blue_48.png')
-const publishedIconUrl = getIconUrl('published_cloud_check_48.png')
+import xIconUrl from '@/assets/icons/close_x_red_48.png'
+import upvoteIconUrl from '@/assets/icons/upvote_blue_48.png'
+import eyeOpenIconUrl from '@/assets/icons/eye_open_48.png'
+import eyeClosedIconUrl from '@/assets/icons/eye_closed_48.png'
+import saveIconUrl from '@/assets/icons/save_disk_48.png'
+import trashIconUrl from '@/assets/icons/delete_bin_48.png'
+import publishIconUrl from '@/assets/icons/publish_arrow_blue_48.png'
+import publishedIconUrl from '@/assets/icons/published_cloud_check_48.png'
 
 const props = defineProps<{
   icon: 'x' | 'upvote' | 'eye-open' | 'eye-closed' | 'save' | 'trash' | 'publish' | 'published'

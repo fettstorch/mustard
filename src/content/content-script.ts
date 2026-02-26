@@ -26,7 +26,6 @@ import { createMustardState } from '@/ui/content/mustard-state'
 import type { MustardNote } from '@/shared/model/MustardNote'
 import { Observable } from '@fettstorch/jule'
 import { createApp } from 'vue'
-import { preloadIcons } from './icon-loader'
 
 // Reactive state shared with Vue app
 const mustardState = createMustardState()
@@ -169,11 +168,6 @@ function showRefreshBanner() {
   banner.onclick = () => banner.remove()
   document.body.appendChild(banner)
 }
-
-// Preload icons as data URLs before mounting so they aren't blocked by the page's img-src CSP.
-// fetch() in a content script can access web-accessible extension resources; the resulting
-// data: URLs are accepted by any img-src policy.
-await preloadIcons()
 
 // Single host element for all Mustard UI
 const mustardHost = document.createElement('div')
