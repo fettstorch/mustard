@@ -34,18 +34,26 @@ onMounted(async () => {
 
   // Get active tab and query its notes visibility state
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
-  if (tab?.id && tab.url && !tab.url.startsWith('chrome://')) {
+  if (tab?.id && tab.url && (tab.url.startsWith('http://') || tab.url.startsWith('https://'))) {
     activeTabId.value = tab.id
-    const visible = await chrome.tabs.sendMessage(tab.id, createGetNotesVisibleMessage())
-    areNotesVisible.value = visible
+    try {
+      const visible = await chrome.tabs.sendMessage(tab.id, createGetNotesVisibleMessage())
+      areNotesVisible.value = visible
+    } catch {
+      // Content script not yet injected on this tab (e.g. tab was open before install)
+    }
   }
 })
 
 async function toggleNotesVisibility() {
   if (!activeTabId.value) return
-  const newVisible = !areNotesVisible.value
-  await chrome.tabs.sendMessage(activeTabId.value, createSetNotesVisibleMessage(newVisible))
-  areNotesVisible.value = newVisible
+  try {
+    const newVisible = !areNotesVisible.value
+    await chrome.tabs.sendMessage(activeTabId.value, createSetNotesVisibleMessage(newVisible))
+    areNotesVisible.value = newVisible
+  } catch {
+    // Content script not available on this tab
+  }
 }
 
 // Fetch profile when session changes
