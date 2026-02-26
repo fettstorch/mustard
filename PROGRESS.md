@@ -139,6 +139,8 @@ flowchart TB
 - Note rendering: empty/whitespace-only `<p>` tags stripped from markdown-it output via `EMPTY_P_REGEX` (CSS `p:empty` missed `<p>\n</p>`)
 - Note content trimmed before render and before save to prevent trailing newlines creating phantom `<br>` elements
 - `knip` added as devDep with `knip.json` config; `nr knip` / `nr knip:fix` scripts available for dead code detection
+- Context invalidation detection: app unmounts and shows refresh banner when extension is reloaded while a tab is open
+- Content script icons loaded as data URLs via `icon-loader.ts` to bypass host page `img-src` CSP
 
 ## AT Protocol OAuth Flow
 

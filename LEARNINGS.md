@@ -12,6 +12,12 @@ Simple learnings discovered during development that document how things actually
 - **Supabase Edge Functions**: Intentionally rewrites `text/html` responses to `text/plain` - designed for APIs only, not serving HTML
 - **Solution**: Use GitHub Pages, Cloudflare Pages, or similar static hosting for HTML files
 
+## Content Script Icons & CSP
+
+- `fetch()` from a content script to a `chrome-extension://` URL requires the resource to be listed in `web_accessible_resources` — content scripts run in the page's renderer process, not the extension process, so they face the same restrictions as web pages
+- crxjs does NOT auto-add `public/` files to `web_accessible_resources`; it only adds the JS bundle chunks it generates for the content script loader
+- Fix: list the PNG files explicitly in `web_accessible_resources`, then `fetch()` + `FileReader.readAsDataURL()` converts them to data URLs that pass any `img-src` CSP
+
 ## Content Script Styling
 
 - **Shadow DOM**: Don't use for Vue components - Vue injects `<style>` tags into `document.head`, not the shadow root, so styles won't apply to the template
