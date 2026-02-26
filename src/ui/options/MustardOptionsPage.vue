@@ -15,8 +15,24 @@
  * when clicking the extension icon. This is a full-page settings interface.
  */
 
+import { ref, onMounted } from 'vue'
+
+const PUBLISH_CONFIRM_DISMISSED_KEY = 'mustard-publish-confirm-dismissed'
+
 const logoUrl = chrome.runtime.getURL('mustard_bottle_smile_512.png')
-const welcomeUrl = chrome.runtime.getURL('src/ui/welcome/index.html')
+const helloMustardUrl = 'https://fettstorch.github.io/mustard/'
+
+const showPublishWarning = ref(true)
+
+onMounted(() => {
+  chrome.storage.local.get(PUBLISH_CONFIRM_DISMISSED_KEY, (result) => {
+    showPublishWarning.value = !result[PUBLISH_CONFIRM_DISMISSED_KEY]
+  })
+})
+
+function onPublishWarningChange() {
+  chrome.storage.local.set({ [PUBLISH_CONFIRM_DISMISSED_KEY]: !showPublishWarning.value })
+}
 
 function openKofi() {
   window.open('https://ko-fi.com/fettstorch', '_blank')
@@ -51,10 +67,23 @@ function openKofi() {
         </button>
       </section>
 
+      <section class="prefs-section">
+        <h2 class="section-title">Preferences</h2>
+        <label class="pref-row">
+          <input
+            v-model="showPublishWarning"
+            type="checkbox"
+            class="pref-checkbox"
+            @change="onPublishWarningChange"
+          />
+          <span class="pref-label">Show publish warning</span>
+        </label>
+      </section>
+
       <section class="link-section">
         <h2 class="section-title">Resources</h2>
-        <a :href="welcomeUrl" target="_blank" class="welcome-link">
-          View welcome page &amp; getting started guide
+        <a :href="helloMustardUrl" target="_blank" class="welcome-link">
+          View Hello Mustard &amp; getting started guide
         </a>
       </section>
     </div>
