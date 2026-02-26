@@ -164,6 +164,7 @@ const shouldShowCharacterCount = computed(() => {
       {{ formattedDate }}
       <IconButton v-if="isRemoteNote && isMyOwnNote" icon="published" :static="true" />
     </div>
+    <slot />
   </div>
 </template>
 

@@ -42,6 +42,13 @@ chrome.storage.local.get(PUBLISH_CONFIRM_DISMISSED_KEY, (result) => {
   skipPublishConfirm.value = !!result[PUBLISH_CONFIRM_DISMISSED_KEY]
 })
 
+// Keep in sync when changed from the options page
+function onStorageChanged(changes: Record<string, chrome.storage.StorageChange>) {
+  if (PUBLISH_CONFIRM_DISMISSED_KEY in changes) {
+    skipPublishConfirm.value = !!changes[PUBLISH_CONFIRM_DISMISSED_KEY].newValue
+  }
+}
+
 const editorPosition = computed(() => {
   // eslint-disable-next-line @typescript-eslint/no-unused-expressions
   resizeTick.value // dependency to trigger recalculation
@@ -80,15 +87,6 @@ const notesWithPositions = computed(() => {
   })
 })
 
-/** Position for the confirmation bubble — same as source note/editor */
-const bubblePosition = computed(() => {
-  if (!pendingPublish.value) return { x: 0, y: 0 }
-  const source = pendingPublish.value.source
-  if (source === 'editor') return editorPosition.value
-  const entry = notesWithPositions.value.find((n) => n.note.id === source)
-  return entry?.position ?? { x: 0, y: 0 }
-})
-
 function handleResize() {
   resizeTick.value++
 }
@@ -101,12 +99,14 @@ onMounted(() => {
   document.addEventListener('keydown', handleKeyDown)
   window.addEventListener('resize', handleResize)
   window.addEventListener('scroll', handleScroll, true) // useCapture=true to catch all scroll events
+  chrome.storage.onChanged.addListener(onStorageChanged)
 })
 
 onUnmounted(() => {
   document.removeEventListener('keydown', handleKeyDown)
   window.removeEventListener('resize', handleResize)
   window.removeEventListener('scroll', handleScroll, true)
+  chrome.storage.onChanged.removeListener(onStorageChanged)
 })
 
 function handleKeyDown(event: KeyboardEvent) {
@@ -249,7 +249,15 @@ function onNoteDelete(note: MustardNoteType) {
         @pressed-publish="onNotePublish"
         @pressed-delete="onNoteDelete"
         @drag="(offset) => setDragOffset(note.id, offset)"
-      />
+      >
+        <PublishConfirmBubble
+          v-if="pendingPublish?.source === note.id"
+          variant="danger"
+          title="Attention!"
+          @confirm="onPublishConfirm"
+          @cancel="onPublishCancel"
+        />
+      </MustardNote>
     </TransitionGroup>
 
     <!-- Note editor -->
@@ -261,18 +269,15 @@ function onNoteDelete(note: MustardNoteType) {
         @pressed-x="onEditorClose"
         @pressed-save="onEditorSave"
         @pressed-publish="onEditorPublish"
-      />
-    </Transition>
-
-    <!-- Publish confirmation bubble (standalone, fixed-positioned near source) -->
-    <Transition name="mustard-note">
-      <PublishConfirmBubble
-        v-if="pendingPublish"
-        class="mustard-positioned"
-        :style="{ left: `${bubblePosition.x}px`, top: `${bubblePosition.y}px` }"
-        @confirm="onPublishConfirm"
-        @cancel="onPublishCancel"
-      />
+      >
+        <PublishConfirmBubble
+          v-if="pendingPublish?.source === 'editor'"
+          variant="danger"
+          title="Attention!"
+          @confirm="onPublishConfirm"
+          @cancel="onPublishCancel"
+        />
+      </MustardNoteEditor>
     </Transition>
   </div>
 </template>
