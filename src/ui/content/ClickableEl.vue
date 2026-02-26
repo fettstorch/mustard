@@ -1,20 +1,20 @@
 <script setup lang="ts"></script>
 
 <template>
-  <div class="clickable-el" style="">
-    <div class="content">
+  <div class="mustard-notes-clickable" style="">
+    <div class="mustard-notes-clickable-inner">
       <slot />
     </div>
   </div>
 </template>
 
 <style scoped>
-.clickable-el {
+.mustard-notes-clickable {
   cursor: pointer;
   user-select: none;
   transition: all 0.1s ease-in-out;
 
-  .content {
+  .mustard-notes-clickable-inner {
     display: flex;
   }
 
@@ -33,7 +33,7 @@
         transparent 50%
       );
 
-    .content {
+    .mustard-notes-clickable-inner {
       transform: scale(0.9);
     }
   }
