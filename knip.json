@@ -7,9 +7,7 @@
     "src/content/url-change-detector.ts",
     "src/ui/popup/main.ts",
     "src/ui/options/main.ts",
-    "src/ui/welcome/main.ts",
-    "vite.config.ts"
+    "src/ui/welcome/main.ts"
   ],
-  "project": ["src/**/*.{ts,vue}", "vite.config.ts"],
-  "ignore": ["supabase/**"]
+  "project": ["src/**/*.{ts,vue}"]
 }
