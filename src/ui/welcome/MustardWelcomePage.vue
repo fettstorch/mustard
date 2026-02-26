@@ -11,6 +11,18 @@ const logoUrl = chrome.runtime.getURL('mustard_bottle_smile_512.png')
     </div>
 
     <div class="content">
+      <a
+        href="https://fettstorch.github.io/mustard/"
+        target="_blank"
+        class="cta-banner"
+      >
+        <span class="cta-text">
+          Ready to try it out?<br />
+          Head over to <strong>Hello Mustard</strong> and leave your very first note!
+        </span>
+        <span class="cta-arrow">&#10132;</span>
+      </a>
+
       <section>
         <h2>What is Mustard?</h2>
         <p>
@@ -87,13 +99,6 @@ const logoUrl = chrome.runtime.getURL('mustard_bottle_smile_512.png')
         </ul>
       </section>
 
-      <section class="get-started">
-        <p>
-          Ready to try it out? Head over to our
-          <a href="https://fettstorch.github.io/mustard/" target="_blank">Hello Mustard</a>
-          page and leave your very first note!
-        </p>
-      </section>
     </div>
   </div>
 </template>
@@ -193,18 +198,89 @@ code {
   color: #c0392b;
 }
 
-.get-started {
-  text-align: center;
-}
-
-.get-started a {
+.cta-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 28px;
+  background: var(--mustard-gradient);
+  border: 3px dashed var(--mustard-brown-border);
+  border-radius: 16px;
+  box-shadow: var(--mustard-plastic-shadow);
+  transform: rotate(-1.5deg);
+  text-decoration: none;
   color: var(--mustard-brown);
-  font-weight: 600;
-  text-decoration: underline;
-  text-underline-offset: 3px;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
-.get-started a:hover {
-  color: var(--mustard-border);
+.cta-banner:hover {
+  transform: rotate(0deg) scale(1.02);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
+}
+
+.cta-text {
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+.cta-text strong {
+  font-weight: 700;
+}
+
+.cta-arrow {
+  font-size: 28px;
+  flex-shrink: 0;
+}
+
+/* Dark mode */
+@media (prefers-color-scheme: dark) {
+  .welcome-page {
+    background: #1a1a1a;
+    color: #e5e5e5;
+  }
+
+  h1, h2, h3 {
+    color: var(--mustard-yellow-light);
+  }
+
+  .tagline {
+    color: var(--mustard-yellow);
+  }
+
+  section {
+    background: linear-gradient(180deg, #2a2200 0%, #1f1a00 100%);
+    border-color: var(--mustard-yellow-mid);
+    box-shadow: inset 0 3px 0 rgba(255, 255, 255, 0.05),
+      inset 0 15px 25px rgba(255, 255, 255, 0.03),
+      0 4px 12px rgba(0, 0, 0, 0.5);
+  }
+
+  section p, section li {
+    color: #d4d4d4;
+  }
+
+  code {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--mustard-yellow-light);
+  }
+
+  .warning {
+    background: #2a0a0a;
+    border-color: #e74c3c;
+  }
+
+  .warning h2 {
+    color: #e74c3c;
+  }
+
+  .cta-banner {
+    background: linear-gradient(180deg, #2a2200 0%, #1f1a00 100%);
+    border-color: var(--mustard-yellow-mid);
+    color: var(--mustard-yellow-light);
+    box-shadow: inset 0 3px 0 rgba(255, 255, 255, 0.05),
+      0 4px 12px rgba(0, 0, 0, 0.5);
+  }
 }
 </style>

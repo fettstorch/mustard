@@ -12,10 +12,7 @@
       }
 
       body {
-        min-height: 100vh;
-        display: flex;
-        align-items: center;
-        justify-content: center;
+        min-height: 300vh;
         font-family:
           system-ui,
           -apple-system,
@@ -33,6 +30,7 @@
 
       .hero {
         text-align: center;
+        padding-top: 18vh;
       }
 
       .hero img {
@@ -47,15 +45,51 @@
       }
 
       .hero p {
-        margin-top: 12px;
+        margin: 12px auto 0;
         font-size: 1.1rem;
         line-height: 1.6;
         max-width: 420px;
         opacity: 0.75;
       }
+
+      .extension-hint {
+        position: fixed;
+        top: 24px;
+        right: 48px;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 4px;
+        pointer-events: none;
+        z-index: 1000;
+      }
+
+      .extension-hint-arrow {
+        font-size: 48px;
+        color: #e53e3e;
+        line-height: 1;
+        transform: rotate(-45deg);
+        margin-right: -8px;
+      }
+
+      .extension-hint-text {
+        color: #e53e3e;
+        font-size: 14px;
+        font-weight: 600;
+        max-width: 200px;
+        text-align: right;
+        line-height: 1.4;
+      }
     </style>
   </head>
   <body>
+    <div class="extension-hint">
+      <div class="extension-hint-arrow">&#8593;</div>
+      <div class="extension-hint-text">
+        Use the Mustard popup to log in to your Bluesky account
+      </div>
+    </div>
+
     <div class="hero">
       <img src="mustard_bottle_smile_512.png" alt="Mustard" />
       <h1>Hello Mustard</h1>
