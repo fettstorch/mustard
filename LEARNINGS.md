@@ -12,6 +12,12 @@ Simple learnings discovered during development that document how things actually
 - **Supabase Edge Functions**: Intentionally rewrites `text/html` responses to `text/plain` - designed for APIs only, not serving HTML
 - **Solution**: Use GitHub Pages, Cloudflare Pages, or similar static hosting for HTML files
 
+## Content Script Icons & CSP
+
+- `<img src="chrome-extension://...">` injected by a content script is blocked by the host page's `img-src` CSP — `chrome.runtime.getURL()` directly as `src` won't work on strict pages
+- `assetsInlineLimit` only applies to production builds — in dev mode Vite serves assets as URLs, which with crxjs become `chrome-extension://` URLs and fail CSP the same way
+- Fix: a Vite `transform` plugin that converts PNG imports from `src/assets/icons/` to `data:image/png;base64,...` strings at transform time — works in both dev and prod, no `web_accessible_resources` needed, no runtime fetch needed
+
 ## Content Script Styling
 
 - **Shadow DOM**: Don't use for Vue components - Vue injects `<style>` tags into `document.head`, not the shadow root, so styles won't apply to the template
