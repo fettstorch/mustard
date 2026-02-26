@@ -30,4 +30,3 @@ Simple learnings discovered during development that document how things actually
 - **GitHub Pages + Jekyll**: Add empty `.nojekyll` file to serve static files without Jekyll build.
 - **Service worker + localStorage**: Manifest V3 service workers do NOT have `localStorage` access. The `BrowserOAuthClient.init()` method uses localStorage internally, so it won't work from a service worker. Solution: store session info in `chrome.storage.local` instead and manage session state manually.
 - **Popup closes during OAuth**: Extension popups close when `launchWebAuthFlow` opens (loses focus). Run OAuth in the service worker (persists) and communicate via messaging.
-

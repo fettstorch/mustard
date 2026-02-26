@@ -5,7 +5,8 @@ import { getSession } from './AtprotoAuth'
 
 const STORAGE_KEY = 'supabase_jwt'
 const SUPABASE_PROJECT_ID = 'dexvrkxjgitrebqetvjw'
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRleHZya3hqZ2l0cmVicWV0dmp3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc5ODQwMTcsImV4cCI6MjA4MzU2MDAxN30.2hzb5-dpI0XYbklfqFsK5CkDeNXXlE1V78Q1eEgV4iI'
+const SUPABASE_ANON_KEY =
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRleHZya3hqZ2l0cmVicWV0dmp3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc5ODQwMTcsImV4cCI6MjA4MzU2MDAxN30.2hzb5-dpI0XYbklfqFsK5CkDeNXXlE1V78Q1eEgV4iI'
 const AUTH_BRIDGE_URL = `https://${SUPABASE_PROJECT_ID}.supabase.co/functions/v1/auth-bridge`
 
 interface CachedJwt {
@@ -35,7 +36,7 @@ export async function getSupabaseJwt(): Promise<string | null> {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
       },
       body: JSON.stringify({ did: atprotoSession.did }),
     })
@@ -73,7 +74,7 @@ export async function getSupabaseJwt(): Promise<string | null> {
 /**
  * Clear the cached JWT (e.g., on logout)
  */
-export async function clearSupabaseJwt(): Promise<void> {
+async function _clearSupabaseJwt(): Promise<void> {
   await chrome.storage.local.remove(STORAGE_KEY)
 }
 

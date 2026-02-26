@@ -27,7 +27,11 @@
   &:active {
     background:
       radial-gradient(ellipse 100% 100% at 0% 50%, var(--mustard-border-faded) 0%, transparent 50%),
-      radial-gradient(ellipse 100% 100% at 100% 50%, var(--mustard-border-faded) 0%, transparent 50%);
+      radial-gradient(
+        ellipse 100% 100% at 100% 50%,
+        var(--mustard-border-faded) 0%,
+        transparent 50%
+      );
 
     .content {
       transform: scale(0.9);

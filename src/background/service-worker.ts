@@ -27,7 +27,6 @@ async function broadcastSessionChanged(did: string | null) {
   }
 }
 
-
 // Create context menu item when extension is installed, and open welcome page on first install
 chrome.runtime.onInstalled.addListener((details) => {
   chrome.contextMenus.create({
@@ -53,7 +52,9 @@ chrome.runtime.onMessage.addListener(
   (
     message: Message,
     _sender,
-    sendResponse: (response: DtoMustardNote[] | AtprotoSessionResponse | GetProfilesResponse) => void,
+    sendResponse: (
+      response: DtoMustardNote[] | AtprotoSessionResponse | GetProfilesResponse,
+    ) => void,
   ) => {
     console.debug('mustard [service-worker] onMessage:', message)
 
@@ -105,7 +106,7 @@ chrome.runtime.onMessage.addListener(
           if (message.localNoteIdToDelete) {
             await mustardNotesManager.deleteNote(message.localNoteIdToDelete, pageUrl, 'local')
             // Filter out the deleted local note from response
-            const filteredNotes = allNotes.filter(n => n.id !== message.localNoteIdToDelete)
+            const filteredNotes = allNotes.filter((n) => n.id !== message.localNoteIdToDelete)
             sendResponse(filteredNotes.map(DtoMustardNote.toDto))
           } else {
             sendResponse(allNotes.map(DtoMustardNote.toDto))
@@ -201,4 +202,3 @@ chrome.runtime.onMessage.addListener(
     }
   },
 )
-

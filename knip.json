@@ -1,0 +1,13 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "entry": [
+    "src/manifest.ts",
+    "src/background/service-worker.ts",
+    "src/content/content-script.ts",
+    "src/content/url-change-detector.ts",
+    "src/ui/popup/main.ts",
+    "src/ui/options/main.ts",
+    "src/ui/welcome/main.ts"
+  ],
+  "project": ["src/**/*.{ts,vue}"]
+}

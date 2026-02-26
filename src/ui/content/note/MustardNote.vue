@@ -149,7 +149,12 @@ const shouldShowCharacterCount = computed(() => {
     </div>
     <!-- Note Content (read-only, rendered markdown) -->
     <!-- eslint-disable-next-line vue/no-v-html -->
-    <div class="mustard-note-content" style="width: 260px" v-html="renderedContent" @mousedown="onContentMousedown" />
+    <div
+      class="mustard-note-content"
+      style="width: 260px"
+      v-html="renderedContent"
+      @mousedown="onContentMousedown"
+    />
     <!-- Character count (for oversized local notes) -->
     <div v-if="shouldShowCharacterCount" class="character-count over-limit">
       {{ characterCountText }}
