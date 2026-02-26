@@ -47,7 +47,8 @@ function openKofi() {
     </div>
 
     <div class="content">
-      <section class="support-section">
+      <!-- Ko-fi section hidden for now -->
+      <section v-if="false" class="support-section">
         <h2 class="section-title">Support Mustard</h2>
         <p class="section-desc">
           If you enjoy using Mustard, consider buying me a coffee to support development!
