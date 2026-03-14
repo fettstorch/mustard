@@ -11,6 +11,7 @@ const AUTH_BRIDGE_URL = `https://${SUPABASE_PROJECT_ID}.supabase.co/functions/v1
 
 interface CachedJwt {
   jwt: string
+  did: string // DID this JWT was minted for
   expiresAt: number // Unix timestamp in seconds
 }
 
@@ -24,9 +25,9 @@ export async function getSupabaseJwt(): Promise<string | null> {
     return null
   }
 
-  // Check cache first
+  // Check cache — must match current user AND not be expiring soon
   const cached = await getCachedJwt()
-  if (cached && !isExpiringSoon(cached.expiresAt)) {
+  if (cached && cached.did === atprotoSession.did && !isExpiringSoon(cached.expiresAt)) {
     return cached.jwt
   }
 
@@ -56,10 +57,11 @@ export async function getSupabaseJwt(): Promise<string | null> {
 
     const data: { jwt: string; expiresAt: number } = await response.json()
 
-    // Cache the new JWT
+    // Cache the new JWT with the DID it belongs to
     await chrome.storage.local.set({
       [STORAGE_KEY]: {
         jwt: data.jwt,
+        did: atprotoSession.did,
         expiresAt: data.expiresAt,
       } satisfies CachedJwt,
     })
