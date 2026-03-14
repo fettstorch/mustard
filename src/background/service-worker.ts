@@ -8,6 +8,7 @@ import {
 import { mustardNotesManager } from './business/MustardNotesManager'
 import { DtoMustardNote } from '@/shared/dto/DtoMustardNote'
 import { login, getSession, logout } from './auth/AtprotoAuth'
+import { clearSupabaseJwt } from './auth/SupabaseAuth'
 import { MustardProfileServiceBsky } from './business/service/MustardProfileServiceBsky'
 import { invalidateRemoteIndexCache } from './business/service/MustardNotesServiceRemote'
 
@@ -182,6 +183,7 @@ chrome.runtime.onMessage.addListener(
 
     if (message.type === 'ATPROTO_LOGOUT') {
       logout(message.did)
+        .then(() => clearSupabaseJwt())
         .then(() => {
           invalidateRemoteIndexCache() // Clear cached index
           sendResponse(null)

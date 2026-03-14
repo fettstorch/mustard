@@ -72,9 +72,10 @@ export async function getSupabaseJwt(): Promise<string | null> {
 }
 
 /**
- * Clear the cached JWT (e.g., on logout)
+ * Clear the cached JWT. Must be called on logout so a stale JWT
+ * (with the old user's `sub`) isn't reused after switching accounts.
  */
-async function _clearSupabaseJwt(): Promise<void> {
+export async function clearSupabaseJwt(): Promise<void> {
   await chrome.storage.local.remove(STORAGE_KEY)
 }
 
