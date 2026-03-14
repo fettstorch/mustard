@@ -25,7 +25,7 @@ import MustardContent from '@/ui/content/MustardContent.vue'
 import { createMustardState } from '@/ui/content/mustard-state'
 import type { MustardNote } from '@/shared/model/MustardNote'
 import { Observable } from '@fettstorch/jule'
-import { createApp } from 'vue'
+import { createApp, watch } from 'vue'
 
 // Reactive state shared with Vue app
 const mustardState = createMustardState()
@@ -96,6 +96,21 @@ window.addEventListener('mustard-url-change', handleUrlChange)
 // The service-worker registers the right-click on the 'add mustard' context menu
 // but the service-worker can't access the page's click-target
 let lastContextMenuData: MustardNoteAnchorData | null = null
+let lastContextMenuTarget: HTMLElement | null = null
+
+const HIGHLIGHT_CLASS = 'mustard-highlight'
+
+function applyHighlight() {
+  if (lastContextMenuTarget) {
+    lastContextMenuTarget.classList.add(HIGHLIGHT_CLASS)
+  }
+}
+
+function removeHighlight() {
+  if (lastContextMenuTarget) {
+    lastContextMenuTarget.classList.remove(HIGHLIGHT_CLASS)
+  }
+}
 
 // Handle messages from service worker and popup
 chrome.runtime.onMessage.addListener((message: Message, _sender, sendResponse) => {
@@ -181,6 +196,18 @@ app.provide('mustardState', mustardState)
 app.provide('event', event)
 app.mount(mustardHost)
 
+// Highlight the target element when the note editor opens, remove when it closes
+watch(
+  () => mustardState.editor.isOpen,
+  (isOpen) => {
+    if (isOpen) {
+      applyHighlight()
+    } else {
+      removeHighlight()
+    }
+  },
+)
+
 // When extension context is invalidated (hot-reload / update), unmount and prompt refresh.
 // We check on user interaction (mousemove/click) to avoid polling.
 function handlePotentialInvalidation() {
@@ -243,6 +270,10 @@ event.subscribe((message) => {
 document.addEventListener('contextmenu', (event) => {
   const target = event.target as HTMLElement
   const rect = target.getBoundingClientRect()
+
+  // Remove highlight from previously right-clicked element
+  removeHighlight()
+  lastContextMenuTarget = target
 
   lastContextMenuData = {
     pageUrl: getCurrentPageUrl(),

@@ -99,3 +99,9 @@
 .mustard-notes-input:disabled {
   opacity: 0.5;
 }
+
+/* Highlight for the element a note will be anchored to (shown while editor is open) */
+.mustard-highlight {
+  background: #ffb800 !important;
+  transition: background 0.2s ease;
+}
