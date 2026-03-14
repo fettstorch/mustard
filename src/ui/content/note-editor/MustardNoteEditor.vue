@@ -102,9 +102,14 @@ function handlePublish() {
   >
     <!-- Header -->
     <MustardNoteHeader style="translate: 5px; margin-bottom: 8px">
-      <IconButton icon="save" @click="handleSave" />
-      <IconButton icon="publish" :disabled="isOverLimit" @click="handlePublish" />
-      <IconButton icon="x" @click="emit('pressed-x')" />
+      <IconButton icon="save" title="Save this note locally" @click="handleSave" />
+      <IconButton
+        icon="publish"
+        title="Publish this note (do not publish sensitive data)"
+        :disabled="isOverLimit"
+        @click="handlePublish"
+      />
+      <IconButton icon="x" title="Close editor" @click="emit('pressed-x')" />
     </MustardNoteHeader>
     <!-- Rich Text Editor -->
     <EditorContent :editor="editor" />

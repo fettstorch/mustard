@@ -134,12 +134,14 @@ const shouldShowCharacterCount = computed(() => {
           <IconButton
             v-if="isLocalNote"
             icon="publish"
+            title="Publish this note (do not publish sensitive data)"
             :disabled="isPublishDisabled"
             @click="emit('pressed-publish', note)"
             @mousedown.stop
           />
           <IconButton
             icon="trash"
+            title="Delete this note"
             :disabled="isPending"
             @click="emit('pressed-delete', note)"
             @mousedown.stop
@@ -162,7 +164,12 @@ const shouldShowCharacterCount = computed(() => {
     <!-- Date footer -->
     <div class="mustard-note-date">
       {{ formattedDate }}
-      <IconButton v-if="isRemoteNote && isMyOwnNote" icon="published" :static="true" />
+      <IconButton
+        v-if="isRemoteNote && isMyOwnNote"
+        icon="published"
+        :static="true"
+        title="This note is published"
+      />
     </div>
     <slot />
   </div>

@@ -15,6 +15,7 @@ const props = defineProps<{
   disabled?: boolean
   /** If true, renders as a static indicator without hover/click styles */
   static?: boolean
+  title?: string
 }>()
 
 const iconUrl = computed(() => {
@@ -40,10 +41,15 @@ const iconUrl = computed(() => {
 </script>
 
 <template>
-  <ClickableEl v-if="!static" style="padding: 4px" :class="{ 'icon-disabled': disabled }">
+  <ClickableEl
+    v-if="!static"
+    style="padding: 4px"
+    :class="{ 'icon-disabled': disabled }"
+    :title="title"
+  >
     <img :src="iconUrl" width="16" height="16" draggable="false" />
   </ClickableEl>
-  <span v-else class="icon-static" style="padding: 4px">
+  <span v-else class="icon-static" style="padding: 4px" :title="title">
     <img :src="iconUrl" width="16" height="16" draggable="false" />
   </span>
 </template>
