@@ -264,6 +264,9 @@ function normalizePageUrl(url: string): string {
 }
 
 function generateSelector(element: HTMLElement): string | null {
+  // body and html are too generic to anchor to — fall back to clickPosition
+  if (element === document.body || element === document.documentElement) return null
+
   if (element.id) return `#${element.id}`
 
   const path: string[] = []
@@ -292,7 +295,9 @@ function generateSelector(element: HTMLElement): string | null {
     current = parent
   }
 
-  const selector = path.join(' > ')
+  // Scope body-relative paths to body's subtree so querySelector doesn't match wrong elements
+  const needsBodyPrefix = path.length > 0 && !path[0]!.startsWith('#')
+  const selector = needsBodyPrefix ? `body > ${path.join(' > ')}` : path.join(' > ')
 
   // Return null if selector too long - will fall back to clickPosition
   if (selector.length > LIMITS.SELECTOR_MAX_LENGTH) return null
