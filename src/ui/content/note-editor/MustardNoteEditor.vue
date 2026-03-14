@@ -20,17 +20,7 @@ const editorContainerRef = useTemplateRef<HTMLDivElement>('editorContainer')
 
 const editor = useEditor({
   extensions: [
-    StarterKit.configure({
-      blockquote: false,
-      codeBlock: false,
-      heading: false,
-      horizontalRule: false,
-      bulletList: false,
-      orderedList: false,
-      listItem: false,
-      code: false,
-      strike: false,
-    }),
+    StarterKit.configure({}),
     Image.configure({
       inline: false,
       HTMLAttributes: {
