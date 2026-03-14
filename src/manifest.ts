@@ -3,7 +3,7 @@ import type { ManifestV3Export } from '@crxjs/vite-plugin'
 export default {
   manifest_version: 3,
   name: 'Mustard',
-  version: '0.0.1',
+  version: '0.1.0',
 
   icons: {
     16: 'mustard_bottle_smile_16.png',

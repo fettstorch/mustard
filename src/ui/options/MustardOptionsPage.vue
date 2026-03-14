@@ -16,6 +16,7 @@
  */
 
 import { ref, onMounted } from 'vue'
+import { version } from '../../../package.json'
 
 const PUBLISH_CONFIRM_DISMISSED_KEY = 'mustard-publish-confirm-dismissed'
 
@@ -44,6 +45,7 @@ function openKofi() {
     <div class="header">
       <img :src="logoUrl" alt="Mustard" class="logo" />
       <h1>Mustard Options</h1>
+      <span class="version">v{{ version }}</span>
     </div>
 
     <div class="content">
@@ -116,6 +118,13 @@ h1 {
   margin: 0;
   font-size: 1.5rem;
   font-weight: 600;
+}
+
+.version {
+  font-size: 0.75rem;
+  opacity: 0.5;
+  align-self: flex-end;
+  margin-bottom: 4px;
 }
 
 .content {
