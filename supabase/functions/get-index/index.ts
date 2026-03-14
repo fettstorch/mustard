@@ -1,5 +1,8 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 
+// Mustard official account — always included so every user sees official notes
+const MUSTARD_OFFICIAL_DID = 'did:plc:sxwohckesqi25evf7jxfshdz'
+
 interface FollowRecord {
   did: string
   handle: string
@@ -51,8 +54,8 @@ Deno.serve(async (req) => {
     const followsData: FollowsResponse = await followsResponse.json()
     const followedDids = followsData.follows.map((f) => f.did)
 
-    // Include the user's own DID
-    const allDids = [did, ...followedDids]
+    // Include the user's own DID + the official Mustard account
+    const allDids = [did, ...followedDids, MUSTARD_OFFICIAL_DID]
 
     // Query Supabase for notes from these authors
     const supabaseUrl = Deno.env.get('SUPABASE_URL')
