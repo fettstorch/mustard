@@ -19,6 +19,9 @@ import {
   type AtprotoSessionResponse,
   type GetProfilesResponse,
 } from '@/shared/messaging'
+
+const NOTES_MINIMIZED_KEY = 'mustard-notes-minimized'
+const SHOW_ANCHOR_IN_EDITOR_KEY = 'mustard-show-anchor-in-editor'
 import { LIMITS } from '@/shared/constants'
 import { DtoMustardNote } from '@/shared/dto/DtoMustardNote'
 import MustardContent from '@/ui/content/MustardContent.vue'
@@ -152,6 +155,22 @@ chrome.runtime.onMessage.addListener((message: Message, _sender, sendResponse) =
 chrome.runtime.sendMessage(createGetAtprotoSessionMessage(), (response: AtprotoSessionResponse) => {
   console.debug('mustard [content-script] session:', response)
   mustardState.currentUserDid = response?.did ?? null
+})
+
+// Load preferences from storage
+chrome.storage.local.get([NOTES_MINIMIZED_KEY, SHOW_ANCHOR_IN_EDITOR_KEY], (result) => {
+  mustardState.areNotesMinimized = !!result[NOTES_MINIMIZED_KEY]
+  mustardState.showAnchorInEditor = !!result[SHOW_ANCHOR_IN_EDITOR_KEY]
+})
+
+// Keep in sync when preferences are changed from popup or options page
+chrome.storage.onChanged.addListener((changes) => {
+  if (NOTES_MINIMIZED_KEY in changes) {
+    mustardState.areNotesMinimized = !!changes[NOTES_MINIMIZED_KEY].newValue
+  }
+  if (SHOW_ANCHOR_IN_EDITOR_KEY in changes) {
+    mustardState.showAnchorInEditor = !!changes[SHOW_ANCHOR_IN_EDITOR_KEY].newValue
+  }
 })
 
 // Query notes for the current page (response comes via sendResponse callback)

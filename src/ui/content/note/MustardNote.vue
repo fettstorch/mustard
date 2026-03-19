@@ -32,6 +32,7 @@ function onContentMousedown(e: MouseEvent) {
 }
 
 function onDragStart(e: MouseEvent) {
+  if (isMinimized.value && !isHovered.value) return
   e.preventDefault()
   isDragging.value = true
   dragStart.value = { x: e.clientX, y: e.clientY }
@@ -115,63 +116,46 @@ const characterCountText = computed(() => {
 const shouldShowCharacterCount = computed(() => {
   return isLocalNote.value && isOverLimit.value
 })
+
+const isHovered = ref(false)
+
+const isMinimized = computed(() => mustardState.areNotesMinimized)
 </script>
 
 <template>
-  <div
-    class="mustard-note mustard-notes-bg mustard-notes-border mustard-notes-txt mustard-notes-padding"
-    :class="{ 'is-dragging': isDragging }"
-    style="width: fit-content; padding-top: 8px; padding-bottom: 4px"
-    @mousedown="onDragStart"
-  >
+  <div class="mustard-note mustard-notes-bg mustard-notes-border mustard-notes-txt mustard-notes-padding"
+    :class="{ 'is-dragging': isDragging, 'is-minimized': isMinimized }"
+    style="width: fit-content; padding-top: 8px; padding-bottom: 4px" @mousedown="onDragStart"
+    @mouseenter="isHovered = true" @mouseleave="isHovered = false">
     <!-- Header -->
     <div class="mustard-note-header">
-      <!-- Author avatar (remote notes only) -->
       <AuthorAvatar v-if="isRemoteNote" :profile="authorProfile" />
-      <MustardNoteHeader style="translate: 5px; flex: 1">
+      <MustardNoteHeader class="mustard-note-actions" style="translate: 5px; flex: 1">
         <template v-if="isMyOwnNote">
-          <!-- Local note: show publish action -->
-          <IconButton
-            v-if="isLocalNote"
-            icon="publish"
-            title="Publish this note (do not publish sensitive data)"
-            :disabled="isPublishDisabled"
-            @click="emit('pressed-publish', note)"
-            @mousedown.stop
-          />
-          <IconButton
-            icon="trash"
-            title="Delete this note"
-            :disabled="isPending"
-            @click="emit('pressed-delete', note)"
-            @mousedown.stop
-          />
+          <IconButton v-if="isLocalNote" icon="publish" title="Publish this note (do not publish sensitive data)"
+            :disabled="isPublishDisabled" @click="emit('pressed-publish', note)" @mousedown.stop />
+          <IconButton icon="trash" title="Delete this note" :disabled="isPending" @click="emit('pressed-delete', note)"
+            @mousedown.stop />
         </template>
       </MustardNoteHeader>
     </div>
-    <!-- Note Content (read-only, rendered markdown) -->
-    <!-- eslint-disable-next-line vue/no-v-html -->
-    <div
-      class="mustard-note-content"
-      style="width: 260px"
-      v-html="renderedContent"
-      @mousedown="onContentMousedown"
-    />
-    <!-- Character count (for oversized local notes) -->
-    <div v-if="shouldShowCharacterCount" class="character-count over-limit">
-      {{ characterCountText }}
+    <!-- Collapsible body (content + date + slot) -->
+    <div class="mustard-note-body">
+      <div class="mustard-note-body-inner">
+        <!-- eslint-disable-next-line vue/no-v-html -->
+        <div class="mustard-note-content" style="width: 260px" v-html="renderedContent"
+          @mousedown="onContentMousedown" />
+        <div v-if="shouldShowCharacterCount" class="character-count over-limit">
+          {{ characterCountText }}
+        </div>
+        <div class="mustard-note-date">
+          {{ formattedDate }}
+          <IconButton v-if="isRemoteNote && isMyOwnNote" icon="published" :static="true"
+            title="This note is published" />
+        </div>
+        <slot />
+      </div>
     </div>
-    <!-- Date footer -->
-    <div class="mustard-note-date">
-      {{ formattedDate }}
-      <IconButton
-        v-if="isRemoteNote && isMyOwnNote"
-        icon="published"
-        :static="true"
-        title="This note is published"
-      />
-    </div>
-    <slot />
   </div>
 </template>
 
@@ -179,11 +163,42 @@ const shouldShowCharacterCount = computed(() => {
 .mustard-note {
   cursor: grab;
   user-select: none;
+  overflow: hidden;
 }
 
 .mustard-note.is-dragging {
   cursor: grabbing;
 }
+
+/* --- Minimized state ---
+ * The note itself becomes the minimized indicator: clipped to a small pill
+ * via max-width + overflow:hidden. On hover it expands back to full size.
+ *
+ * Expand (hover enter): width first (no delay), then height (delayed).
+ * Collapse (hover leave): height first (no delay), then width (delayed).
+ */
+
+.mustard-note.is-minimized {
+  max-width: 38px;
+  padding: 4px !important;
+  cursor: pointer;
+  /* Collapse: height shrinks first, width shrinks after */
+  transition:
+    max-width 0.2s ease 0.12s,
+    padding 0.2s ease;
+}
+
+.mustard-note.is-minimized:hover {
+  max-width: 300px;
+  padding: 8px 0.5em 4px !important;
+  cursor: grab;
+  /* Expand: width grows first, height grows after */
+  transition:
+    max-width 0.2s ease,
+    padding 0.2s ease;
+}
+
+/* Header margin collapses when minimized */
 
 .mustard-note-header {
   display: flex;
@@ -191,7 +206,61 @@ const shouldShowCharacterCount = computed(() => {
   align-items: center;
   gap: 8px;
   margin-bottom: 8px;
+  transition: margin-bottom 0.2s ease;
 }
+
+.mustard-note.is-minimized .mustard-note-header {
+  margin-bottom: 0;
+}
+
+.mustard-note.is-minimized:hover .mustard-note-header {
+  margin-bottom: 8px;
+}
+
+/* Header actions: hidden when minimized, fade in on hover */
+
+.mustard-note.is-minimized .mustard-note-actions {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.mustard-note.is-minimized:hover .mustard-note-actions {
+  opacity: 1;
+  pointer-events: auto;
+  transition: opacity 0.15s ease 0.15s;
+}
+
+/* Body: CSS grid for smooth height animation */
+
+.mustard-note-body {
+  display: grid;
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+
+.mustard-note-body-inner {
+  overflow: hidden;
+}
+
+.mustard-note.is-minimized .mustard-note-body {
+  grid-template-rows: 0fr;
+  opacity: 0;
+  /* Collapse: height shrinks immediately (before width) */
+  transition:
+    grid-template-rows 0.2s ease,
+    opacity 0.15s ease;
+}
+
+.mustard-note.is-minimized:hover .mustard-note-body {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  /* Expand: height grows after width (delayed) */
+  transition:
+    grid-template-rows 0.2s ease 0.1s,
+    opacity 0.2s ease 0.1s;
+}
+
+/* --- Content styles --- */
 
 .mustard-note-content {
   word-break: break-word;

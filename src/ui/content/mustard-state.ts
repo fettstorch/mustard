@@ -16,6 +16,10 @@ export type MustardState = {
   profiles: Record<string, UserProfile | null>
   /** Whether notes are currently shown on this page (toggled via popup, in-memory only) */
   areNotesVisible: boolean
+  /** Whether notes are shown in minimized form (global preference, persisted in chrome.storage.local) */
+  areNotesMinimized: boolean
+  /** Whether anchor data is shown in the note editor (global preference, persisted in chrome.storage.local) */
+  showAnchorInEditor: boolean
 }
 
 export function createMustardState(): MustardState {
@@ -29,5 +33,7 @@ export function createMustardState(): MustardState {
     pendingNoteIds: {},
     profiles: {},
     areNotesVisible: true,
+    areNotesMinimized: false,
+    showAnchorInEditor: false,
   })
 }

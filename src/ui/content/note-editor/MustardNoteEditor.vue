@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, useTemplateRef, computed } from 'vue'
+import { onMounted, onUnmounted, useTemplateRef, computed, ref, inject } from 'vue'
 import { useEditor, EditorContent } from '@tiptap/vue-3'
 import StarterKit from '@tiptap/starter-kit'
 import { Image } from '@tiptap/extension-image'
@@ -8,7 +8,13 @@ import { Markdown } from '@tiptap/markdown'
 import IconButton from '../IconButton.vue'
 import MustardNoteHeader from '../MustardNoteHeader.vue'
 import { ImageUrlAutoConvert } from './image-url-auto-convert'
+import type { MustardNoteAnchorData } from '@/shared/messaging'
+import type { MustardState } from '../mustard-state'
 import { LIMITS } from '@/shared/constants'
+
+const props = defineProps<{
+  anchor: MustardNoteAnchorData | null
+}>()
 
 const emit = defineEmits<{
   (e: 'pressed-x'): void
@@ -16,6 +22,7 @@ const emit = defineEmits<{
   (e: 'pressed-publish', data: { content: string }): void
 }>()
 
+const mustardState = inject<MustardState>('mustardState')!
 const editorContainerRef = useTemplateRef<HTMLDivElement>('editorContainer')
 
 const editor = useEditor({
@@ -48,6 +55,15 @@ const currentLength = computed(() => {
 
 const isOverLimit = computed(() => currentLength.value > LIMITS.CONTENT_MAX_LENGTH)
 const characterCountText = computed(() => `${currentLength.value}/${LIMITS.CONTENT_MAX_LENGTH}`)
+
+const anchorDisplay = computed(() => {
+  if (!props.anchor) return null
+  const url = props.anchor.pageUrl
+  const selector = props.anchor.elementSelector
+  return { url, selector }
+})
+
+const selectorExpanded = ref(false)
 
 onMounted(() => {
   document.addEventListener('keydown', handleKeyDown)
@@ -117,6 +133,25 @@ function handlePublish() {
     <div class="character-count" :class="{ 'over-limit': isOverLimit }">
       {{ characterCountText }}
     </div>
+    <!-- Anchor info -->
+    <div v-if="anchorDisplay && mustardState.showAnchorInEditor" class="anchor-info">
+      <div class="anchor-row">
+        <span class="anchor-label">url</span>
+        <span class="anchor-value">{{ anchorDisplay.url }}</span>
+      </div>
+      <div
+        class="anchor-row"
+        :class="{
+          'anchor-row-expandable': anchorDisplay.selector,
+          'anchor-row-expanded': selectorExpanded,
+        }"
+        @click="anchorDisplay.selector && (selectorExpanded = !selectorExpanded)"
+      >
+        <span class="anchor-label">{{ anchorDisplay.selector ? 'sel' : 'pos' }}</span>
+        <span v-if="anchorDisplay.selector" class="anchor-value">{{ anchorDisplay.selector }}</span>
+        <span v-else class="anchor-value anchor-fallback">click position</span>
+      </div>
+    </div>
     <slot />
   </div>
 </template>
@@ -162,5 +197,62 @@ function handlePublish() {
   opacity: 1;
   color: #d32f2f;
   font-weight: bold;
+}
+
+.anchor-info {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--mustard-border-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-width: 260px;
+}
+
+.anchor-row {
+  display: flex;
+  gap: 6px;
+  font-size: 0.65em;
+  opacity: 0.45;
+  line-height: 1.3;
+}
+
+.anchor-label {
+  flex-shrink: 0;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.anchor-row-expandable {
+  cursor: pointer;
+}
+
+.anchor-row-expandable:hover {
+  opacity: 0.7;
+}
+
+.anchor-row-expandable .anchor-label::before {
+  content: '▸ ';
+}
+
+.anchor-row-expanded .anchor-label::before {
+  content: '▾ ';
+}
+
+.anchor-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.anchor-row-expanded .anchor-value {
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.anchor-fallback {
+  font-style: italic;
 }
 </style>

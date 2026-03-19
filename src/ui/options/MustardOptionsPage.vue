@@ -19,20 +19,38 @@ import { ref, onMounted } from 'vue'
 import { version } from '../../../package.json'
 
 const PUBLISH_CONFIRM_DISMISSED_KEY = 'mustard-publish-confirm-dismissed'
+const NOTES_MINIMIZED_KEY = 'mustard-notes-minimized'
+const SHOW_ANCHOR_IN_EDITOR_KEY = 'mustard-show-anchor-in-editor'
 
 const logoUrl = chrome.runtime.getURL('mustard_bottle_smile_512.png')
 const helloMustardUrl = 'https://fettstorch.github.io/mustard/'
 
 const showPublishWarning = ref(true)
+const minimizeNotes = ref(false)
+const showAnchorInEditor = ref(false)
 
 onMounted(() => {
   chrome.storage.local.get(PUBLISH_CONFIRM_DISMISSED_KEY, (result) => {
     showPublishWarning.value = !result[PUBLISH_CONFIRM_DISMISSED_KEY]
   })
+  chrome.storage.local.get(NOTES_MINIMIZED_KEY, (result) => {
+    minimizeNotes.value = !!result[NOTES_MINIMIZED_KEY]
+  })
+  chrome.storage.local.get(SHOW_ANCHOR_IN_EDITOR_KEY, (result) => {
+    showAnchorInEditor.value = !!result[SHOW_ANCHOR_IN_EDITOR_KEY]
+  })
 })
 
 function onPublishWarningChange() {
   chrome.storage.local.set({ [PUBLISH_CONFIRM_DISMISSED_KEY]: !showPublishWarning.value })
+}
+
+function onMinimizeNotesChange() {
+  chrome.storage.local.set({ [NOTES_MINIMIZED_KEY]: minimizeNotes.value })
+}
+
+function onShowAnchorInEditorChange() {
+  chrome.storage.local.set({ [SHOW_ANCHOR_IN_EDITOR_KEY]: showAnchorInEditor.value })
 }
 
 function openKofi() {
@@ -80,6 +98,24 @@ function openKofi() {
             @change="onPublishWarningChange"
           />
           <span class="pref-label">Show publish warning</span>
+        </label>
+        <label class="pref-row">
+          <input
+            v-model="minimizeNotes"
+            type="checkbox"
+            class="pref-checkbox"
+            @change="onMinimizeNotesChange"
+          />
+          <span class="pref-label">Minimize notes</span>
+        </label>
+        <label class="pref-row">
+          <input
+            v-model="showAnchorInEditor"
+            type="checkbox"
+            class="pref-checkbox"
+            @change="onShowAnchorInEditorChange"
+          />
+          <span class="pref-label">Show anchor data in editor</span>
         </label>
       </section>
 

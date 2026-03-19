@@ -264,6 +264,7 @@ function onNoteDelete(note: MustardNoteType) {
     <Transition name="mustard-note">
       <MustardNoteEditor
         v-if="mustardState.editor.isOpen"
+        :anchor="mustardState.editor.anchor"
         class="mustard-positioned"
         :style="{ left: `${editorPosition.x}px`, top: `${editorPosition.y}px` }"
         @pressed-x="onEditorClose"

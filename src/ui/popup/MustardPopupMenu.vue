@@ -18,9 +18,12 @@ import {
 import type { UserProfile } from '@/shared/model/UserProfile'
 import BlueskyLogin from './auth/BlueskyLogin.vue'
 
+const NOTES_MINIMIZED_KEY = 'mustard-notes-minimized'
+
 const session = ref<AtprotoSessionResponse>(null)
 const profile = ref<UserProfile | null>(null)
 const areNotesVisible = ref(true)
+const areNotesMinimized = ref(false)
 const activeTabId = ref<number | null>(null)
 
 onMounted(async () => {
@@ -31,6 +34,10 @@ onMounted(async () => {
   if (existingSession) {
     session.value = existingSession
   }
+
+  // Load minimize preference from storage
+  const stored = await chrome.storage.local.get(NOTES_MINIMIZED_KEY)
+  areNotesMinimized.value = !!stored[NOTES_MINIMIZED_KEY]
 
   // Get active tab and query its notes visibility state
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
@@ -54,6 +61,12 @@ async function toggleNotesVisibility() {
   } catch {
     // Content script not available on this tab
   }
+}
+
+function toggleNotesMinimized() {
+  const newValue = !areNotesMinimized.value
+  areNotesMinimized.value = newValue
+  chrome.storage.local.set({ [NOTES_MINIMIZED_KEY]: newValue })
 }
 
 // Fetch profile when session changes
@@ -109,6 +122,18 @@ const logoUrl = chrome.runtime.getURL('mustard_bottle_smile_512.png')
         @click="toggleNotesVisibility"
         :class="['mustard-toggle', areNotesVisible ? 'is-on' : 'is-off']"
         :title="areNotesVisible ? 'Hide notes on this page' : 'Show notes on this page'"
+      >
+        <span class="mustard-toggle-knob" />
+      </button>
+    </div>
+
+    <!-- Minimize notes toggle (only when notes are visible) -->
+    <div v-if="activeTabId && areNotesVisible" class="mustard-toggle-row">
+      <span class="mustard-label">Minimize notes</span>
+      <button
+        @click="toggleNotesMinimized"
+        :class="['mustard-toggle', areNotesMinimized ? 'is-on' : 'is-off']"
+        :title="areNotesMinimized ? 'Show full notes' : 'Minimize notes to dots'"
       >
         <span class="mustard-toggle-knob" />
       </button>
