@@ -123,19 +123,34 @@ const isMinimized = computed(() => mustardState.areNotesMinimized)
 </script>
 
 <template>
-  <div class="mustard-note mustard-notes-bg mustard-notes-border mustard-notes-txt mustard-notes-padding"
+  <div
+    class="mustard-note mustard-notes-bg mustard-notes-border mustard-notes-txt mustard-notes-padding"
     :class="{ 'is-dragging': isDragging, 'is-minimized': isMinimized }"
-    style="width: fit-content; padding-top: 8px; padding-bottom: 4px" @mousedown="onDragStart"
-    @mouseenter="isHovered = true" @mouseleave="isHovered = false">
+    style="width: fit-content; padding-top: 8px; padding-bottom: 4px"
+    @mousedown="onDragStart"
+    @mouseenter="isHovered = true"
+    @mouseleave="isHovered = false"
+  >
     <!-- Header -->
     <div class="mustard-note-header">
       <AuthorAvatar v-if="isRemoteNote" :profile="authorProfile" />
       <MustardNoteHeader class="mustard-note-actions" style="translate: 5px; flex: 1">
         <template v-if="isMyOwnNote">
-          <IconButton v-if="isLocalNote" icon="publish" title="Publish this note (do not publish sensitive data)"
-            :disabled="isPublishDisabled" @click="emit('pressed-publish', note)" @mousedown.stop />
-          <IconButton icon="trash" title="Delete this note" :disabled="isPending" @click="emit('pressed-delete', note)"
-            @mousedown.stop />
+          <IconButton
+            v-if="isLocalNote"
+            icon="publish"
+            title="Publish this note (do not publish sensitive data)"
+            :disabled="isPublishDisabled"
+            @click="emit('pressed-publish', note)"
+            @mousedown.stop
+          />
+          <IconButton
+            icon="trash"
+            title="Delete this note"
+            :disabled="isPending"
+            @click="emit('pressed-delete', note)"
+            @mousedown.stop
+          />
         </template>
       </MustardNoteHeader>
     </div>
@@ -143,15 +158,23 @@ const isMinimized = computed(() => mustardState.areNotesMinimized)
     <div class="mustard-note-body">
       <div class="mustard-note-body-inner">
         <!-- eslint-disable-next-line vue/no-v-html -->
-        <div class="mustard-note-content" style="width: 260px" v-html="renderedContent"
-          @mousedown="onContentMousedown" />
+        <div
+          class="mustard-note-content"
+          style="width: 260px"
+          v-html="renderedContent"
+          @mousedown="onContentMousedown"
+        />
         <div v-if="shouldShowCharacterCount" class="character-count over-limit">
           {{ characterCountText }}
         </div>
         <div class="mustard-note-date">
           {{ formattedDate }}
-          <IconButton v-if="isRemoteNote && isMyOwnNote" icon="published" :static="true"
-            title="This note is published" />
+          <IconButton
+            v-if="isRemoteNote && isMyOwnNote"
+            icon="published"
+            :static="true"
+            title="This note is published"
+          />
         </div>
         <slot />
       </div>

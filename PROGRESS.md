@@ -141,6 +141,9 @@ flowchart TB
 - `knip` added as devDep with `knip.json` config; `nr knip` / `nr knip:fix` scripts available for dead code detection
 - Context invalidation detection: app unmounts and shows refresh banner when extension is reloaded while a tab is open
 - Content script icons inlined as base64 data URIs via `inlineIcons` Vite plugin (bypasses host page `img-src` CSP in both dev and prod)
+- Minimize notes: global preference (popup toggle + options checkbox), persisted via `chrome.storage.local`; notes collapse to small pills showing avatar/gradient corner, expand on hover with staggered width→height animation
+- Show anchor in editor: options page checkbox (default off), controls whether anchor data (URL + selector) is displayed in the note editor
+- Options page preferences synced to content scripts via `chrome.storage.onChanged` (same pattern as publish warning)
 
 ## AT Protocol OAuth Flow
 
