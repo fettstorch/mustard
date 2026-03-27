@@ -15,7 +15,8 @@
     "knip": "knip",
     "knip:fix": "knip --fix",
     "lint": "eslint . --fix --cache",
-    "format": "prettier --write --experimental-cli src/"
+    "format": "prettier --write --experimental-cli src/",
+    "package": "npm run build && cd dist && zip -r ../mustard-v$npm_package_version.zip ."
   },
   "dependencies": {
     "@atproto/api": "^0.18.14",
