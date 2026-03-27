@@ -113,8 +113,11 @@ flowchart TB
 - Note icons: publish arrow for local notes, cloud checkmark for remote notes (edit icon removed)
 - Editor has Save (local) and Publish (remote) buttons; publish opens login popup if not authenticated
 - `MustardNotesServiceRemote` implementation using Supabase client + Edge Functions
-- Supabase Edge Functions: `auth-bridge` (mints JWTs from DIDs), `get-index` (fetches follows + notes index)
-- `SupabaseAuth.ts`: JWT caching with 55min TTL, automatic refresh
+- Supabase Edge Functions: `auth-bridge` (BFF OAuth + JWT minting), `get-index` (fetches follows + notes index)
+- Auth-bridge BFF pattern: server-side ATProto OAuth (handle→DID→PDS→AS resolution, DPoP key management, PKCE, PAR, token exchange, identity verification) — Supabase JWTs only minted after verified login
+- `oauth_login_state` table: temporary PAR/PKCE/DPoP state during login (~10 min TTL)
+- `oauth_session` table: server-side ATProto token storage for JWT refresh
+- `SupabaseAuth.ts`: JWT caching with 1h TTL, refresh via auth-bridge using expired JWT as proof
 - Remote index caching with 30s TTL, invalidated on login/logout/mutations
 - Session broadcast: `SESSION_CHANGED` message to all tabs on login/logout
 - Content scripts re-query notes when session changes (no page reload needed)
@@ -133,7 +136,7 @@ flowchart TB
 - Character counter in editor (subtle date-style display, turns red when over limit)
 - Oversized local notes show character count and disable publish button (local saves unrestricted)
 - Selector length validation returns `null` for fallback to click position
-- Database migration files: 001 (table structure), 002 (CHECK constraints)
+- Database migration files: 001 (table structure), 002 (CHECK constraints), 003 (OAuth tables)
 - Notes use fixed positioning + scroll listeners: anchor to elements without affecting page layout or causing scrollbars
 - Note rendering: `white-space: pre-wrap` removed from `.mustard-note-content` (was causing markdown-it's inter-tag `\n` to render as visible blank lines)
 - Note rendering: empty/whitespace-only `<p>` tags stripped from markdown-it output via `EMPTY_P_REGEX` (CSS `p:empty` missed `<p>\n</p>`)
@@ -145,61 +148,59 @@ flowchart TB
 - Show anchor in editor: options page checkbox (default off), controls whether anchor data (URL + selector) is displayed in the note editor
 - Options page preferences synced to content scripts via `chrome.storage.onChanged` (same pattern as publish warning)
 
-## AT Protocol OAuth Flow
+## AT Protocol OAuth Flow (BFF Pattern)
 
 ```mermaid
 sequenceDiagram
     participant User
     participant Popup as Extension Popup
-    participant Auth as AtprotoAuth.ts
-    participant Client as BrowserOAuthClient
-    participant IDB as IndexedDB
+    participant SW as Service Worker
+    participant Bridge as auth-bridge<br/>(Edge Function)
+    participant DB as Supabase DB
     participant Chrome as chrome.identity
-    participant BSky as bsky.social
-    participant GH as GitHub Pages<br/>(client-metadata.json)
+    participant AS as Authorization Server<br/>(bsky.social)
 
     User->>Popup: Enter handle, click Login
-    Popup->>Auth: login(handle)
+    Popup->>SW: ATPROTO_LOGIN message
 
-    Note over Auth,Client: Step 1: Initialize OAuth Client
-    Auth->>Client: BrowserOAuthClient.load({clientId})
-    Client->>GH: Fetch client-metadata.json
-    GH-->>Client: {client_id, redirect_uris, scope, ...}
+    Note over SW,AS: Step 1: Initiate (server-side)
+    SW->>Bridge: POST {action: "initiate", handle}
+    Bridge->>AS: Resolve handle→DID→PDS→AS
+    Bridge->>Bridge: Generate DPoP keypair + PKCE
+    Bridge->>AS: PAR request + DPoP proof
+    AS-->>Bridge: {request_uri}
+    Bridge->>DB: Store state, code_verifier, DPoP keys
+    Bridge-->>SW: {authUrl, state}
 
-    Note over Auth,IDB: Step 2: Generate Auth URL
-    Auth->>Client: authorize(handle, {redirect_uri})
-    Client->>Client: Generate PKCE verifier/challenge
-    Client->>Client: Generate DPoP keypair
-    Client->>IDB: Store PKCE verifier, DPoP keys, state
-    Client->>BSky: PAR Request (POST /oauth/par)<br/>+ DPoP proof header
-    BSky-->>Client: {request_uri}
-    Client-->>Auth: Authorization URL
+    Note over SW,AS: Step 2: User Authentication
+    SW->>Chrome: launchWebAuthFlow({url: authUrl})
+    Chrome->>AS: Open auth page
+    AS->>User: Show login form
+    User->>AS: Enter credentials, approve
+    AS->>Chrome: Redirect with ?code=...&state=...&iss=...
+    Chrome-->>SW: Return callback URL
 
-    Note over Auth,BSky: Step 3: User Authentication
-    Auth->>Chrome: launchWebAuthFlow({url, interactive: true})
-    Chrome->>BSky: Open popup to auth URL
-    BSky->>User: Show login form
-    User->>BSky: Enter credentials, approve
-    BSky->>Chrome: Redirect to chromiumapp.org/callback#code=...
-    Chrome-->>Auth: Return callback URL with code
+    Note over SW,AS: Step 3: Callback (server-side)
+    SW->>Bridge: POST {action: "callback", code, state, iss}
+    Bridge->>DB: Look up state → code_verifier, DPoP keys
+    Bridge->>AS: Token exchange + DPoP proof + PKCE verifier
+    AS-->>Bridge: {access_token, refresh_token, sub: DID}
+    Bridge->>Bridge: Verify DID→PDS→AS matches issuer
+    Bridge->>DB: Store session (tokens, DPoP keys)
+    Bridge->>Bridge: Mint Supabase JWT (sub: DID)
+    Bridge-->>SW: {jwt, expiresAt, did}
 
-    Note over Auth,BSky: Step 4: Token Exchange
-    Auth->>Auth: Extract code, state, iss from URL hash
-    Auth->>Client: callback(params, {redirect_uri})
-    Client->>IDB: Retrieve stored PKCE verifier, DPoP keys
-    Client->>BSky: Token request (POST /oauth/token)<br/>+ code + PKCE verifier + DPoP proof
-    BSky-->>Client: {access_token, refresh_token, ...}
-    Client->>IDB: Store session tokens
-    Client-->>Auth: OAuthSession
-
-    Auth-->>Popup: session (did, handle, tokens)
-    Popup->>User: Show "Logged in as {handle}"
+    SW->>SW: Cache JWT, broadcast SESSION_CHANGED
+    SW-->>Popup: {did}
+    Popup->>User: Show "Logged in"
 ```
 
 ### Key Components
 
+- **auth-bridge (BFF)**: Server-side OAuth client — holds DPoP keys and ATProto tokens, extension never sees them
 - **client-metadata.json** (GitHub Pages): Public OAuth client configuration. The URL to this file IS the `client_id`
-- **redirect_uri** (`chromiumapp.org`): Chrome extension's special OAuth callback URL - Chrome intercepts redirects here
-- **PKCE**: Proof Key for Code Exchange - prevents authorization code interception
-- **DPoP**: Demonstrating Proof of Possession - binds tokens to cryptographic keys
-- **PAR**: Pushed Authorization Request - sends auth params to server before redirect (required by AT Protocol)
+- **redirect_uri** (`chromiumapp.org`): Chrome extension's special OAuth callback URL — Chrome intercepts redirects here
+- **PKCE** (Proof Key for Code Exchange): Prevents authorization code interception
+- **DPoP** (Demonstrating Proof of Possession): Binds tokens to server-held cryptographic keys
+- **PAR** (Pushed Authorization Request): Sends auth params to server before redirect (required by AT Protocol)
+- **Identity verification**: After token exchange, auth-bridge independently resolves DID→PDS→AS to confirm the AS is authoritative

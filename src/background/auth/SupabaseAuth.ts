@@ -1,5 +1,6 @@
-// Supabase JWT management for Chrome extension
-// Fetches, caches, and refreshes JWTs from the auth-bridge Edge Function
+// Supabase JWT management for Chrome extension.
+// First JWT comes from the login flow (auth-bridge callback).
+// Subsequent JWTs are obtained via auth-bridge refresh using the expired JWT as proof.
 
 import { getSession } from './AtprotoAuth'
 
@@ -9,71 +10,68 @@ const AUTH_BRIDGE_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/auth-
 
 interface CachedJwt {
   jwt: string
-  did: string // DID this JWT was minted for
-  expiresAt: number // Unix timestamp in seconds
+  did: string
+  expiresAt: number
 }
 
 /**
- * Get a valid Supabase JWT, either from cache or by fetching a new one.
- * Returns null if user is not logged in or if auth-bridge is not configured.
+ * Get a valid Supabase JWT, either from cache or by refreshing.
+ * Returns null if user is not logged in or refresh fails (user must re-login).
  */
 export async function getSupabaseJwt(): Promise<string | null> {
   const atprotoSession = await getSession()
-  if (!atprotoSession) {
-    return null
-  }
+  if (!atprotoSession) return null
 
-  // Check cache — must match current user AND not be expiring soon
   const cached = await getCachedJwt()
   if (cached && cached.did === atprotoSession.did && !isExpiringSoon(cached.expiresAt)) {
     return cached.jwt
   }
 
-  // Fetch new JWT from auth-bridge
-  try {
-    const response = await fetch(AUTH_BRIDGE_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-      },
-      body: JSON.stringify({ did: atprotoSession.did }),
-    })
+  // No valid cache — try refreshing with the expired JWT
+  if (cached?.jwt) {
+    try {
+      const response = await fetch(AUTH_BRIDGE_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({
+          action: 'refresh',
+          did: atprotoSession.did,
+          expired_jwt: cached.jwt,
+        }),
+      })
 
-    if (!response.ok) {
-      const text = await response.text()
-      console.error('Auth bridge response:', response.status, text)
-      let errorMessage = response.statusText
-      try {
-        const errorJson = JSON.parse(text)
-        errorMessage = errorJson.error || errorJson.message || text
-      } catch {
-        errorMessage = text || response.statusText
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        console.error('[SupabaseAuth] Refresh failed:', response.status, errorData)
+        return null
       }
-      throw new Error(`Auth bridge failed (${response.status}): ${errorMessage}`)
+
+      const data: { jwt: string; expiresAt: number } = await response.json()
+      await storeSupabaseJwt(data.jwt, data.expiresAt, atprotoSession.did)
+      return data.jwt
+    } catch (error) {
+      console.error('[SupabaseAuth] Refresh error:', error)
+      return null
     }
-
-    const data: { jwt: string; expiresAt: number } = await response.json()
-
-    // Cache the new JWT with the DID it belongs to
-    await chrome.storage.local.set({
-      [STORAGE_KEY]: {
-        jwt: data.jwt,
-        did: atprotoSession.did,
-        expiresAt: data.expiresAt,
-      } satisfies CachedJwt,
-    })
-
-    return data.jwt
-  } catch (error) {
-    console.error('Failed to get Supabase JWT:', error)
-    return null
   }
+
+  return null
 }
 
 /**
- * Clear the cached JWT. Must be called on logout so a stale JWT
- * (with the old user's `sub`) isn't reused after switching accounts.
+ * Store a Supabase JWT in the cache. Called by the login flow after auth-bridge callback.
+ */
+export async function storeSupabaseJwt(jwt: string, expiresAt: number, did: string): Promise<void> {
+  await chrome.storage.local.set({
+    [STORAGE_KEY]: { jwt, did, expiresAt } satisfies CachedJwt,
+  })
+}
+
+/**
+ * Clear the cached JWT. Must be called on logout.
  */
 export async function clearSupabaseJwt(): Promise<void> {
   await chrome.storage.local.remove(STORAGE_KEY)
@@ -88,6 +86,5 @@ async function getCachedJwt(): Promise<CachedJwt | null> {
 
 function isExpiringSoon(expiresAt: number): boolean {
   const now = Math.floor(Date.now() / 1000)
-  const bufferSeconds = 60 // Refresh 1 minute before expiration
-  return now >= expiresAt - bufferSeconds
+  return now >= expiresAt - 60
 }

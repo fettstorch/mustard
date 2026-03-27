@@ -8,7 +8,7 @@ import {
 import { mustardNotesManager } from './business/MustardNotesManager'
 import { DtoMustardNote } from '@/shared/dto/DtoMustardNote'
 import { login, getSession, logout } from './auth/AtprotoAuth'
-import { clearSupabaseJwt } from './auth/SupabaseAuth'
+import { clearSupabaseJwt, storeSupabaseJwt } from './auth/SupabaseAuth'
 import { MustardProfileServiceBsky } from './business/service/MustardProfileServiceBsky'
 import { invalidateRemoteIndexCache } from './business/service/MustardNotesServiceRemote'
 
@@ -156,11 +156,11 @@ chrome.runtime.onMessage.addListener(
     // AT Protocol auth messages - handled here because popup can close during OAuth flow
     if (message.type === 'ATPROTO_LOGIN') {
       login(message.handle)
-        .then((session) => {
-          invalidateRemoteIndexCache() // Clear cached index for new user
-          sendResponse({ did: session.did })
-          // Broadcast session change to all tabs
-          broadcastSessionChanged(session.did)
+        .then(async (result) => {
+          await storeSupabaseJwt(result.jwt, result.expiresAt, result.did)
+          invalidateRemoteIndexCache()
+          sendResponse({ did: result.did })
+          broadcastSessionChanged(result.did)
         })
         .catch((err) => {
           console.error('ATPROTO_LOGIN failed:', err)
