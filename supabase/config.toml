@@ -1,11 +1,102 @@
 
-[functions.oauth-callback]
+# This file configures the LOCAL Supabase development stack only.
+# It is read by the Supabase CLI (`supabase start`, `supabase functions serve`) and
+# has NO effect on the hosted Supabase project.
+#
+# Deploying to production is done with explicit CLI commands:
+#   supabase functions deploy <name>   — uploads edge function code
+#   supabase db push                   — applies migrations in supabase/migrations/
+#   supabase secrets set KEY=value     — sets edge function env vars on the hosted project
+#
+# Hosted project settings are managed via the Supabase Dashboard:
+# https://supabase.com/dashboard
+
+project_id = "mustard"
+
+[api]
 enabled = true
-verify_jwt = true
-import_map = "./functions/oauth-callback/deno.json"
-# Uncomment to specify a custom file path to the entrypoint.
-# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
-entrypoint = "./functions/oauth-callback/index.ts"
-# Specifies static files to be bundled with the function. Supports glob patterns.
-# For example, if you want to serve static HTML pages in your function:
-# static_files = [ "./functions/oauth-callback/*.html" ]
+port = 54321  # local API URL: http://localhost:54321
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[api.tls]
+enabled = false
+
+[db]
+port = 54322         # connect directly: postgresql://postgres:postgres@localhost:54322/postgres
+shadow_port = 54320  # used internally by `supabase db diff`
+major_version = 17
+
+[db.pooler]
+enabled = false  # PgBouncer — not needed for local dev
+
+[db.migrations]
+enabled = true
+schema_paths = []
+
+[db.seed]
+enabled = true
+sql_paths = []  # no seed file yet; add paths here when needed
+
+[realtime]
+enabled = true  # keeping on to match prod; Mustard doesn't use it yet
+
+# Studio: local web UI — open http://localhost:54323 to browse tables, run SQL, etc.
+[studio]
+enabled = true
+port = 54323
+api_url = "http://127.0.0.1"
+
+# Inbucket: catches all outgoing emails locally — http://localhost:54324
+# Mustard doesn't send emails, but keeping it on avoids startup errors.
+[inbucket]
+enabled = true
+port = 54324
+
+[storage]
+enabled = true
+file_size_limit = "50MiB"
+
+# Auth: Mustard does NOT use Supabase's built-in auth — it uses a custom JWT strategy
+# via the auth-bridge Edge Function (AT Protocol DIDs as user IDs). This section must
+# be present for the CLI but its settings are largely irrelevant to Mustard.
+[auth]
+enabled = true
+site_url = "http://127.0.0.1:3000"
+jwt_expiry = 3600
+enable_refresh_token_rotation = true
+refresh_token_reuse_interval = 10
+enable_signup = true
+enable_anonymous_sign_ins = false
+enable_manual_linking = false
+
+[auth.email]
+enable_signup = true
+double_confirm_changes = true
+enable_confirmations = false
+
+# Edge Functions (Deno runtime)
+[edge_runtime]
+enabled = true
+policy = "per_worker"  # hot-reloads edge functions on save (use "oneshot" if you hit issues)
+inspector_port = 8083  # Deno debugger port
+
+# Exchanges an AT Protocol DID for a Supabase JWT.
+# verify_jwt = false: caller only has the anon key, not a user JWT yet.
+[functions.auth-bridge]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/auth-bridge/index.ts"
+
+# Fetches the user's Bluesky follows and maps which pages have notes from them.
+# verify_jwt = false for the same reason as auth-bridge.
+[functions.get-index]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/get-index/index.ts"
+
+[analytics]
+enabled = false  # Logflare — disabled locally to keep things simple
+port = 54327
+backend = "postgres"

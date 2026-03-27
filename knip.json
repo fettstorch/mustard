@@ -6,8 +6,7 @@
     "src/content/content-script.ts",
     "src/content/url-change-detector.ts",
     "src/ui/popup/main.ts",
-    "src/ui/options/main.ts",
-    "src/ui/welcome/main.ts"
+    "src/ui/options/main.ts"
   ],
   "project": ["src/**/*.{ts,vue}"]
 }

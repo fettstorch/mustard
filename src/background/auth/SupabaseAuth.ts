@@ -4,10 +4,8 @@
 import { getSession } from './AtprotoAuth'
 
 const STORAGE_KEY = 'supabase_jwt'
-const SUPABASE_PROJECT_ID = 'dexvrkxjgitrebqetvjw'
-const SUPABASE_ANON_KEY =
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRleHZya3hqZ2l0cmVicWV0dmp3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc5ODQwMTcsImV4cCI6MjA4MzU2MDAxN30.2hzb5-dpI0XYbklfqFsK5CkDeNXXlE1V78Q1eEgV4iI'
-const AUTH_BRIDGE_URL = `https://${SUPABASE_PROJECT_ID}.supabase.co/functions/v1/auth-bridge`
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
+const AUTH_BRIDGE_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/auth-bridge`
 
 interface CachedJwt {
   jwt: string

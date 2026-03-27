@@ -5,10 +5,8 @@ import { supabase } from '@/background/supabase-client'
 import { MustardIndex as MustardIndexClass } from '@/shared/model/MustardIndex'
 import { LIMITS } from '@/shared/constants'
 
-const SUPABASE_PROJECT_ID = 'dexvrkxjgitrebqetvjw'
-const SUPABASE_ANON_KEY =
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRleHZya3hqZ2l0cmVicWV0dmp3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc5ODQwMTcsImV4cCI6MjA4MzU2MDAxN30.2hzb5-dpI0XYbklfqFsK5CkDeNXXlE1V78Q1eEgV4iI'
-const GET_INDEX_URL = `https://${SUPABASE_PROJECT_ID}.supabase.co/functions/v1/get-index`
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
+const GET_INDEX_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-index`
 
 // Index cache with TTL (30 seconds for dev, increase for production)
 const INDEX_CACHE_TTL_MS = 30 * 1000

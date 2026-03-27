@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --mode production",
+    "dev:local": "vite --mode development",
+    "setup:local": "open \"http://127.0.0.1:54323/project/default/editor/17746?schema=public\" && stmux -w always -- [ \"supabase start && supabase functions serve\" .. \"npm run dev:local\" ]",
     "build": "run-p type-check \"build-only {@}\" --",
     "preview": "vite preview",
     "build-only": "vite build",
@@ -46,6 +48,7 @@
     "knip": "^5.85.0",
     "npm-run-all2": "^8.0.4",
     "prettier": "3.7.4",
+    "stmux": "^1.8.11",
     "typescript": "~5.9.3",
     "vite": "^7.3.0",
     "vue-tsc": "^3.2.1"

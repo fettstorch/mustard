@@ -76,7 +76,24 @@ The name "mustard" comes from the German saying _"seinen Senf dazu geben"_ (to a
 ### Prerequisites
 
 - Node.js 18+
-- A Supabase project (see [SUPABASE_SETUP.md](./SUPABASE_SETUP.md))
+- Docker (for local Supabase)
+- Supabase CLI (`brew install supabase/tap/supabase`)
+
+### Environment Variables
+
+The extension reads two env vars at build time via Vite:
+
+| Variable | Description |
+|---|---|
+| `VITE_SUPABASE_URL` | Full Supabase project URL |
+| `VITE_SUPABASE_ANON_KEY` | Supabase anon/public key (safe to commit — RLS policies protect data) |
+
+Vite automatically picks the right file based on the command:
+
+| File | Used by |
+|---|---|
+| `.env.development` | `nr dev` — points to local Supabase instance |
+| `.env.production` | `nr dev:hosted` and `nr build` — points to hosted Supabase project |
 
 ### Setup
 
@@ -84,10 +101,33 @@ The name "mustard" comes from the German saying _"seinen Senf dazu geben"_ (to a
 npm install
 ```
 
+### Local Supabase
+
+To run the full backend locally (PostgreSQL + Edge Functions):
+
+`supabase/functions/.env` is committed and contains the local JWT signing secret (the fixed well-known default for all local Supabase instances — not sensitive). `supabase functions serve` reads it automatically. It has no effect on deployed functions.
+
+```sh
+# Start Docker first, then:
+supabase start
+
+# Serve edge functions with hot-reload:
+supabase functions serve
+```
+
+Migrations in `supabase/migrations/` are applied automatically on `supabase start`. Run `supabase status` to verify the local anon key matches `.env.development`.
+
+To stop the local stack:
+
+```sh
+supabase stop
+```
+
 ### Run Development Server
 
 ```sh
-npm run dev
+nr dev          # → local Supabase (requires supabase start)
+nr dev:hosted   # → hosted Supabase project (no local stack needed)
 ```
 
 This starts Vite with HMR. The extension is built to `dist/`.
