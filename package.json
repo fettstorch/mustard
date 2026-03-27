@@ -7,6 +7,7 @@
     "dev": "vite --mode production",
     "dev:local": "vite --mode development",
     "setup:local": "open \"http://127.0.0.1:54323/project/default/editor/17746?schema=public\" && stmux -w always -- [ \"supabase start && supabase functions serve\" .. \"npm run dev:local\" ]",
+    "deploy:functions": "supabase functions deploy auth-bridge && supabase functions deploy get-index",
     "build": "run-p type-check \"build-only {@}\" --",
     "preview": "vite preview",
     "build-only": "vite build",

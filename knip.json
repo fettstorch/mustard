@@ -1,5 +1,6 @@
 {
   "$schema": "https://unpkg.com/knip@5/schema.json",
+  "ignoreBinaries": ["open", "supabase"],
   "entry": [
     "src/manifest.ts",
     "src/background/service-worker.ts",
