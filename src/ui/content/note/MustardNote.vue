@@ -160,7 +160,6 @@ const isMinimized = computed(() => mustardState.areNotesMinimized)
         <!-- eslint-disable-next-line vue/no-v-html -->
         <div
           class="mustard-note-content"
-          style="width: 260px"
           v-html="renderedContent"
           @mousedown="onContentMousedown"
         />
@@ -286,6 +285,8 @@ const isMinimized = computed(() => mustardState.areNotesMinimized)
 /* --- Content styles --- */
 
 .mustard-note-content {
+  width: var(--mustard-note-content-width);
+  max-width: var(--mustard-note-content-max-width);
   word-break: break-word;
 }
 

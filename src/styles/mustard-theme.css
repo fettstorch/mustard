@@ -32,6 +32,10 @@
     var(--mustard-orange-dark) 100%
   );
 
+  /* Note content sizing */
+  --mustard-note-content-width: 180px;
+  --mustard-note-content-max-width: 25vw;
+
   /* Plastic tube box-shadow */
   --mustard-plastic-shadow:
     inset 0 3px 0 rgba(255, 255, 255, 0.6), inset 0 15px 25px rgba(255, 255, 255, 0.3),

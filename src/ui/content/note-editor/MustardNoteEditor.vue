@@ -114,7 +114,11 @@ function handlePublish() {
     ref="editorContainer"
     tabindex="-1"
     class="mustard-note-editor mustard-notes-bg mustard-notes-border mustard-notes-txt mustard-notes-padding"
-    style="width: fit-content; padding-top: 8px"
+    style="
+      width: fit-content;
+      max-width: calc(var(--mustard-note-content-max-width) + 1em);
+      padding-top: 8px;
+    "
   >
     <!-- Header -->
     <MustardNoteHeader style="translate: 5px; margin-bottom: 8px">
@@ -158,7 +162,8 @@ function handlePublish() {
 
 <style scoped>
 :deep(.ProseMirror) {
-  width: 260px;
+  min-width: var(--mustard-note-content-width);
+  max-width: var(--mustard-note-content-max-width);
   caret-color: var(--mustard-border);
   outline: none;
   white-space: pre-wrap;
@@ -206,7 +211,7 @@ function handlePublish() {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  max-width: 260px;
+  max-width: var(--mustard-note-content-width);
 }
 
 .anchor-row {
