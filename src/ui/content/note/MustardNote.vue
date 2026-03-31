@@ -299,11 +299,6 @@ const isMinimized = computed(() => mustardState.areNotesMinimized)
 }
 
 :deep(.mustard-note-image) {
-  max-width: 100%;
-  height: auto;
-  border-radius: 4px;
-  display: block;
-  margin: 4px 0;
   pointer-events: none;
   user-select: none;
 }

@@ -182,15 +182,6 @@ function handlePublish() {
   height: 0;
 }
 
-:deep(.mustard-note-image) {
-  max-width: 100%;
-  height: auto;
-  border-radius: 4px;
-  display: block;
-  margin: 4px 0;
-  pointer-events: none;
-}
-
 .character-count {
   text-align: right;
   font-size: 0.75em;

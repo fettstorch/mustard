@@ -100,6 +100,16 @@
   opacity: 0.5;
 }
 
+/* Note image: fills content width, preserves aspect ratio */
+.mustard-note-image {
+  min-width: 100%;
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+  display: block;
+  margin: 4px 0;
+}
+
 /* Highlight for the element a note will be anchored to (shown while editor is open) */
 .mustard-highlight {
   background: #ffb800 !important;
