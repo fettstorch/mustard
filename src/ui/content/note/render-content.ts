@@ -33,7 +33,7 @@ md.renderer.rules.image = (tokens, idx, options, env, self) => {
  * Negative lookbehind ensures we don't re-wrap existing markdown images.
  */
 const BARE_IMAGE_URL_REGEX =
-  /(?<!\]\()https?:\/\/[^\s]+\.(?:png|jpe?g|gif|webp)(?::(?:large|medium|small|orig|thumb))?(?:\?[^\s]*)?(?:#[^\s]*)?/gi
+  /(?<!\]\()https?:\/\/[^\s?#]+\.(?:png|jpe?g|gif|webp)(?::(?:large|medium|small|orig|thumb))?(?:\?[^\s]*)?(?:#[^\s]*)?/gi
 
 /**
  * Converts bare image URLs to markdown image syntax for backward compat

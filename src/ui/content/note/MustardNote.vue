@@ -285,7 +285,7 @@ const isMinimized = computed(() => mustardState.areNotesMinimized)
 /* --- Content styles --- */
 
 .mustard-note-content {
-  width: var(--mustard-note-content-width);
+  min-width: var(--mustard-note-content-width);
   max-width: var(--mustard-note-content-max-width);
   word-break: break-word;
 }

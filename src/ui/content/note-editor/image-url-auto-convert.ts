@@ -8,10 +8,10 @@ import { TextSelection } from '@tiptap/pm/state'
  * Optionally followed by Twitter/X size suffix, query params, or fragments.
  */
 const IMAGE_URL_PASTE_REGEX =
-  /https?:\/\/[^\s]+\.(?:png|jpe?g|gif|webp)(?::(?:large|medium|small|orig|thumb))?(?:\?[^\s]*)?(?:#[^\s]*)?/gi
+  /https?:\/\/[^\s?#]+\.(?:png|jpe?g|gif|webp)(?::(?:large|medium|small|orig|thumb))?(?:\?[^\s]*)?(?:#[^\s]*)?/gi
 
 const IMAGE_URL_INPUT_REGEX =
-  /https?:\/\/[^\s]+\.(?:png|jpe?g|gif|webp)(?::(?:large|medium|small|orig|thumb))?(?:\?[^\s]*)?(?:#[^\s]*)?\s$/
+  /https?:\/\/[^\s?#]+\.(?:png|jpe?g|gif|webp)(?::(?:large|medium|small|orig|thumb))?(?:\?[^\s]*)?(?:#[^\s]*)?\s$/
 
 /**
  * Auto-converts bare image URLs to Image nodes.
