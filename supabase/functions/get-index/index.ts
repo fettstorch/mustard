@@ -43,16 +43,27 @@ Deno.serve(async (req) => {
       })
     }
 
-    // Fetch the user's follows from Bluesky's public API
-    const followsUrl = `https://public.api.bsky.app/xrpc/app.bsky.graph.getFollows?actor=${did}`
-    const followsResponse = await fetch(followsUrl)
+    // Fetch the user's follows from Bluesky (paginated, capped at 5000)
+    const MAX_FOLLOWS = 5000
+    const followedDids: string[] = []
+    let cursor: string | undefined
 
-    if (!followsResponse.ok) {
-      throw new Error(`Failed to fetch follows: ${followsResponse.statusText}`)
-    }
+    do {
+      const params = new URLSearchParams({ actor: did, limit: '100' })
+      if (cursor) params.set('cursor', cursor)
 
-    const followsData: FollowsResponse = await followsResponse.json()
-    const followedDids = followsData.follows.map((f) => f.did)
+      const followsResponse = await fetch(
+        `https://public.api.bsky.app/xrpc/app.bsky.graph.getFollows?${params}`,
+      )
+
+      if (!followsResponse.ok) {
+        throw new Error(`Failed to fetch follows: ${followsResponse.statusText}`)
+      }
+
+      const followsData: FollowsResponse = await followsResponse.json()
+      followedDids.push(...followsData.follows.map((f) => f.did))
+      cursor = followsData.cursor
+    } while (cursor && followedDids.length < MAX_FOLLOWS)
 
     // Include the user's own DID + the official Mustard account
     const allDids = [did, ...followedDids, MUSTARD_OFFICIAL_DID]
@@ -67,20 +78,28 @@ Deno.serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
-    // Query distinct page_url and author_id combinations
-    const { data: notes, error } = await supabase
-      .from('notes')
-      .select('author_id, page_url')
-      .in('author_id', allDids)
+    // Query in batches of 200 to avoid PostgREST URI length limits
+    const BATCH_SIZE = 200
+    const notes: { author_id: string; page_url: string }[] = []
 
-    if (error) {
-      throw new Error(`Supabase query failed: ${error.message}`)
+    for (let i = 0; i < allDids.length; i += BATCH_SIZE) {
+      const batch = allDids.slice(i, i + BATCH_SIZE)
+      const { data, error } = await supabase
+        .from('notes')
+        .select('author_id, page_url')
+        .in('author_id', batch)
+
+      if (error) {
+        throw new Error(`Supabase query failed: ${error.message}`)
+      }
+
+      notes.push(...(data || []))
     }
 
     // Build index: Map<UserId, PageUrl[]>
     const index: Record<string, string[]> = {}
 
-    for (const note of notes || []) {
+    for (const note of notes) {
       if (!index[note.author_id]) {
         index[note.author_id] = []
       }
