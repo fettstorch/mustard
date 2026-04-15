@@ -149,6 +149,14 @@ export type SessionExpiredMessage = Satisfies<
   }
 >
 
+// Content script → service worker: open the extension popup
+export type OpenPopupMessage = Satisfies<
+  BaseMessage,
+  {
+    type: 'OPEN_POPUP'
+  }
+>
+
 // Discriminated union of all messages - enables type narrowing
 export type Message =
   | OpenNoteEditorMessage
@@ -163,6 +171,7 @@ export type Message =
   | SetNotesVisibleMessage
   | SessionChangedMessage
   | SessionExpiredMessage
+  | OpenPopupMessage
 
 export function createOpenNoteEditorMessage(): OpenNoteEditorMessage {
   return {

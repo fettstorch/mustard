@@ -10,7 +10,7 @@ window.addEventListener('vite:preloadError', (event) => {
   event.preventDefault()
 })
 
-import mustardIconUrl from '@/assets/icons/mustard_bottle_smile_16.png'
+import mustardIconUrl from '@/assets/icons/mustard_bottle_smile_48.png'
 import {
   createQueryNotesMessage,
   createGetAtprotoSessionMessage,
@@ -208,12 +208,15 @@ function showSessionExpiredBanner() {
     'z-index:2147483647;box-shadow:0 2px 8px rgba(0,0,0,0.25);cursor:pointer;display:flex;align-items:center;gap:8px'
   const icon = document.createElement('img')
   icon.src = mustardIconUrl
-  icon.style.cssText = 'width:16px;height:16px;flex-shrink:0'
+  icon.style.cssText = 'width:24px;height:24px;flex-shrink:0'
   const text = document.createElement('span')
-  text.textContent = 'Mustard session expired — click the extension icon to re-login'
+  text.textContent = 'Mustard session expired — open the Mustard extension menu to re-login'
   banner.appendChild(icon)
   banner.appendChild(text)
-  banner.onclick = () => banner.remove()
+  banner.onclick = () => {
+    banner.remove()
+    chrome.runtime.sendMessage({ type: 'OPEN_POPUP' })
+  }
   document.body.appendChild(banner)
 }
 

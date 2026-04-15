@@ -197,6 +197,11 @@ chrome.runtime.onMessage.addListener(
       return true // Keep channel open for async response
     }
 
+    if (message.type === 'OPEN_POPUP') {
+      chrome.action.openPopup().catch(() => {})
+      return
+    }
+
     if (message.type === 'GET_PROFILES') {
       profileService
         .getProfiles(message.userIds)
