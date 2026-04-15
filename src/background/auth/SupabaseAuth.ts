@@ -48,7 +48,7 @@ export async function getSupabaseJwt(): Promise<string | null> {
         console.error('[SupabaseAuth] Refresh failed:', response.status, errorData)
 
         // Non-transient failures (4xx, 502) mean the server-side session is gone —
-        // clear all credentials and broadcast so UI updates immediately.
+        // clear all credentials, notify the user, and broadcast so UI updates immediately.
         if (response.status < 500 || response.status === 502) {
           console.warn(
             '[SupabaseAuth] Session invalidated server-side — clearing credentials, user must re-login',
@@ -107,6 +107,7 @@ async function broadcastSessionCleared(): Promise<void> {
   for (const tab of tabs) {
     if (tab.id) {
       chrome.tabs.sendMessage(tab.id, { type: 'SESSION_CHANGED', did: null }).catch(() => {})
+      chrome.tabs.sendMessage(tab.id, { type: 'SESSION_EXPIRED' }).catch(() => {})
     }
   }
 }

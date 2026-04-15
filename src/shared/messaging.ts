@@ -141,6 +141,14 @@ export type SessionChangedMessage = Satisfies<
   }
 >
 
+// Message broadcast to content scripts when session expired involuntarily (not explicit logout)
+export type SessionExpiredMessage = Satisfies<
+  BaseMessage,
+  {
+    type: 'SESSION_EXPIRED'
+  }
+>
+
 // Discriminated union of all messages - enables type narrowing
 export type Message =
   | OpenNoteEditorMessage
@@ -154,6 +162,7 @@ export type Message =
   | GetNotesVisibleMessage
   | SetNotesVisibleMessage
   | SessionChangedMessage
+  | SessionExpiredMessage
 
 export function createOpenNoteEditorMessage(): OpenNoteEditorMessage {
   return {

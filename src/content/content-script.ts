@@ -10,6 +10,7 @@ window.addEventListener('vite:preloadError', (event) => {
   event.preventDefault()
 })
 
+import mustardIconUrl from '@/assets/icons/mustard_bottle_smile_16.png'
 import {
   createQueryNotesMessage,
   createGetAtprotoSessionMessage,
@@ -135,8 +136,15 @@ chrome.runtime.onMessage.addListener((message: Message, _sender, sendResponse) =
     mustardState.editor.isOpen = true
     return
   }
+  if (message.type === 'SESSION_EXPIRED') {
+    showSessionExpiredBanner()
+    return
+  }
   if (message.type === 'SESSION_CHANGED') {
     mustardState.currentUserDid = message.did
+    if (message.did) {
+      document.getElementById('mustard-session-expired-banner')?.remove()
+    }
     // Re-query notes now that login state changed (may have remote notes available)
     chrome.runtime.sendMessage(
       createQueryNotesMessage(getCurrentPageUrl()),
@@ -188,6 +196,25 @@ chrome.runtime.sendMessage(
 // When this happens, clean up Mustard UI so the orphaned script doesn't leave broken UI behind.
 function isContextInvalidated(): boolean {
   return !chrome.runtime.id
+}
+
+function showSessionExpiredBanner() {
+  if (document.getElementById('mustard-session-expired-banner')) return
+  const banner = document.createElement('div')
+  banner.id = 'mustard-session-expired-banner'
+  banner.style.cssText =
+    'position:fixed;top:0;left:50%;transform:translateX(-50%);background:#ffb800;color:#3d2200;' +
+    'padding:8px 20px;border-radius:0 0 10px 10px;font-family:monospace;font-size:13px;font-weight:600;' +
+    'z-index:2147483647;box-shadow:0 2px 8px rgba(0,0,0,0.25);cursor:pointer;display:flex;align-items:center;gap:8px'
+  const icon = document.createElement('img')
+  icon.src = mustardIconUrl
+  icon.style.cssText = 'width:16px;height:16px;flex-shrink:0'
+  const text = document.createElement('span')
+  text.textContent = 'Mustard session expired — click the extension icon to re-login'
+  banner.appendChild(icon)
+  banner.appendChild(text)
+  banner.onclick = () => banner.remove()
+  document.body.appendChild(banner)
 }
 
 function showRefreshBanner() {

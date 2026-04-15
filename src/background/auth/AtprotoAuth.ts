@@ -7,7 +7,8 @@ const AUTH_BRIDGE_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/auth-
 const REDIRECT_URI = chrome.identity.getRedirectURL('callback')
 const STORAGE_KEY = 'atproto_session'
 
-type StoredSession = { did: string }
+// handle is optional for backwards-compat with sessions stored before this field was added
+type StoredSession = { did: string; handle?: string }
 
 type LoginResult = { did: string; jwt: string; expiresAt: number }
 
@@ -57,8 +58,10 @@ export async function login(handle: string): Promise<LoginResult> {
   // 4. Send callback params to auth-bridge — it does token exchange and mints a Supabase JWT
   const result = await authBridgePost({ action: 'callback', code, state, iss })
 
-  // 5. Store session
-  await chrome.storage.local.set({ [STORAGE_KEY]: { did: result.did } satisfies StoredSession })
+  // 5. Store session (handle stored for potential future use)
+  await chrome.storage.local.set({
+    [STORAGE_KEY]: { did: result.did, handle } satisfies StoredSession,
+  })
 
   return { did: result.did, jwt: result.jwt, expiresAt: result.expiresAt }
 }
