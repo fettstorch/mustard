@@ -2,6 +2,7 @@ import type { MustardIndex } from '@/shared/model/MustardIndex'
 import type { MustardNote } from '@/shared/model/MustardNote'
 import type { MustardNotesService } from './MustardNotesService'
 import { supabase } from '@/background/supabase-client'
+import { getSupabaseJwt } from '@/background/auth/SupabaseAuth'
 import { MustardIndex as MustardIndexClass } from '@/shared/model/MustardIndex'
 import { LIMITS } from '@/shared/constants'
 
@@ -30,6 +31,11 @@ export class MustardNotesServiceRemote implements MustardNotesService {
     if (!userId) {
       return new MustardIndexClass(new Map())
     }
+
+    // Validate JWT — detects session expiry and triggers logout/banner as a side effect.
+    // O(1) from cache when valid; only hits the network when JWT needs refreshing (~hourly).
+    const jwt = await getSupabaseJwt()
+    if (!jwt) return new MustardIndexClass(new Map())
 
     const now = Date.now()
 
