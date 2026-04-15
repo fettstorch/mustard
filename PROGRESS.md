@@ -204,3 +204,4 @@ sequenceDiagram
 - **DPoP** (Demonstrating Proof of Possession): Binds tokens to server-held cryptographic keys
 - **PAR** (Pushed Authorization Request): Sends auth params to server before redirect (required by AT Protocol)
 - **Identity verification**: After token exchange, auth-bridge independently resolves DID→PDS→AS to confirm the AS is authoritative
+- Supabase JWT refresh failure (404 = server session gone) clears both ATProto + Supabase sessions and broadcasts `SESSION_CHANGED(null)` to all tabs — user is immediately logged out instead of silently failing

@@ -2,7 +2,7 @@
 // First JWT comes from the login flow (auth-bridge callback).
 // Subsequent JWTs are obtained via auth-bridge refresh using the expired JWT as proof.
 
-import { getSession } from './AtprotoAuth'
+import { getSession, clearStoredSession } from './AtprotoAuth'
 
 const STORAGE_KEY = 'supabase_jwt'
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
@@ -46,6 +46,18 @@ export async function getSupabaseJwt(): Promise<string | null> {
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}))
         console.error('[SupabaseAuth] Refresh failed:', response.status, errorData)
+
+        // Non-transient failures (4xx, 502) mean the server-side session is gone —
+        // clear all credentials and broadcast so UI updates immediately.
+        if (response.status < 500 || response.status === 502) {
+          console.warn(
+            '[SupabaseAuth] Session invalidated server-side — clearing credentials, user must re-login',
+          )
+          await clearSupabaseJwt()
+          await clearStoredSession()
+          await broadcastSessionCleared()
+        }
+
         return null
       }
 
@@ -87,4 +99,14 @@ async function getCachedJwt(): Promise<CachedJwt | null> {
 function isExpiringSoon(expiresAt: number): boolean {
   const now = Math.floor(Date.now() / 1000)
   return now >= expiresAt - 60
+}
+
+/** Notify all tabs that the session has been cleared so content scripts can update. */
+async function broadcastSessionCleared(): Promise<void> {
+  const tabs = await chrome.tabs.query({})
+  for (const tab of tabs) {
+    if (tab.id) {
+      chrome.tabs.sendMessage(tab.id, { type: 'SESSION_CHANGED', did: null }).catch(() => {})
+    }
+  }
 }

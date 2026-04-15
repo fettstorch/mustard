@@ -77,3 +77,11 @@ export async function getSession(): Promise<StoredSession | undefined> {
 export async function logout(_did: string): Promise<void> {
   await chrome.storage.local.remove(STORAGE_KEY)
 }
+
+/**
+ * Clear the stored ATProto session. Used when the server-side session is gone
+ * and the user must re-authenticate.
+ */
+export async function clearStoredSession(): Promise<void> {
+  await chrome.storage.local.remove(STORAGE_KEY)
+}

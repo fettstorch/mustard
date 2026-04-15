@@ -36,3 +36,4 @@ Simple learnings discovered during development that document how things actually
 - **Extension ID**: Changes when unpacked extension is removed/re-added. For stable ID, pack the extension or publish to Chrome Web Store.
 - **GitHub Pages + Jekyll**: Add empty `.nojekyll` file to serve static files without Jekyll build.
 - **Popup closes during OAuth**: Extension popups close when `launchWebAuthFlow` opens (loses focus). Run OAuth in the service worker (persists) and communicate via messaging.
+- **Supabase JWT refresh 404**: auth-bridge deletes `oauth_session` row when ATProto token refresh fails (e.g. race condition consuming single-use refresh token). Extension must treat 404/4xx/502 from refresh as "needs re-login" — clear both ATProto session and Supabase JWT from storage and broadcast `SESSION_CHANGED(null)`. Do NOT clear on 5xx (transient server errors).
