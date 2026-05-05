@@ -6,6 +6,7 @@ const SCOPE = 'atproto'
 const HANDLE_RESOLVER = 'https://bsky.social'
 const PLC_DIRECTORY = 'https://plc.directory'
 const STATE_TTL_SECONDS = 600
+const SUPABASE_JWT_TTL_SECONDS = 180 * 24 * 60 * 60
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -193,7 +194,7 @@ async function mintSupabaseJwt(did: string): Promise<{ jwt: string; expiresAt: n
   if (!jwtSecret) throw new Error('JWT_SIGNING_SECRET not configured')
 
   const now = Math.floor(Date.now() / 1000)
-  const exp = now + 3600
+  const exp = now + SUPABASE_JWT_TTL_SECONDS
 
   const secret = new TextEncoder().encode(jwtSecret)
   const jwt = await new jose.SignJWT({ sub: did, role: 'authenticated' })
