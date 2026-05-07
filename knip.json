@@ -1,13 +1,12 @@
 {
   "$schema": "https://unpkg.com/knip@5/schema.json",
-  "ignoreBinaries": ["open", "supabase"],
+  "ignoreBinaries": ["open"],
   "entry": [
-    "src/manifest.ts",
-    "src/background/service-worker.ts",
-    "src/content/content-script.ts",
-    "src/content/url-change-detector.ts",
-    "src/ui/popup/main.ts",
-    "src/ui/options/main.ts"
+    "src/entrypoints/background.ts",
+    "src/entrypoints/content/index.ts",
+    "src/entrypoints/url-change-detector.ts",
+    "src/entrypoints/popup/main.ts",
+    "src/entrypoints/options/main.ts"
   ],
   "project": ["src/**/*.{ts,vue}"]
 }

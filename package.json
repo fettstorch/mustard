@@ -4,19 +4,20 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite --mode production",
-    "dev:local": "vite --mode development",
+    "dev": "wxt -b chrome --mode production",
+    "dev:local": "wxt -b chrome",
+    "dev:firefox": "wxt -b firefox",
     "setup:local": "open \"http://127.0.0.1:54323/project/default/editor/17746?schema=public\" && stmux -w always -- [ \"supabase start && supabase functions serve\" .. \"npm run dev:local\" ]",
-    "deploy:functions": "supabase functions deploy auth-bridge && supabase functions deploy get-index",
-    "build": "run-p type-check \"build-only {@}\" --",
-    "preview": "vite preview",
-    "build-only": "vite build",
+    "build": "wxt build -b chrome",
+    "build:firefox": "wxt build -b firefox",
+    "zip": "wxt zip -b chrome",
+    "zip:firefox": "wxt zip -b firefox",
     "type-check": "vue-tsc --build",
+    "postinstall": "wxt prepare",
     "knip": "knip",
     "knip:fix": "knip --fix",
     "lint": "eslint . --fix --cache",
-    "format": "prettier --write --experimental-cli src/",
-    "package": "npm run build && cd dist && zip -r ../mustard-v$npm_package_version.zip ."
+    "format": "prettier --write --experimental-cli src/"
   },
   "dependencies": {
     "@atproto/api": "^0.18.14",
@@ -33,13 +34,9 @@
     "vue": "^3.5.26"
   },
   "devDependencies": {
-    "@crxjs/vite-plugin": "^2.3.0",
-    "@tailwindcss/vite": "^4.1.18",
     "@tsconfig/node24": "^24.0.3",
-    "@types/chrome": "^0.1.32",
     "@types/markdown-it": "^14.1.2",
     "@types/node": "^24.10.4",
-    "@vitejs/plugin-vue": "^6.0.3",
     "@vue/eslint-config-prettier": "^10.2.0",
     "@vue/eslint-config-typescript": "^14.6.0",
     "@vue/tsconfig": "^0.8.1",
@@ -47,12 +44,11 @@
     "eslint-plugin-vue": "~10.6.2",
     "jiti": "^2.6.1",
     "knip": "^5.85.0",
-    "npm-run-all2": "^8.0.4",
     "prettier": "3.7.4",
     "stmux": "^1.8.11",
     "typescript": "~5.9.3",
-    "vite": "^7.3.0",
-    "vue-tsc": "^3.2.1"
+    "vue-tsc": "^3.2.1",
+    "wxt": "^0.20.25"
   },
   "engines": {
     "node": "^20.19.0 || >=22.12.0"
