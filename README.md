@@ -37,6 +37,57 @@ The name "mustard" comes from the German saying _"seinen Senf dazu geben"_ (to a
 
 ## Technical Architecture
 
+### WXT Build Pipeline
+
+```mermaid
+flowchart LR
+    subgraph Cfg["wxt.config.ts"]
+        direction TB
+        M["manifest\n(permissions, CSP, icons)"]
+        V["Vite plugins\n(Vue, inlineIcons)"]
+        O["outDir → dist/"]
+    end
+
+    subgraph EP["src/entrypoints/"]
+        direction TB
+        BG["background.ts\ndefineBackground()"]
+        CS["content/index.ts\ndefineContentScript()"]
+        UCD["url-change-detector.ts\ndefineUnlistedScript()"]
+        POP["popup/ (HTML + Vue)"]
+        OPT["options/ (HTML + Vue)"]
+    end
+
+    WXT(["WXT"])
+
+    subgraph Dist["dist/"]
+        direction TB
+        MF["manifest.json"]
+        BGO["background.js"]
+        CSO["content-scripts/\ncontent.js + content.css"]
+        UCDO["url-change-detector.js"]
+        POPO["popup.html"]
+        OPTO["options.html"]
+    end
+
+    subgraph RT["Chrome Extension Runtime"]
+        direction TB
+        SW["Service Worker"]
+        INJ["Injected into\nevery page"]
+        PW["Popup window"]
+        OW["Options page"]
+    end
+
+    Cfg --> WXT
+    EP  --> WXT
+    WXT --> Dist
+
+    BGO  --> SW
+    CSO  --> INJ
+    UCDO --> INJ
+    POPO --> PW
+    OPTO --> OW
+```
+
 ### Frontend (Chrome Extension)
 
 - **Content Script**: Injects mustard notes into web pages, handles SPA navigation
@@ -65,9 +116,7 @@ The name "mustard" comes from the German saying _"seinen Senf dazu geben"_ (to a
 
 - **Vue 3** - Frontend framework
 - **TypeScript** - Type safety
-- **Vite** - Build tool
-- **@crxjs/vite-plugin** - Chrome extension build plugin with HMR
-- **Tailwind CSS v4** - Styling
+- **WXT** - Cross-browser extension framework (Vite-based, replaces `@crxjs/vite-plugin`)
 - **Supabase** - PostgreSQL database + Edge Functions
 - **AT Protocol** - Bluesky authentication and social graph
 
@@ -75,7 +124,7 @@ The name "mustard" comes from the German saying _"seinen Senf dazu geben"_ (to a
 
 ### Prerequisites
 
-- Node.js 18+
+- Node.js 20.19+ or 22.12+
 - Docker (for local Supabase)
 - Supabase CLI (`brew install supabase/tap/supabase`)
 
@@ -88,12 +137,12 @@ The extension reads two env vars at build time via Vite:
 | `VITE_SUPABASE_URL` | Full Supabase project URL |
 | `VITE_SUPABASE_ANON_KEY` | Supabase anon/public key (safe to commit — RLS policies protect data) |
 
-Vite automatically picks the right file based on the command:
+WXT/Vite automatically picks the right file based on the command:
 
 | File | Used by |
 |---|---|
-| `.env.development` | `nr dev` — points to local Supabase instance |
-| `.env.production` | `nr dev:hosted` and `nr build` — points to hosted Supabase project |
+| `.env.development` | `nr dev:local` — points to local Supabase instance |
+| `.env.production` | `nr dev` and `nr build` — points to hosted Supabase project |
 
 ### Setup
 
@@ -126,11 +175,11 @@ supabase stop
 ### Run Development Server
 
 ```sh
-nr dev          # → local Supabase (requires supabase start)
-nr dev:hosted   # → hosted Supabase project (no local stack needed)
+nr dev          # → hosted Supabase (no local stack needed)
+nr dev:local    # → local Supabase (requires supabase start + Docker)
 ```
 
-This starts Vite with HMR. The extension is built to `dist/`.
+WXT watches for file changes and rebuilds automatically. The extension is built to `dist/`.
 
 ### Load Extension in Chrome
 
@@ -140,32 +189,25 @@ This starts Vite with HMR. The extension is built to `dist/`.
 4. Select the `dist/` folder
 5. The extension icon (mustard bottle) appears in toolbar
 
-When running `npm run dev`, changes hot-reload automatically. For manifest changes, click the refresh icon on the extension card.
-
-### Testing the Post-Install Welcome Page
-
-The welcome page opens automatically when the extension is first installed. To test it during development:
-
-1. **Simulate first install**: Remove the extension from `chrome://extensions/` and re-add it via "Load unpacked". The welcome page should open in a new tab automatically.
-2. **Direct navigation**: Open the welcome page manually at `chrome-extension://<extension-id>/src/ui/welcome/index.html`. Find your extension ID on the `chrome://extensions/` page.
-3. **Note**: The welcome page does _not_ open on extension updates, only on first install.
+For manifest changes, click the refresh icon on the extension card in `chrome://extensions/`.
 
 ### Type Check
 
 ```sh
-npm run type-check
+nr type-check
 ```
 
 ### Lint
 
 ```sh
-npm run lint
+nr lint
 ```
 
 ### Build for Production
 
 ```sh
-npm run build
+nr build        # Chrome (MV3)
+nr build:firefox
 ```
 
 ## Supabase Deployment
@@ -215,23 +257,26 @@ See [SUPABASE_SETUP.md](./SUPABASE_SETUP.md) for detailed setup instructions.
 
 ```
 src/
-├── background/           # Service worker
+├── entrypoints/          # WXT entrypoints (auto-discovered)
+│   ├── background.ts     # Background service worker (defineBackground)
+│   ├── content/          # Content script (defineContentScript)
+│   ├── url-change-detector.ts  # Injected SPA nav script (defineUnlistedScript)
+│   ├── popup/            # Extension popup HTML + Vue mount
+│   └── options/          # Options page HTML + Vue mount
+├── background/           # Business logic (imported by background entrypoint)
 │   ├── auth/             # AtprotoAuth, SupabaseAuth
-│   ├── business/         # MustardNotesManager, services
-│   └── service-worker.ts
-├── content/              # Content script
-│   ├── content-script.ts
-│   └── url-change-detector.ts  # SPA navigation detection
+│   └── business/         # MustardNotesManager, services
 ├── shared/               # Shared types, DTOs, models
 │   ├── dto/
 │   ├── model/
 │   └── messaging.ts
 ├── ui/                   # Vue components
 │   ├── content/          # Note rendering (MustardNote, MustardContent)
-│   ├── popup/            # Extension popup
-│   ├── options/          # Options page
-│   └── welcome/          # Post-install welcome page
-└── manifest.ts           # Chrome extension manifest
+│   ├── popup/            # MustardPopupMenu, BlueskyLogin
+│   └── options/          # MustardOptionsPage
+└── styles/               # Global CSS (mustard-theme, mustard-notes, main)
+
+wxt.config.ts             # WXT config (manifest, Vite plugins, output dir)
 
 supabase/
 ├── functions/

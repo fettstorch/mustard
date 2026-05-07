@@ -29,7 +29,7 @@ flowchart TB
     end
 
     subgraph Storage["Storage"]
-        ChromeStorage[("chrome.storage.local")]
+        ChromeStorage[("browser.storage.local")]
         Supabase["Supabase Edge Functions"]
         DB[("Supabase PostgreSQL")]
     end
@@ -71,7 +71,7 @@ flowchart TB
 
 ## Completed
 
-- Chrome extension setup with CRXJS and HMR working
+- Chrome extension setup with WXT (cross-browser framework, Vite-based); Tailwind CSS removed; all `chrome.*` APIs replaced with `browser.*` polyfill
 - Extension icon (mustard bottle) displays in Chrome toolbar
 - MustardPopupMenu accessible via extension icon click
 - MustardOptionsPage accessible via chrome://extensions → Options
@@ -79,7 +79,6 @@ flowchart TB
 - Content script initialized (runs on all URLs)
 - Context menu "Add Mustard" appears on right-click, handled in service worker
 - Gear icon in popup menu opens options page
-- Tailwind v4 configured via `@tailwindcss/vite`, imported in popup & options entry points
 - Editor positioned at click location using anchor data (elementId → elementSelector → clickPosition fallback)
 - Anchor data captured: pageUrl, elementId, elementSelector, relativePosition, clickPosition
 - Type-safe messaging in `src/shared/messaging.ts`
@@ -157,7 +156,7 @@ sequenceDiagram
     participant SW as Service Worker
     participant Bridge as auth-bridge<br/>(Edge Function)
     participant DB as Supabase DB
-    participant Chrome as chrome.identity
+    participant Chrome as browser.identity
     participant AS as Authorization Server<br/>(bsky.social)
 
     User->>Popup: Enter handle, click Login
@@ -173,7 +172,7 @@ sequenceDiagram
     Bridge-->>SW: {authUrl, state}
 
     Note over SW,AS: Step 2: User Authentication
-    SW->>Chrome: launchWebAuthFlow({url: authUrl})
+    SW->>Chrome: browser.identity.launchWebAuthFlow({url: authUrl})
     Chrome->>AS: Open auth page
     AS->>User: Show login form
     User->>AS: Enter credentials, approve
