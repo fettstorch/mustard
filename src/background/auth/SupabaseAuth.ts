@@ -77,7 +77,7 @@ export async function getSupabaseJwt(): Promise<string | null> {
  * Store a Supabase JWT in the cache. Called by the login flow after auth-bridge callback.
  */
 export async function storeSupabaseJwt(jwt: string, expiresAt: number, did: string): Promise<void> {
-  await chrome.storage.local.set({
+  await browser.storage.local.set({
     [STORAGE_KEY]: { jwt, did, expiresAt } satisfies CachedJwt,
   })
 }
@@ -86,13 +86,13 @@ export async function storeSupabaseJwt(jwt: string, expiresAt: number, did: stri
  * Clear the cached JWT. Must be called on logout.
  */
 export async function clearSupabaseJwt(): Promise<void> {
-  await chrome.storage.local.remove(STORAGE_KEY)
+  await browser.storage.local.remove(STORAGE_KEY)
 }
 
 // --- Private helpers ---
 
 async function getCachedJwt(): Promise<CachedJwt | null> {
-  const result = await chrome.storage.local.get(STORAGE_KEY)
+  const result = await browser.storage.local.get(STORAGE_KEY)
   return (result[STORAGE_KEY] as CachedJwt | undefined) ?? null
 }
 
@@ -103,11 +103,11 @@ function isExpiringSoon(expiresAt: number): boolean {
 
 /** Notify all tabs that the session has been cleared so content scripts can update. */
 async function broadcastSessionCleared(): Promise<void> {
-  const tabs = await chrome.tabs.query({})
+  const tabs = await browser.tabs.query({})
   for (const tab of tabs) {
     if (tab.id) {
-      chrome.tabs.sendMessage(tab.id, { type: 'SESSION_CHANGED', did: null }).catch(() => {})
-      chrome.tabs.sendMessage(tab.id, { type: 'SESSION_EXPIRED' }).catch(() => {})
+      browser.tabs.sendMessage(tab.id, { type: 'SESSION_CHANGED', did: null }).catch(() => {})
+      browser.tabs.sendMessage(tab.id, { type: 'SESSION_EXPIRED' }).catch(() => {})
     }
   }
 }

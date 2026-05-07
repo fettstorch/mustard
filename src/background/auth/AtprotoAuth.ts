@@ -4,7 +4,7 @@
 
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
 const AUTH_BRIDGE_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/auth-bridge`
-const REDIRECT_URI = chrome.identity.getRedirectURL('callback')
+const REDIRECT_URI = browser.identity.getRedirectURL('callback')
 const STORAGE_KEY = 'atproto_session'
 
 // handle is optional for backwards-compat with sessions stored before this field was added
@@ -40,7 +40,7 @@ export async function login(handle: string): Promise<LoginResult> {
   })
 
   // 2. Open the Bluesky auth page — user logs in and approves
-  const callbackUrl = await chrome.identity.launchWebAuthFlow({
+  const callbackUrl = await browser.identity.launchWebAuthFlow({
     url: authUrl,
     interactive: true,
   })
@@ -59,7 +59,7 @@ export async function login(handle: string): Promise<LoginResult> {
   const result = await authBridgePost({ action: 'callback', code, state, iss })
 
   // 5. Store session (handle stored for potential future use)
-  await chrome.storage.local.set({
+  await browser.storage.local.set({
     [STORAGE_KEY]: { did: result.did, handle } satisfies StoredSession,
   })
 
@@ -70,7 +70,7 @@ export async function login(handle: string): Promise<LoginResult> {
  * Read stored session info. Does NOT validate tokens — only checks if user logged in before.
  */
 export async function getSession(): Promise<StoredSession | undefined> {
-  const result = await chrome.storage.local.get(STORAGE_KEY)
+  const result = await browser.storage.local.get(STORAGE_KEY)
   return result[STORAGE_KEY] as StoredSession | undefined
 }
 
@@ -78,7 +78,7 @@ export async function getSession(): Promise<StoredSession | undefined> {
  * Logout — clears local state. Server session stays until tokens expire naturally.
  */
 export async function logout(_did: string): Promise<void> {
-  await chrome.storage.local.remove(STORAGE_KEY)
+  await browser.storage.local.remove(STORAGE_KEY)
 }
 
 /**
@@ -86,5 +86,5 @@ export async function logout(_did: string): Promise<void> {
  * and the user must re-authenticate.
  */
 export async function clearStoredSession(): Promise<void> {
-  await chrome.storage.local.remove(STORAGE_KEY)
+  await browser.storage.local.remove(STORAGE_KEY)
 }

@@ -38,12 +38,15 @@ const pendingPublish = ref<{
 } | null>(null)
 
 // Load "don't show again" preference
-chrome.storage.local.get(PUBLISH_CONFIRM_DISMISSED_KEY, (result) => {
-  skipPublishConfirm.value = !!result[PUBLISH_CONFIRM_DISMISSED_KEY]
-})
+browser.storage.local
+  .get(PUBLISH_CONFIRM_DISMISSED_KEY)
+  .then((result) => {
+    skipPublishConfirm.value = !!result[PUBLISH_CONFIRM_DISMISSED_KEY]
+  })
+  .catch(() => {})
 
 // Keep in sync when changed from the options page
-function onStorageChanged(changes: Record<string, chrome.storage.StorageChange>) {
+function onStorageChanged(changes: Record<string, Browser.storage.StorageChange>) {
   if (PUBLISH_CONFIRM_DISMISSED_KEY in changes) {
     skipPublishConfirm.value = !!changes[PUBLISH_CONFIRM_DISMISSED_KEY].newValue
   }
@@ -99,14 +102,14 @@ onMounted(() => {
   document.addEventListener('keydown', handleKeyDown)
   window.addEventListener('resize', handleResize)
   window.addEventListener('scroll', handleScroll, true) // useCapture=true to catch all scroll events
-  chrome.storage.onChanged.addListener(onStorageChanged)
+  browser.storage.onChanged.addListener(onStorageChanged)
 })
 
 onUnmounted(() => {
   document.removeEventListener('keydown', handleKeyDown)
   window.removeEventListener('resize', handleResize)
   window.removeEventListener('scroll', handleScroll, true)
-  chrome.storage.onChanged.removeListener(onStorageChanged)
+  browser.storage.onChanged.removeListener(onStorageChanged)
 })
 
 function handleKeyDown(event: KeyboardEvent) {
@@ -181,7 +184,7 @@ function onPublishConfirm(dontShowAgain: boolean) {
   if (!pendingPublish.value) return
   if (dontShowAgain) {
     skipPublishConfirm.value = true
-    chrome.storage.local.set({ [PUBLISH_CONFIRM_DISMISSED_KEY]: true })
+    browser.storage.local.set({ [PUBLISH_CONFIRM_DISMISSED_KEY]: true })
   }
   const { content, anchorData, localNoteIdToDelete, source } = pendingPublish.value
   pendingPublish.value = null

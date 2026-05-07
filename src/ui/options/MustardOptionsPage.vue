@@ -9,7 +9,7 @@
  * How to access in Chrome:
  * Method 1: Right-click the Mustard extension icon → Select "Options"
  * Method 2: Go to chrome://extensions → Find "Mustard" → Click "Options" or "Extension options"
- * Method 3: Programmatically via chrome.runtime.openOptionsPage() API
+ * Method 3: Programmatically via browser.runtime.openOptionsPage() API
  *
  * Note: This is different from the popup menu (MustardPopupMenu.vue) which opens
  * when clicking the extension icon. This is a full-page settings interface.
@@ -22,35 +22,34 @@ const PUBLISH_CONFIRM_DISMISSED_KEY = 'mustard-publish-confirm-dismissed'
 const NOTES_MINIMIZED_KEY = 'mustard-notes-minimized'
 const SHOW_ANCHOR_IN_EDITOR_KEY = 'mustard-show-anchor-in-editor'
 
-const logoUrl = chrome.runtime.getURL('mustard_bottle_smile_512.png')
+const logoUrl = browser.runtime.getURL('/mustard_bottle_smile_512.png')
 const helloMustardUrl = 'https://fettstorch.github.io/mustard/'
 
 const showPublishWarning = ref(true)
 const minimizeNotes = ref(false)
 const showAnchorInEditor = ref(false)
 
-onMounted(() => {
-  chrome.storage.local.get(PUBLISH_CONFIRM_DISMISSED_KEY, (result) => {
-    showPublishWarning.value = !result[PUBLISH_CONFIRM_DISMISSED_KEY]
-  })
-  chrome.storage.local.get(NOTES_MINIMIZED_KEY, (result) => {
-    minimizeNotes.value = !!result[NOTES_MINIMIZED_KEY]
-  })
-  chrome.storage.local.get(SHOW_ANCHOR_IN_EDITOR_KEY, (result) => {
-    showAnchorInEditor.value = !!result[SHOW_ANCHOR_IN_EDITOR_KEY]
-  })
+onMounted(async () => {
+  const result = await browser.storage.local.get([
+    PUBLISH_CONFIRM_DISMISSED_KEY,
+    NOTES_MINIMIZED_KEY,
+    SHOW_ANCHOR_IN_EDITOR_KEY,
+  ])
+  showPublishWarning.value = !result[PUBLISH_CONFIRM_DISMISSED_KEY]
+  minimizeNotes.value = !!result[NOTES_MINIMIZED_KEY]
+  showAnchorInEditor.value = !!result[SHOW_ANCHOR_IN_EDITOR_KEY]
 })
 
 function onPublishWarningChange() {
-  chrome.storage.local.set({ [PUBLISH_CONFIRM_DISMISSED_KEY]: !showPublishWarning.value })
+  browser.storage.local.set({ [PUBLISH_CONFIRM_DISMISSED_KEY]: !showPublishWarning.value })
 }
 
 function onMinimizeNotesChange() {
-  chrome.storage.local.set({ [NOTES_MINIMIZED_KEY]: minimizeNotes.value })
+  browser.storage.local.set({ [NOTES_MINIMIZED_KEY]: minimizeNotes.value })
 }
 
 function onShowAnchorInEditorChange() {
-  chrome.storage.local.set({ [SHOW_ANCHOR_IN_EDITOR_KEY]: showAnchorInEditor.value })
+  browser.storage.local.set({ [SHOW_ANCHOR_IN_EDITOR_KEY]: showAnchorInEditor.value })
 }
 
 function openKofi() {

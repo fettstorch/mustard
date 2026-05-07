@@ -6,7 +6,7 @@ import { DtoMustardNote } from '@/shared/dto/DtoMustardNote'
 import { LIMITS } from '@/shared/constants'
 
 const LOCAL_AUTHOR_ID = 'local'
-const storageKey = `mustard-notes-${chrome.runtime.id}`
+const storageKey = `mustard-notes-${browser.runtime.id}`
 const storageIndexKey = `${storageKey}-index`
 
 /** Returns the storage key for notes on a specific page */
@@ -16,19 +16,19 @@ function notesKey(pageUrl: string): string {
 
 /**
  * Local storage service for mustard notes.
- * Stores the user's own local/draft notes in chrome.storage.local.
+ * Stores the user's own local/draft notes in browser.storage.local.
  * All notes here have authorId='local' — no follows filtering needed.
  */
 export class MustardNotesServiceLocal implements MustardNotesService {
   async queryIndex(): Promise<MustardIndex> {
-    const result = await chrome.storage.local.get(storageIndexKey)
+    const result = await browser.storage.local.get(storageIndexKey)
     const dto = (result[storageIndexKey] ?? {}) as DtoMustardIndex
     return DtoMustardIndex.fromDto(dto)
   }
 
   async queryNotes(pageUrl: string): Promise<MustardNote[]> {
     const key = notesKey(pageUrl)
-    const result = await chrome.storage.local.get(key)
+    const result = await browser.storage.local.get(key)
     const dtos = (result[key] ?? []) as DtoMustardNote[]
     return dtos.map(DtoMustardNote.fromDto)
   }
@@ -47,7 +47,7 @@ export class MustardNotesServiceLocal implements MustardNotesService {
     const key = notesKey(pageUrl)
 
     // Get existing notes for this page
-    const result = await chrome.storage.local.get(key)
+    const result = await browser.storage.local.get(key)
     const dtos = (result[key] ?? []) as DtoMustardNote[]
 
     // Find existing note by ID or add new
@@ -60,7 +60,7 @@ export class MustardNotesServiceLocal implements MustardNotesService {
     }
 
     // Save notes
-    await chrome.storage.local.set({ [key]: dtos })
+    await browser.storage.local.set({ [key]: dtos })
 
     // Update index to include this page for local user
     await this.addPageToIndex(pageUrl)
@@ -70,7 +70,7 @@ export class MustardNotesServiceLocal implements MustardNotesService {
     const key = notesKey(pageUrl)
 
     // Get existing notes
-    const result = await chrome.storage.local.get(key)
+    const result = await browser.storage.local.get(key)
     const dtos = (result[key] ?? []) as DtoMustardNote[]
 
     // Remove the note
@@ -78,26 +78,26 @@ export class MustardNotesServiceLocal implements MustardNotesService {
 
     if (filtered.length === 0) {
       // No more notes on this page, remove the key and update index
-      await chrome.storage.local.remove(key)
+      await browser.storage.local.remove(key)
       await this.removePageFromIndex(pageUrl)
     } else {
-      await chrome.storage.local.set({ [key]: filtered })
+      await browser.storage.local.set({ [key]: filtered })
     }
   }
 
   private async addPageToIndex(pageUrl: string): Promise<void> {
-    const result = await chrome.storage.local.get(storageIndexKey)
+    const result = await browser.storage.local.get(storageIndexKey)
     const dto = (result[storageIndexKey] ?? {}) as DtoMustardIndex
 
     const pages = dto[LOCAL_AUTHOR_ID] ?? []
     if (!pages.includes(pageUrl)) {
       dto[LOCAL_AUTHOR_ID] = [...pages, pageUrl]
-      await chrome.storage.local.set({ [storageIndexKey]: dto })
+      await browser.storage.local.set({ [storageIndexKey]: dto })
     }
   }
 
   private async removePageFromIndex(pageUrl: string): Promise<void> {
-    const result = await chrome.storage.local.get(storageIndexKey)
+    const result = await browser.storage.local.get(storageIndexKey)
     const dto = (result[storageIndexKey] ?? {}) as DtoMustardIndex
 
     const pages = dto[LOCAL_AUTHOR_ID] ?? []
@@ -107,6 +107,6 @@ export class MustardNotesServiceLocal implements MustardNotesService {
       delete dto[LOCAL_AUTHOR_ID]
     }
 
-    await chrome.storage.local.set({ [storageIndexKey]: dto })
+    await browser.storage.local.set({ [storageIndexKey]: dto })
   }
 }
