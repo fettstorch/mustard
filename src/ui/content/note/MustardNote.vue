@@ -298,6 +298,16 @@ const isMinimized = computed(() => mustardState.areNotesMinimized)
   display: none;
 }
 
+:deep(.mustard-note-content h1),
+:deep(.mustard-note-content h2),
+:deep(.mustard-note-content h3),
+:deep(.mustard-note-content h4),
+:deep(.mustard-note-content h5),
+:deep(.mustard-note-content h6) {
+  color: var(--mustard-text) !important;
+  margin: 0.25em 0;
+}
+
 :deep(.mustard-note-image) {
   pointer-events: none;
   user-select: none;

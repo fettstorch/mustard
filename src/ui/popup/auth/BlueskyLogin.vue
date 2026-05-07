@@ -26,7 +26,7 @@ async function submit() {
 
   try {
     // Send to service worker - it handles OAuth and persists across popup close
-    const session = (await chrome.runtime.sendMessage(
+    const session = (await browser.runtime.sendMessage(
       createAtprotoLoginMessage(handle),
     )) as AtprotoSessionResponse
     if (session) {
@@ -43,7 +43,7 @@ async function submit() {
 </script>
 
 <template>
-  <div class="flex flex-col gap-3">
+  <div class="login-form">
     <p class="login-label">Login with Bluesky</p>
     <input
       v-model="blueskyHandle"
@@ -60,14 +60,26 @@ async function submit() {
     >
       {{ isLoggingIn ? 'Logging in...' : 'Login' }}
     </button>
-    <p v-if="errorMessage" class="text-sm text-red-700 font-medium">{{ errorMessage }}</p>
+    <p v-if="errorMessage" class="login-error">{{ errorMessage }}</p>
   </div>
 </template>
 
 <style scoped>
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
 .login-label {
   font-size: 0.875rem;
   font-weight: 500;
   color: var(--mustard-text);
+}
+
+.login-error {
+  font-size: 0.875rem;
+  color: #b91c1c;
+  font-weight: 500;
 }
 </style>

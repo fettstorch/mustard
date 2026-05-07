@@ -1,3 +1,24 @@
-@import 'tailwindcss';
 @import './mustard-theme.css';
 @import './mustard-notes.css';
+
+/* Reset browser defaults removed when Tailwind Preflight was dropped */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+}
+
+button {
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+  background: none;
+  border: none;
+}

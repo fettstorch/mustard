@@ -28,7 +28,7 @@ const activeTabId = ref<number | null>(null)
 
 onMounted(async () => {
   // Get session via service worker (auth state lives there)
-  const existingSession = (await chrome.runtime.sendMessage(
+  const existingSession = (await browser.runtime.sendMessage(
     createGetAtprotoSessionMessage(),
   )) as AtprotoSessionResponse
   if (existingSession) {
@@ -36,15 +36,15 @@ onMounted(async () => {
   }
 
   // Load minimize preference from storage
-  const stored = await chrome.storage.local.get(NOTES_MINIMIZED_KEY)
+  const stored = await browser.storage.local.get(NOTES_MINIMIZED_KEY)
   areNotesMinimized.value = !!stored[NOTES_MINIMIZED_KEY]
 
   // Get active tab and query its notes visibility state
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+  const [tab] = await browser.tabs.query({ active: true, currentWindow: true })
   if (tab?.id && tab.url && (tab.url.startsWith('http://') || tab.url.startsWith('https://'))) {
     activeTabId.value = tab.id
     try {
-      const visible = await chrome.tabs.sendMessage(tab.id, createGetNotesVisibleMessage())
+      const visible = await browser.tabs.sendMessage(tab.id, createGetNotesVisibleMessage())
       areNotesVisible.value = visible
     } catch {
       // Content script not yet injected on this tab (e.g. tab was open before install)
@@ -56,7 +56,7 @@ async function toggleNotesVisibility() {
   if (!activeTabId.value) return
   try {
     const newVisible = !areNotesVisible.value
-    await chrome.tabs.sendMessage(activeTabId.value, createSetNotesVisibleMessage(newVisible))
+    await browser.tabs.sendMessage(activeTabId.value, createSetNotesVisibleMessage(newVisible))
     areNotesVisible.value = newVisible
   } catch {
     // Content script not available on this tab
@@ -66,7 +66,7 @@ async function toggleNotesVisibility() {
 function toggleNotesMinimized() {
   const newValue = !areNotesMinimized.value
   areNotesMinimized.value = newValue
-  chrome.storage.local.set({ [NOTES_MINIMIZED_KEY]: newValue })
+  browser.storage.local.set({ [NOTES_MINIMIZED_KEY]: newValue })
 }
 
 // Fetch profile when session changes
@@ -74,7 +74,7 @@ watch(
   session,
   async (newSession) => {
     if (newSession) {
-      const profiles = (await chrome.runtime.sendMessage(
+      const profiles = (await browser.runtime.sendMessage(
         createGetProfilesMessage([newSession.did]),
       )) as GetProfilesResponse
       profile.value = profiles[newSession.did] ?? null
@@ -91,27 +91,27 @@ function onLoginSuccess(newSession: NonNullable<AtprotoSessionResponse>) {
 
 async function handleLogout() {
   if (!session.value) return
-  await chrome.runtime.sendMessage(createAtprotoLogoutMessage(session.value.did))
+  await browser.runtime.sendMessage(createAtprotoLogoutMessage(session.value.did))
   session.value = null
 }
 
 function openOptions() {
-  chrome.runtime.openOptionsPage()
+  browser.runtime.openOptionsPage()
 }
 
-const gearIconUrl = chrome.runtime.getURL('gear_128.png')
-const logoUrl = chrome.runtime.getURL('mustard_bottle_smile_512.png')
+const gearIconUrl = browser.runtime.getURL('/gear_128.png')
+const logoUrl = browser.runtime.getURL('/mustard_bottle_smile_512.png')
 </script>
 
 <template>
   <div class="mustard-popup mustard-notes-bg mustard-notes-txt">
-    <div class="flex justify-between items-center mb-4">
-      <h1 class="mustard-title flex items-center gap-1.5">
-        <img :src="logoUrl" alt="Mustard" class="w-6 h-6" />
+    <div class="popup-header">
+      <h1 class="mustard-title">
+        <img :src="logoUrl" alt="Mustard" class="popup-logo" />
         Mustard
       </h1>
       <button @click="openOptions" class="mustard-icon-btn" title="Options">
-        <img :src="gearIconUrl" alt="Settings" class="w-5 h-5 block" />
+        <img :src="gearIconUrl" alt="Settings" class="icon-img" />
       </button>
     </div>
 
@@ -140,25 +140,22 @@ const logoUrl = chrome.runtime.getURL('mustard_bottle_smile_512.png')
     </div>
 
     <!-- Logged in -->
-    <div v-if="session" class="flex flex-col gap-3">
-      <div class="flex items-center gap-3">
+    <div v-if="session" class="session-container">
+      <div class="profile-row">
         <img
           v-if="profile?.avatarUrl"
           :src="profile.avatarUrl"
           alt="Profile picture"
-          class="w-10 h-10 rounded-full object-cover border-2 border-[var(--mustard-border)]"
+          class="avatar"
         />
-        <div
-          v-else
-          class="w-10 h-10 rounded-full flex items-center justify-center border-2 avatar-placeholder"
-        >
-          <span class="text-sm">?</span>
+        <div v-else class="avatar avatar-placeholder">
+          <span class="avatar-placeholder-text">?</span>
         </div>
-        <div class="flex flex-col min-w-0">
-          <span class="mustard-label font-medium truncate">
+        <div class="profile-info">
+          <span class="profile-name mustard-label">
             {{ profile?.displayName ?? 'Loading...' }}
           </span>
-          <span class="text-xs opacity-60 truncate"> @{{ profile?.handle ?? '...' }} </span>
+          <span class="profile-handle"> @{{ profile?.handle ?? '...' }} </span>
         </div>
       </div>
       <button @click="handleLogout" class="mustard-notes-btn">Logout</button>
@@ -175,9 +172,30 @@ const logoUrl = chrome.runtime.getURL('mustard_bottle_smile_512.png')
   padding: 1em;
 }
 
+.popup-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
 .mustard-title {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
   font-size: 1.25rem;
   font-weight: 600;
+}
+
+.popup-logo {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
+.icon-img {
+  width: 1.25rem;
+  height: 1.25rem;
+  display: block;
 }
 
 .mustard-label {
@@ -244,8 +262,57 @@ const logoUrl = chrome.runtime.getURL('mustard_bottle_smile_512.png')
   transform: translateX(2px);
 }
 
+.session-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.profile-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.avatar {
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 9999px;
+  object-fit: cover;
+  border: 2px solid var(--mustard-border);
+  flex-shrink: 0;
+}
+
 .avatar-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   background-color: var(--mustard-orange-dark);
   border-color: var(--mustard-border);
+}
+
+.avatar-placeholder-text {
+  font-size: 0.875rem;
+}
+
+.profile-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.profile-name {
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-handle {
+  font-size: 0.75rem;
+  opacity: 0.6;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>
