@@ -4,7 +4,7 @@
   "client_uri": "https://fettstorch.github.io/mustard/",
   "redirect_uris": [
     "https://mmdodhbelecgangbkloiaoohdinhkpcj.chromiumapp.org/callback",
-    "https://gpfmmjemfofiflnhedmpaononjimfikl.chromiumapp.org/callback"
+    "https://c9cf034d2aa4621d4d822c35dcee1027cd233b51.extensions.allizom.org/callback"
   ],
   "scope": "atproto",
   "grant_types": ["authorization_code", "refresh_token"],

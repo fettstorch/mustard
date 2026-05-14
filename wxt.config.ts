@@ -31,6 +31,15 @@ export default defineConfig({
   manifest: ({ browser }) => ({
     name: 'Mustard',
     ...(browser === 'chrome' ? { key: CHROME_KEY } : {}),
+    ...(browser === 'firefox'
+      ? {
+          // Pins the firefox addon ID so the OAuth redirect URI is stable.
+          // Without this, temporary add-ons get a random ID per install.
+          browser_specific_settings: {
+            gecko: { id: 'mustard@notes' },
+          },
+        }
+      : {}),
     permissions: ['storage', 'contextMenus', 'identity'],
     host_permissions: ['<all_urls>'],
     content_security_policy: {

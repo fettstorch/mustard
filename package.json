@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "wxt -b chrome --mode production",
     "dev:local": "wxt -b chrome",
-    "dev:firefox": "wxt -b firefox",
+    "dev:firefox": "wxt -b firefox --mode production",
+    "dev:firefox:local": "wxt -b firefox",
     "setup:local": "open \"http://127.0.0.1:54323/project/default/editor/17746?schema=public\" && stmux -w always -- [ \"supabase start && supabase functions serve\" .. \"npm run dev:local\" ]",
     "build": "wxt build -b chrome",
     "build:firefox": "wxt build -b firefox",
