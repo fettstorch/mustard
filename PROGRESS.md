@@ -71,7 +71,11 @@ flowchart TB
 
 ## Completed
 
-- Chrome extension setup with WXT (cross-browser framework, Vite-based); Tailwind CSS removed; all `chrome.*` APIs replaced with `browser.*` polyfill
+- Chrome + Firefox extension setup with WXT (cross-browser framework, Vite-based); Tailwind CSS removed; all `chrome.*` APIs replaced with `browser.*`
+- Per-browser build output: `./dist/chrome` and `./dist/firefox` via `outDirTemplate: '{{browser}}'`
+- Chrome local unpacked ID pinned to Web Store ID (`mmdodhbelecgangbkloiaoohdinhkpcj`) via `manifest.key` — dev and prod share one OAuth redirect URI
+- Firefox addon ID pinned via `browser_specific_settings.gecko.id: 'mustard@notes'` — stable redirect URI across reloads and future AMO submission
+- npm scripts: `dev`/`dev:firefox` build against production supabase; `dev:local`/`dev:firefox:local` against local supabase
 - Extension icon (mustard bottle) displays in Chrome toolbar
 - MustardPopupMenu accessible via extension icon click
 - MustardOptionsPage accessible via chrome://extensions → Options
@@ -92,7 +96,7 @@ flowchart TB
 - DTOs for serialization: `DtoMustardNote`, `DtoMustardIndex` with `toDto`/`fromDto` mappers
 - `MustardNote` model with `authorId`, `MustardIndex` class with follows/merge support
 - `MustardNotesManager` coordinates services, merges indexes from multiple services
-- Service worker ↔ content script: `QUERY_NOTES`, `UPSERT_NOTE`, `DELETE_NOTE` messaging via sendResponse
+- Service worker ↔ content script messaging via Promise-returning `onMessage` listeners (cross-browser: Chrome 99+ and Firefox); relay strips Vue reactive Proxies via `JSON.parse(JSON.stringify(...))` before `runtime.sendMessage` (Firefox `structuredClone` rejects proxies)
 - Notes persisted to chrome.storage.local and retrieved on page load
 - DTOs moved to `src/shared/dto/` for access by both background and content scripts
 - `MustardNote.vue` component renders notes at anchor positions with date footer
