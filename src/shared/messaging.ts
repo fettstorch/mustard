@@ -54,7 +54,7 @@ export type UpsertNoteMessage = Satisfies<
   }
 >
 
-// Message to query notes for a page (response via sendResponse callback)
+// Message to query notes for a page (response: DtoMustardNote[])
 export type QueryNotesMessage = Satisfies<
   BaseMessage,
   {
@@ -63,7 +63,7 @@ export type QueryNotesMessage = Satisfies<
   }
 >
 
-// Message to delete a note (response returns fresh notes via sendResponse)
+// Message to delete a note (response: fresh DtoMustardNote[])
 export type DeleteNoteMessage = Satisfies<
   BaseMessage,
   {

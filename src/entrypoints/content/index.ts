@@ -110,17 +110,16 @@ export default defineContentScript({
       }
     }
 
-    // Handle messages from service worker and popup
-    browser.runtime.onMessage.addListener((message: Message, _sender, sendResponse) => {
+    // Handle messages from service worker and popup.
+    // Returning a Promise from the listener works on both Chrome (99+) and Firefox.
+    browser.runtime.onMessage.addListener((message: Message) => {
       console.debug('mustard [content-script] onMessage:', message)
       if (message.type === 'GET_NOTES_VISIBLE') {
-        sendResponse(mustardState.areNotesVisible)
-        return
+        return Promise.resolve(mustardState.areNotesVisible)
       }
       if (message.type === 'SET_NOTES_VISIBLE') {
         mustardState.areNotesVisible = message.visible
-        sendResponse(mustardState.areNotesVisible)
-        return
+        return Promise.resolve(mustardState.areNotesVisible)
       }
       if (message.type === 'OPEN_NOTE_EDITOR') {
         if (!mustardState.areNotesVisible) {
@@ -261,12 +260,15 @@ export default defineContentScript({
     window.addEventListener('mousemove', handlePotentialInvalidation, { passive: true })
     window.addEventListener('keydown', handlePotentialInvalidation, { passive: true })
 
-    // content-script acts as message relay between the vue app and the service worker
+    // content-script acts as message relay between the vue app and the service worker.
+    // Strip Vue reactive Proxies before sending — Firefox's structuredClone rejects them.
+    const toPlain = <T>(value: T): T => JSON.parse(JSON.stringify(value))
+
     event.subscribe((message) => {
       if (message.type === 'UPSERT_NOTE') {
         const isLocalOperation = message.target === 'local'
         browser.runtime
-          .sendMessage(message)
+          .sendMessage(toPlain(message))
           .then((dtos: DtoMustardNote[]) => {
             console.debug('mustard [content-script] received notes after upsert:', dtos)
             const newNotes = (dtos ?? []).map(DtoMustardNote.fromDto)
@@ -279,13 +281,15 @@ export default defineContentScript({
             }
             clearPendingNoteIds()
           })
-          .catch(() => {})
+          .catch((err) => {
+            console.error('mustard [content-script] UPSERT_NOTE failed:', err)
+          })
       }
 
       if (message.type === 'DELETE_NOTE') {
         const isLocalDelete = message.authorId === 'local'
         browser.runtime
-          .sendMessage(message)
+          .sendMessage(toPlain(message))
           .then((dtos: DtoMustardNote[]) => {
             console.debug('mustard [content-script] received notes after delete:', dtos)
             const newNotes = (dtos ?? []).map(DtoMustardNote.fromDto)
@@ -297,7 +301,9 @@ export default defineContentScript({
             }
             clearPendingNoteIds()
           })
-          .catch(() => {})
+          .catch((err) => {
+            console.error('mustard [content-script] DELETE_NOTE failed:', err)
+          })
       }
     })
 
