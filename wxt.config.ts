@@ -17,13 +17,20 @@ const inlineIcons: Plugin = {
   },
 }
 
+// Public key from the Chrome Web Store listing. Embedding it pins the local
+// unpacked extension ID to the deployed one (mmdodhbelecgangbkloiaoohdinhkpcj),
+// so dev/prod share a single OAuth redirect URI.
+const CHROME_KEY =
+  'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA4cX9OgjhRCzrRvauVIyPhd9Lb0VarCl37jxpogyafhuSXiiFNzJbza/Oh/C01wqNMmsqCaeWv7abaOFwNqlhz1rCzi3nbl8EBPZKCSV4BdzWYkTeCoaXkBMZjo1yCutIwA+c0K/1pb9D/pCsbqEMUSz9bxe2weHd90g1xu/DRoNorZtUrK14ha9tFSdeignk1UGGOTSQ4el+a01FAvzOCZJYACKzaY/gtHHa9uTRFjij6BDu+CK6WBqoD063HiJZYM7qM1occAnbhRDN3QSx6jw/lrY8SPyEgKMlNOVCzH7EDGK4cSZw8KH3umagMP0Ts1wIWIOi9XE9Fjf6+AH8LwIDAQAB'
+
 export default defineConfig({
   srcDir: 'src',
-  outDir: '.',
-  outDirTemplate: 'dist',
+  outDir: 'dist',
+  outDirTemplate: '{{browser}}',
 
-  manifest: {
+  manifest: ({ browser }) => ({
     name: 'Mustard',
+    ...(browser === 'chrome' ? { key: CHROME_KEY } : {}),
     permissions: ['storage', 'contextMenus', 'identity'],
     host_permissions: ['<all_urls>'],
     content_security_policy: {
@@ -41,7 +48,7 @@ export default defineConfig({
         matches: ['<all_urls>'],
       },
     ],
-  },
+  }),
 
   vite: () => ({
     plugins: [inlineIcons, vue()],
