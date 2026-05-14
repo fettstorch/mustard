@@ -36,7 +36,12 @@ export default defineConfig({
           // Pins the firefox addon ID so the OAuth redirect URI is stable.
           // Without this, temporary add-ons get a random ID per install.
           browser_specific_settings: {
-            gecko: { id: 'mustard@notes' },
+            gecko: {
+              id: 'mustard@notes',
+              // Required by AMO: declares no automatic/background data collection.
+              // Notes are only transmitted when the user explicitly clicks Publish.
+              data_collection_permissions: { required: ['none'] },
+            },
           },
         }
       : {}),
