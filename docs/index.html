@@ -12,7 +12,7 @@
 
   <!-- OpenGraph -->
   <meta property="og:title" content="Mustard" />
-  <meta property="og:description" content="A Chrome extension that lets you annotate any webpage with notes and share them with your Bluesky followers." />
+  <meta property="og:description" content="A browser extension that lets you annotate any webpage with notes and share them with your Bluesky followers." />
   <meta property="og:image" content="https://fettstorch.github.io/mustard/og-image.png" />
   <meta property="og:url" content="https://mustardnotes.com" />
   <meta property="og:type" content="website" />
@@ -20,7 +20,7 @@
   <!-- Twitter/Bluesky card -->
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="Mustard" />
-  <meta name="twitter:description" content="A Chrome extension that lets you annotate any webpage with notes and share them with your Bluesky followers." />
+  <meta name="twitter:description" content="A browser extension that lets you annotate any webpage with notes and share them with your Bluesky followers." />
   <meta name="twitter:image" content="https://fettstorch.github.io/mustard/og-image.png" />
   <style>
     * {
@@ -108,6 +108,9 @@
 
     .hero-cta {
       display: inline-flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 10px;
       margin-top: 24px;
     }
 
@@ -298,8 +301,11 @@
       published mustard for your friends to see!
     </p>
     <div class="hero-cta">
-      <a href="https://chrome.mustardnotes.com/" rel="noopener noreferrer" target="_blank">
+      <a id="link-chrome" href="https://chrome.mustardnotes.com/" rel="noopener noreferrer" target="_blank">
         Get Mustard — Chrome Web Store
+      </a>
+      <a id="link-firefox" href="https://firefox.mustardnotes.com/" rel="noopener noreferrer" target="_blank">
+        Get Mustard — Firefox Add-ons
       </a>
     </div>
   </div>
@@ -380,7 +386,7 @@
         </li>
         <li>
           <strong>Local notes are truly local:</strong> Notes saved locally never leave your
-          browser. They're stored in Chrome's extension storage.
+          browser. They're stored in your browser's extension storage.
         </li>
         <li>
           <strong>Single page applications:</strong> Notes are tied to URLs. On single page
@@ -393,6 +399,20 @@
       </ul>
     </section>
   </div>
+  <script>
+    (function() {
+      var ua = navigator.userAgent;
+      var isFirefox = ua.includes('Firefox');
+      var isChromium = ua.includes('Chrome') || ua.includes('Chromium');
+      var chromeLink = document.getElementById('link-chrome');
+      var firefoxLink = document.getElementById('link-firefox');
+      if (isFirefox && !isChromium) {
+        chromeLink.style.display = 'none';
+      } else if (isChromium && !isFirefox) {
+        firefoxLink.style.display = 'none';
+      }
+    })();
+  </script>
 </body>
 
 </html>

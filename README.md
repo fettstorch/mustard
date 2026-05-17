@@ -1,6 +1,6 @@
 # Mustard
 
-A Chrome extension that lets users annotate web pages with "mustard" (notes) and follow others to see their annotations on the same pages.
+A browser extension that lets users annotate web pages with "mustard" (notes) and follow others to see their annotations on the same pages.
 
 ## Project Vision
 
@@ -70,7 +70,7 @@ flowchart LR
         OPTO["options.html"]
     end
 
-    subgraph RT["Chrome Extension Runtime"]
+    subgraph RT["Browser Extension Runtime"]
         direction TB
         SW["Service Worker"]
         INJ["Injected into\nevery page"]
@@ -89,7 +89,7 @@ flowchart LR
     OPTO --> OW
 ```
 
-### Frontend (Chrome Extension)
+### Frontend (Browser Extension)
 
 - **Content Script**: Injects mustard notes into web pages, handles SPA navigation
 - **Background Service Worker**: Manages messaging, authentication, note operations
@@ -191,6 +191,13 @@ WXT watches for file changes and rebuilds automatically. The extension is built 
 5. The extension icon (mustard bottle) appears in toolbar
 
 For manifest changes, click the refresh icon on the extension card in `chrome://extensions/`.
+
+### Load Extension in Firefox
+
+1. Open `about:debugging#/runtime/this-firefox`
+2. Click "Load Temporary Add-on..."
+3. Select `dist/firefox/manifest.json`
+4. The extension icon (mustard bottle) appears in toolbar
 
 ### Type Check
 
