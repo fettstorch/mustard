@@ -105,6 +105,10 @@ export default defineBackground(() => {
     }
   })
 
+  browser.runtime.onStartup.addListener(() => {
+    updateActionBadge()
+  })
+
   // Initial badge sync at SW startup (best-effort).
   updateActionBadge()
 
@@ -223,6 +227,7 @@ export default defineBackground(() => {
       return (async () => {
         try {
           const session = await getSession()
+          updateActionBadge()
           return session ? { did: session.did } : null
         } catch (err) {
           console.error('GET_ATPROTO_SESSION failed:', err)
