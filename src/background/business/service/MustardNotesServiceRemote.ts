@@ -6,7 +6,12 @@ import { getSupabaseJwt } from '@/background/auth/SupabaseAuth'
 import { MustardIndex as MustardIndexClass } from '@/shared/model/MustardIndex'
 import { LIMITS } from '@/shared/constants'
 
-const GET_INDEX_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-index`
+// Versioned endpoint. The legacy `get-index` function is kept deployed for
+// older clients (which send the anon key as Bearer); this client mints a
+// per-user JWT and uses `get-index-v2`, which strictly verifies the JWT and
+// also returns the myUnreadByPage / latestNoteAtByPage fields the popup's
+// "My Mustard Notes" overview needs.
+const GET_INDEX_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-index-v2`
 
 // Index cache with TTL (30 seconds for dev, increase for production)
 const INDEX_CACHE_TTL_MS = 30 * 1000

@@ -42,7 +42,7 @@ flowchart TB
     subgraph Storage["Storage & External"]
         direction LR
         ChromeStorage[("browser.storage.local")]
-        EdgeFns["Edge Functions<br/>auth-bridge • get-index"]
+        EdgeFns["Edge Functions<br/>auth-bridge • get-index (legacy) •<br/>get-index-v2 (strict JWT)"]
         DB[("Postgres<br/>notes • comments •<br/>notifications • oauth_*")]
         BSkyAPI["bsky.social API"]
     end
@@ -152,7 +152,8 @@ flowchart TB
 - Database migration files: 001 (table structure), 002 (CHECK constraints), 003 (OAuth tables)
 - Notes use fixed positioning + scroll listeners: anchor to elements without affecting page layout or causing scrollbars
 - Comments: flat (no nesting) comment threads on remote notes only; `comments` table (public read, author-only write/delete, 300-char limit, cascades from `notes`); bottom-left `CommentToggle` pill with speech-bubble icon, unread red dot, count, and hover-only "+ Add comment" affordance (CSS-only `grid-template-columns: 0fr→1fr` animation); thread expands downward with `max-height: 240px` scroll, auto-scrolls to newest on open; comments load in parallel with notes (notes paint first); comment authors' avatars fetched via existing `GET_PROFILES`; current user's avatar shown next to input
-- Notifications: `notifications` table (presence = unread, no read column, cascades from `notes` and `comments`); Postgres `SECURITY DEFINER` trigger on `comments` INSERT skips self-comments; extension-icon badge via cross-browser `getActionApi()` shim (`browser.action` MV3 / `browser.browserAction` MV2 fallback); "My Mustard Notes" collapsible section in popup lists pages with notes sorted by unread-count desc then most-recent-note desc; in-page red dot clears when thread expanded (`MARK_NOTIFICATIONS_SEEN_FOR_NOTE` deletes rows); `get-index` edge function extended with `myUnreadByPage` + `latestNoteAtByPage` (single extra notifications query, reuses notes query for timestamps)
+- Notifications: `notifications` table (presence = unread, no read column, cascades from `notes` and `comments`); Postgres `SECURITY DEFINER` trigger on `comments` INSERT skips self-comments; extension-icon badge via cross-browser `getActionApi()` shim (`browser.action` MV3 / `browser.browserAction` MV2 fallback); "My Mustard Notes" collapsible section in popup lists pages with notes sorted by unread-count desc then most-recent-note desc; in-page red dot clears when thread expanded (`MARK_NOTIFICATIONS_SEEN_FOR_NOTE` deletes rows)
+- `get-index` edge function preserved as legacy (anon-key auth, original `{ index }` response) so currently-deployed clients keep working; new strict-auth variant lives at `get-index-v2` (per-user Supabase JWT verified via `jose.jwtVerify` against `JWT_SIGNING_SECRET`, enforces `payload.sub === did`, additionally returns `myUnreadByPage` + `latestNoteAtByPage` for the popup overview). New client points at `get-index-v2`; v1 can be removed once CWS auto-update has fully propagated
 - Note rendering: `white-space: pre-wrap` removed from `.mustard-note-content` (was causing markdown-it's inter-tag `\n` to render as visible blank lines)
 - Note rendering: empty/whitespace-only `<p>` tags stripped from markdown-it output via `EMPTY_P_REGEX` (CSS `p:empty` missed `<p>\n</p>`)
 - Note content trimmed before render and before save to prevent trailing newlines creating phantom `<br>` elements
