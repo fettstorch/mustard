@@ -17,6 +17,7 @@ import {
 } from '@/shared/messaging'
 import type { UserProfile } from '@/shared/model/UserProfile'
 import BlueskyLogin from './auth/BlueskyLogin.vue'
+import MyPagesSection from './MyPagesSection.vue'
 
 const NOTES_MINIMIZED_KEY = 'mustard-notes-minimized'
 
@@ -141,6 +142,7 @@ const logoUrl = browser.runtime.getURL('/mustard_bottle_smile_512.png')
 
     <!-- Logged in -->
     <div v-if="session" class="session-container">
+      <MyPagesSection />
       <div class="profile-row">
         <img
           v-if="profile?.avatarUrl"

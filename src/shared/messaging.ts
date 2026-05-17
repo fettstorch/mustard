@@ -1,4 +1,5 @@
 import type { DtoMustardNote } from './dto/DtoMustardNote'
+import type { DtoMustardComment } from './dto/DtoMustardComment'
 import type { Satisfies } from './Satisfies'
 import type { UserProfile, UserId } from './model/UserProfile'
 
@@ -157,6 +158,83 @@ export type OpenPopupMessage = Satisfies<
   }
 >
 
+// Content script → service worker: query all comments for a batch of remote note ids.
+// Response: Record<noteId, DtoMustardComment[]> (oldest → newest within each list).
+export type QueryCommentsMessage = Satisfies<
+  BaseMessage,
+  {
+    type: 'QUERY_COMMENTS'
+    noteIds: string[]
+  }
+>
+
+export type QueryCommentsResponse = Record<string, DtoMustardComment[]>
+
+// Content script → service worker: create a new comment on a remote note.
+// Response: fresh DtoMustardComment[] for that note (oldest → newest).
+export type UpsertCommentMessage = Satisfies<
+  BaseMessage,
+  {
+    type: 'UPSERT_COMMENT'
+    noteId: string
+    content: string
+  }
+>
+
+// Content script → service worker: delete one of my own comments.
+// Response: fresh DtoMustardComment[] for that note (oldest → newest).
+export type DeleteCommentMessage = Satisfies<
+  BaseMessage,
+  {
+    type: 'DELETE_COMMENT'
+    commentId: string
+    noteId: string
+  }
+>
+
+// Content script → service worker: how many unread notifications exist
+// for each of these note ids? Response: Record<noteId, number>.
+export type QueryNotificationsForNotesMessage = Satisfies<
+  BaseMessage,
+  {
+    type: 'QUERY_NOTIFICATIONS_FOR_NOTES'
+    noteIds: string[]
+  }
+>
+
+export type QueryNotificationsForNotesResponse = Record<string, number>
+
+// Content script → service worker: the recipient has now seen any unread
+// comments on this note (the thread was expanded on a page that owns the note).
+// Backend deletes all notifications for (recipient, noteId).
+// Response: void.
+export type MarkNotificationsSeenForNoteMessage = Satisfies<
+  BaseMessage,
+  {
+    type: 'MARK_NOTIFICATIONS_SEEN_FOR_NOTE'
+    noteId: string
+  }
+>
+
+// Popup → service worker: overview of pages where the user has notes, with
+// per-page unread counts. Response: DtoMyPagesOverview.
+export type GetMyPagesOverviewMessage = Satisfies<
+  BaseMessage,
+  {
+    type: 'GET_MY_PAGES_OVERVIEW'
+  }
+>
+
+// Broadcast: notifications state changed (mark-seen, new fetch with deltas).
+// Tells the popup to re-query the overview and lets content scripts know to
+// refresh their unread counters if needed.
+export type NotificationsChangedMessage = Satisfies<
+  BaseMessage,
+  {
+    type: 'NOTIFICATIONS_CHANGED'
+  }
+>
+
 // Discriminated union of all messages - enables type narrowing
 export type Message =
   | OpenNoteEditorMessage
@@ -172,6 +250,13 @@ export type Message =
   | SessionChangedMessage
   | SessionExpiredMessage
   | OpenPopupMessage
+  | QueryCommentsMessage
+  | UpsertCommentMessage
+  | DeleteCommentMessage
+  | QueryNotificationsForNotesMessage
+  | MarkNotificationsSeenForNoteMessage
+  | GetMyPagesOverviewMessage
+  | NotificationsChangedMessage
 
 export function createOpenNoteEditorMessage(): OpenNoteEditorMessage {
   return {
@@ -249,5 +334,55 @@ export function createSetNotesVisibleMessage(visible: boolean): SetNotesVisibleM
   return {
     type: 'SET_NOTES_VISIBLE',
     visible,
+  }
+}
+
+export function createQueryCommentsMessage(noteIds: string[]): QueryCommentsMessage {
+  return {
+    type: 'QUERY_COMMENTS',
+    noteIds,
+  }
+}
+
+export function createUpsertCommentMessage(noteId: string, content: string): UpsertCommentMessage {
+  return {
+    type: 'UPSERT_COMMENT',
+    noteId,
+    content,
+  }
+}
+
+export function createDeleteCommentMessage(
+  commentId: string,
+  noteId: string,
+): DeleteCommentMessage {
+  return {
+    type: 'DELETE_COMMENT',
+    commentId,
+    noteId,
+  }
+}
+
+export function createQueryNotificationsForNotesMessage(
+  noteIds: string[],
+): QueryNotificationsForNotesMessage {
+  return {
+    type: 'QUERY_NOTIFICATIONS_FOR_NOTES',
+    noteIds,
+  }
+}
+
+export function createMarkNotificationsSeenForNoteMessage(
+  noteId: string,
+): MarkNotificationsSeenForNoteMessage {
+  return {
+    type: 'MARK_NOTIFICATIONS_SEEN_FOR_NOTE',
+    noteId,
+  }
+}
+
+export function createGetMyPagesOverviewMessage(): GetMyPagesOverviewMessage {
+  return {
+    type: 'GET_MY_PAGES_OVERVIEW',
   }
 }

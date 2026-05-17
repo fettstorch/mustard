@@ -19,6 +19,7 @@ The name "mustard" comes from the German saying _"seinen Senf dazu geben"_ (to a
   - **Save locally**: Stored in browser only (no login required)
   - **Publish**: Stored on server, visible to followers (requires Bluesky login)
 - Users can delete their own notes
+- **Comments**: Any Bluesky-logged-in user can leave flat (non-nested) comments on published notes; comments are publicly readable; note authors are notified of new comments via an extension-icon badge and a "My Mustard Notes" popup section; unread indicators clear when the comment thread is expanded
 
 #### Social Graph & Following
 

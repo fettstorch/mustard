@@ -3,16 +3,22 @@ import {
   createQueryNotesMessage,
   createGetAtprotoSessionMessage,
   createGetProfilesMessage,
+  createQueryCommentsMessage,
+  createQueryNotificationsForNotesMessage,
   type Message,
   type MustardNoteAnchorData,
   type AtprotoSessionResponse,
   type GetProfilesResponse,
+  type QueryCommentsResponse,
+  type QueryNotificationsForNotesResponse,
 } from '@/shared/messaging'
 import { LIMITS } from '@/shared/constants'
 import { DtoMustardNote } from '@/shared/dto/DtoMustardNote'
+import { DtoMustardComment } from '@/shared/dto/DtoMustardComment'
 import MustardContent from '@/ui/content/MustardContent.vue'
 import { createMustardState } from '@/ui/content/mustard-state'
 import type { MustardNote } from '@/shared/model/MustardNote'
+import type { MustardComment } from '@/shared/model/MustardComment'
 import { Observable } from '@fettstorch/jule'
 import { createApp, watch } from 'vue'
 
@@ -40,14 +46,11 @@ export default defineContentScript({
       )
     }
 
-    /** Fetches profiles for remote note authors that aren't already cached */
-    function fetchProfilesForNotes(notes: MustardNote[]) {
-      const remoteAuthorIds = notes
-        .filter((n) => n.authorId !== 'local')
-        .map((n) => n.authorId)
-        .filter((id) => !(id in mustardState.profiles))
-
-      const uniqueIds = [...new Set(remoteAuthorIds)]
+    /** Fetches profiles for a set of user IDs that aren't already cached */
+    function fetchProfiles(userIds: string[]) {
+      const uniqueIds = [
+        ...new Set(userIds.filter((id) => id !== 'local' && !(id in mustardState.profiles))),
+      ]
       if (uniqueIds.length === 0) return
 
       browser.runtime
@@ -57,6 +60,88 @@ export default defineContentScript({
           Object.assign(mustardState.profiles, response ?? {})
         })
         .catch(() => {})
+    }
+
+    /** Fetches profiles for remote note authors that aren't already cached */
+    function fetchProfilesForNotes(notes: MustardNote[]) {
+      fetchProfiles(notes.filter((n) => n.authorId !== 'local').map((n) => n.authorId))
+    }
+
+    function collectRemoteNoteIds(notes: MustardNote[]): string[] {
+      return notes.filter((n) => n.authorId !== 'local' && n.id).map((n) => n.id as string)
+    }
+
+    /** Fetch comments for the given remote note ids (populates state + author profiles). */
+    function fetchCommentsForNotes(notes: MustardNote[]) {
+      const remoteNoteIds = collectRemoteNoteIds(notes)
+
+      if (remoteNoteIds.length === 0) {
+        mustardState.comments = {}
+        mustardState.commentsLoadState = {}
+        return
+      }
+
+      // Mark all as loading. Existing rows stay so the UI doesn't flicker.
+      for (const id of remoteNoteIds) {
+        if (!mustardState.commentsLoadState[id]) {
+          mustardState.commentsLoadState[id] = 'loading'
+        }
+      }
+
+      browser.runtime
+        .sendMessage(createQueryCommentsMessage(remoteNoteIds))
+        .then((response: QueryCommentsResponse) => {
+          console.debug('mustard [content-script] received comments:', response)
+          const allAuthorIds: string[] = []
+          for (const noteId of remoteNoteIds) {
+            const dtos = (response ?? {})[noteId] ?? []
+            const comments: MustardComment[] = dtos.map(DtoMustardComment.fromDto)
+            mustardState.comments[noteId] = comments
+            mustardState.commentsLoadState[noteId] = 'loaded'
+            for (const c of comments) allAuthorIds.push(c.authorId)
+          }
+          if (allAuthorIds.length > 0) fetchProfiles(allAuthorIds)
+        })
+        .catch((err) => {
+          console.error('mustard [content-script] QUERY_COMMENTS failed:', err)
+          for (const id of remoteNoteIds) {
+            mustardState.commentsLoadState[id] = 'loaded'
+          }
+        })
+    }
+
+    /** Fetch unread-notification counts for the given remote note ids. */
+    function fetchUnreadForNotes(notes: MustardNote[]) {
+      const remoteNoteIds = collectRemoteNoteIds(notes)
+
+      if (remoteNoteIds.length === 0 || !mustardState.currentUserDid) {
+        mustardState.unreadByNoteId = {}
+        return
+      }
+
+      browser.runtime
+        .sendMessage(createQueryNotificationsForNotesMessage(remoteNoteIds))
+        .then((response: QueryNotificationsForNotesResponse) => {
+          console.debug('mustard [content-script] received notification counts:', response)
+          // Replace entirely so previously-unread-but-now-acknowledged notes lose their dot.
+          const next: Record<string, number> = {}
+          for (const [noteId, count] of Object.entries(response ?? {})) {
+            if (count > 0) next[noteId] = count
+          }
+          mustardState.unreadByNoteId = next
+        })
+        .catch((err) => {
+          console.error('mustard [content-script] QUERY_NOTIFICATIONS_FOR_NOTES failed:', err)
+        })
+    }
+
+    /**
+     * Convenience wrapper: comments + notifications in parallel, used right
+     * after notes are loaded for a page so the UI populates progressively.
+     */
+    function fetchCommentsAndNotificationsForNotes(notes: MustardNote[]) {
+      fetchCommentsForNotes(notes)
+      fetchUnreadForNotes(notes)
     }
 
     let currentPageUrl = normalizePageUrl(window.location.href)
@@ -73,6 +158,10 @@ export default defineContentScript({
       currentPageUrl = newUrl
 
       mustardState.notes = []
+      mustardState.comments = {}
+      mustardState.commentsLoadState = {}
+      mustardState.expandedCommentNoteIds = {}
+      mustardState.unreadByNoteId = {}
       browser.runtime
         .sendMessage(createQueryNotesMessage(newUrl))
         .then((dtos: DtoMustardNote[]) => {
@@ -80,6 +169,7 @@ export default defineContentScript({
           const notes = (dtos ?? []).map(DtoMustardNote.fromDto)
           mustardState.notes = notes
           fetchProfilesForNotes(notes)
+          fetchCommentsAndNotificationsForNotes(notes)
         })
         .catch(() => {})
     }
@@ -137,7 +227,11 @@ export default defineContentScript({
         mustardState.currentUserDid = message.did
         if (message.did) {
           document.getElementById('mustard-session-expired-banner')?.remove()
+          fetchProfiles([message.did])
         }
+        // Session change can change which notes are visible (follows differ),
+        // so clear per-note client state to avoid stale dots / comments.
+        mustardState.unreadByNoteId = {}
         browser.runtime
           .sendMessage(createQueryNotesMessage(getCurrentPageUrl()))
           .then((dtos: DtoMustardNote[]) => {
@@ -145,8 +239,14 @@ export default defineContentScript({
             const notes = (dtos ?? []).map(DtoMustardNote.fromDto)
             mustardState.notes = notes
             fetchProfilesForNotes(notes)
+            fetchCommentsAndNotificationsForNotes(notes)
           })
           .catch(() => {})
+        return
+      }
+      if (message.type === 'NOTIFICATIONS_CHANGED') {
+        // Re-fetch unread counts only — comments didn't change.
+        fetchUnreadForNotes(mustardState.notes)
         return
       }
     })
@@ -157,6 +257,10 @@ export default defineContentScript({
       .then((response: AtprotoSessionResponse) => {
         console.debug('mustard [content-script] session:', response)
         mustardState.currentUserDid = response?.did ?? null
+        // Eagerly resolve the current user's profile so the comment editor can
+        // render their avatar next to the input (and any other UI that wants it).
+        if (response?.did) fetchProfiles([response.did])
+        fetchUnreadForNotes(mustardState.notes)
       })
       .catch(() => {})
 
@@ -187,6 +291,7 @@ export default defineContentScript({
         const notes = (dtos ?? []).map(DtoMustardNote.fromDto)
         mustardState.notes = notes
         fetchProfilesForNotes(notes)
+        fetchCommentsAndNotificationsForNotes(notes)
       })
       .catch(() => {})
 
@@ -278,6 +383,9 @@ export default defineContentScript({
             } else {
               mustardState.notes = newNotes
               fetchProfilesForNotes(newNotes)
+              // A new remote note can have comments fetched (just to populate
+              // commentsLoadState=loaded → toggle becomes interactive).
+              fetchCommentsAndNotificationsForNotes(newNotes)
             }
             clearPendingNoteIds()
           })
@@ -288,6 +396,11 @@ export default defineContentScript({
 
       if (message.type === 'DELETE_NOTE') {
         const isLocalDelete = message.authorId === 'local'
+        // Free per-note state immediately for the deleted note (best-effort).
+        delete mustardState.comments[message.noteId]
+        delete mustardState.commentsLoadState[message.noteId]
+        delete mustardState.expandedCommentNoteIds[message.noteId]
+        delete mustardState.unreadByNoteId[message.noteId]
         browser.runtime
           .sendMessage(toPlain(message))
           .then((dtos: DtoMustardNote[]) => {
@@ -304,6 +417,55 @@ export default defineContentScript({
           .catch((err) => {
             console.error('mustard [content-script] DELETE_NOTE failed:', err)
           })
+      }
+
+      if (message.type === 'UPSERT_COMMENT') {
+        mustardState.pendingCommentForNoteIds[message.noteId] = true
+        browser.runtime
+          .sendMessage(toPlain(message))
+          .then((dtos) => {
+            console.debug('mustard [content-script] received comments after upsert:', dtos)
+            const comments = ((dtos as ReturnType<typeof DtoMustardComment.toDto>[]) ?? []).map(
+              DtoMustardComment.fromDto,
+            )
+            mustardState.comments[message.noteId] = comments
+            mustardState.commentsLoadState[message.noteId] = 'loaded'
+            fetchProfiles(comments.map((c) => c.authorId))
+          })
+          .catch((err) => {
+            console.error('mustard [content-script] UPSERT_COMMENT failed:', err)
+          })
+          .finally(() => {
+            delete mustardState.pendingCommentForNoteIds[message.noteId]
+          })
+      }
+
+      if (message.type === 'DELETE_COMMENT') {
+        mustardState.pendingCommentIds[message.commentId] = true
+        browser.runtime
+          .sendMessage(toPlain(message))
+          .then((dtos) => {
+            console.debug('mustard [content-script] received comments after delete:', dtos)
+            const comments = ((dtos as ReturnType<typeof DtoMustardComment.toDto>[]) ?? []).map(
+              DtoMustardComment.fromDto,
+            )
+            mustardState.comments[message.noteId] = comments
+            mustardState.commentsLoadState[message.noteId] = 'loaded'
+          })
+          .catch((err) => {
+            console.error('mustard [content-script] DELETE_COMMENT failed:', err)
+          })
+          .finally(() => {
+            delete mustardState.pendingCommentIds[message.commentId]
+          })
+      }
+
+      if (message.type === 'MARK_NOTIFICATIONS_SEEN_FOR_NOTE') {
+        // Optimistic clear; background also broadcasts NOTIFICATIONS_CHANGED.
+        delete mustardState.unreadByNoteId[message.noteId]
+        browser.runtime.sendMessage(toPlain(message)).catch((err) => {
+          console.error('mustard [content-script] MARK_NOTIFICATIONS_SEEN_FOR_NOTE failed:', err)
+        })
       }
     })
 

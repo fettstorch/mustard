@@ -56,6 +56,19 @@ Simple learnings discovered during development that document how things actually
 - **Firefox OAuth redirect URI** = `https://<sha1(addonId)>.extensions.allizom.org/<path>` — predict it by SHA-1-hashing the gecko.id string before deploying client metadata
 - **AMO does not assign an ID**: unlike Chrome Web Store, the AMO submission uses whatever `gecko.id` you set — so dev and prod naturally share one ID/redirect URI with no key dance
 
+## Supabase Local Migrations
+
+- `supabase start` only applies migrations on a **fresh** database; subsequent boots against an existing volume skip new migration files → run `supabase migration up` (preserves data) or `supabase db reset` (replays all migrations from scratch) to apply new migrations to an existing local instance
+
+## Firefox MV2 Action API
+
+- `browser.action` does not exist on Firefox MV2 (only MV3); must fall back to `browser.browserAction` at runtime — WXT's `browser` global is a raw passthrough and does not polyfill this difference
+
+## CSS Grid for Smooth Horizontal Expand Animations
+
+- `grid-template-columns: 0fr → 1fr` with `overflow: hidden` on the container and `min-width: 0` on the inner element produces smooth width-expand animations — same pattern as `grid-template-rows` for height, just on the X axis; useful for expanding labels/text without layout jumps
+- An implicit `auto` grid column sizes to its content's preferred width, so a `flex: 1` child inside it has no "extra" space to grow into; switching to `minmax(0, 1fr)` makes the column fill its container instead, which lets flex children actually expand when the surrounding layout widens
+
 ## Chrome Web Store Extension Identity
 
 - **Pin local unpacked ID to store ID via `manifest.key`**: extension ID for unpacked loads is path-derived (or key-derived if `key` is set). Paste the Web Store listing's public key (from Developer Dashboard → Package → "View public key") into `manifest.key` to make local dev share the production extension ID — eliminates the need to register two OAuth redirect URIs

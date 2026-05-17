@@ -6,12 +6,20 @@ import { getSupabaseJwt } from '@/background/auth/SupabaseAuth'
 import { MustardIndex as MustardIndexClass } from '@/shared/model/MustardIndex'
 import { LIMITS } from '@/shared/constants'
 
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
 const GET_INDEX_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-index`
 
 // Index cache with TTL (30 seconds for dev, increase for production)
 const INDEX_CACHE_TTL_MS = 30 * 1000
-let indexCache: { index: MustardIndex; userId: string; timestamp: number } | null = null
+
+type IndexCachePayload = {
+  index: MustardIndex
+  /** pageUrl → unread comment-notification count for the cached user (only their own pages) */
+  myUnreadByPage: Record<string, number>
+  /** pageUrl → most recent updated_at (Unix ms) across the cached user's own notes */
+  latestNoteAtByPage: Record<string, number>
+}
+
+let indexCache: (IndexCachePayload & { userId: string; timestamp: number }) | null = null
 
 interface DbNote {
   id: string
@@ -26,57 +34,88 @@ interface DbNote {
   updated_at: string
 }
 
+interface GetIndexResponse {
+  index: Record<string, string[]>
+  myUnreadByPage?: Record<string, number>
+  latestNoteAtByPage?: Record<string, number>
+}
+
+/**
+ * Fetch the get-index response (cached). Returns the index plus
+ * the per-page overview data the popup needs.
+ *
+ * Returns null when:
+ *   - userId is missing, or
+ *   - the Supabase JWT can't be obtained (e.g. session expired).
+ */
+async function getCachedIndexPayload(userId?: string): Promise<IndexCachePayload | null> {
+  if (!userId) return null
+
+  // Validate JWT — detects session expiry and triggers logout/banner as a side effect.
+  // O(1) from cache when valid; only hits the network when JWT needs refreshing (~hourly).
+  const jwt = await getSupabaseJwt()
+  if (!jwt) return null
+
+  const now = Date.now()
+  if (
+    indexCache &&
+    indexCache.userId === userId &&
+    now - indexCache.timestamp < INDEX_CACHE_TTL_MS
+  ) {
+    return indexCache
+  }
+
+  try {
+    const response = await fetch(GET_INDEX_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${jwt}`,
+      },
+      body: JSON.stringify({ did: userId }),
+    })
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}))
+      throw new Error(`get-index failed: ${error.error || response.statusText}`)
+    }
+
+    const data: GetIndexResponse = await response.json()
+
+    const indexMap = new Map<string, string[]>(Object.entries(data.index))
+    const index = new MustardIndexClass(indexMap)
+
+    const payload: IndexCachePayload = {
+      index,
+      myUnreadByPage: data.myUnreadByPage ?? {},
+      latestNoteAtByPage: data.latestNoteAtByPage ?? {},
+    }
+
+    indexCache = { ...payload, userId, timestamp: now }
+
+    return payload
+  } catch (error) {
+    console.error('Failed to query remote index:', error)
+    return null
+  }
+}
+
 export class MustardNotesServiceRemote implements MustardNotesService {
   async queryIndex(userId?: string): Promise<MustardIndex> {
-    if (!userId) {
-      return new MustardIndexClass(new Map())
-    }
+    const payload = await getCachedIndexPayload(userId)
+    return payload?.index ?? new MustardIndexClass(new Map())
+  }
 
-    // Validate JWT — detects session expiry and triggers logout/banner as a side effect.
-    // O(1) from cache when valid; only hits the network when JWT needs refreshing (~hourly).
-    const jwt = await getSupabaseJwt()
-    if (!jwt) return new MustardIndexClass(new Map())
-
-    const now = Date.now()
-
-    // Use cache if: exists, same user, and not expired
-    if (
-      indexCache &&
-      indexCache.userId === userId &&
-      now - indexCache.timestamp < INDEX_CACHE_TTL_MS
-    ) {
-      return indexCache.index
-    }
-
-    try {
-      // Call the get-index Edge Function which fetches follows and builds the index
-      const response = await fetch(GET_INDEX_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-        },
-        body: JSON.stringify({ did: userId }),
-      })
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(`get-index failed: ${error.error || response.statusText}`)
-      }
-
-      const data: { index: Record<string, string[]> } = await response.json()
-
-      // Convert Record to Map
-      const indexMap = new Map<string, string[]>(Object.entries(data.index))
-      const index = new MustardIndexClass(indexMap)
-
-      // Cache the result
-      indexCache = { index, userId, timestamp: now }
-
-      return index
-    } catch (error) {
-      console.error('Failed to query remote index:', error)
-      return new MustardIndexClass(new Map())
+  /** Per-page overview data for the current user. Empty object if not logged in / not cached. */
+  async queryMyOverviewData(userId?: string): Promise<{
+    myUnreadByPage: Record<string, number>
+    latestNoteAtByPage: Record<string, number>
+  }> {
+    const payload = await getCachedIndexPayload(userId)
+    if (!payload) return { myUnreadByPage: {}, latestNoteAtByPage: {} }
+    return {
+      myUnreadByPage: payload.myUnreadByPage,
+      latestNoteAtByPage: payload.latestNoteAtByPage,
     }
   }
 
@@ -191,7 +230,7 @@ function dbNoteToMustardNote(dbNote: DbNote): MustardNote {
   }
 }
 
-/** Clear the cached index. Call on login/logout to ensure fresh data. */
+/** Clear the cached index. Call on login/logout/mutations to ensure fresh data. */
 export function invalidateRemoteIndexCache(): void {
   indexCache = null
 }

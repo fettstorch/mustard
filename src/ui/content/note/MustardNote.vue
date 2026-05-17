@@ -1,12 +1,19 @@
 <script setup lang="ts">
-import { computed, inject, ref, onUnmounted } from 'vue'
+import { computed, inject, ref, onUnmounted, watch, nextTick } from 'vue'
+import type { Observable } from '@fettstorch/jule'
 import type { MustardNote } from '@/shared/model/MustardNote'
 import type { MustardState } from '../mustard-state'
 import IconButton from '../IconButton.vue'
 import MustardNoteHeader from '../MustardNoteHeader.vue'
 import AuthorAvatar from './AuthorAvatar.vue'
+import CommentToggle from './CommentToggle.vue'
+import MustardCommentThread from './MustardCommentThread.vue'
 import { renderContent } from './render-content'
 import { LIMITS } from '@/shared/constants'
+import {
+  createMarkNotificationsSeenForNoteMessage,
+  type Message,
+} from '@/shared/messaging'
 
 const props = defineProps<{
   note: MustardNote
@@ -120,6 +127,73 @@ const shouldShowCharacterCount = computed(() => {
 const isHovered = ref(false)
 
 const isMinimized = computed(() => mustardState.areNotesMinimized)
+
+// --- Comments / notifications ---
+
+const event = inject<Observable<Message>>('event')!
+const commentThreadRef = ref<InstanceType<typeof MustardCommentThread> | null>(null)
+
+const noteId = computed(() => props.note.id)
+
+const commentsForNote = computed(() =>
+  noteId.value ? (mustardState.comments[noteId.value] ?? []) : [],
+)
+
+const commentCount = computed(() => commentsForNote.value.length)
+
+const commentsLoading = computed(() => {
+  if (!noteId.value) return false
+  return mustardState.commentsLoadState[noteId.value] !== 'loaded'
+})
+
+const unreadCount = computed(() => {
+  if (!noteId.value) return 0
+  return mustardState.unreadByNoteId[noteId.value] ?? 0
+})
+
+const isExpanded = computed(() => {
+  if (!noteId.value) return false
+  return !!mustardState.expandedCommentNoteIds[noteId.value]
+})
+
+const isLoggedIn = computed(() => mustardState.currentUserDid !== null)
+
+/** Show the toggle only on remote notes (local notes can't have remote comments). */
+const showCommentToggle = computed(() => isRemoteNote.value && !!noteId.value)
+
+function onToggleComments() {
+  const id = noteId.value
+  if (!id) return
+  const newExpanded = !mustardState.expandedCommentNoteIds[id]
+  mustardState.expandedCommentNoteIds[id] = newExpanded
+
+  if (newExpanded) {
+    // Mark notifications seen when the user actually sees the thread.
+    if (mustardState.unreadByNoteId[id]) {
+      event.emit(createMarkNotificationsSeenForNoteMessage(id))
+    }
+
+    // Always focus the textarea on open so logged-in users can type immediately.
+    nextTick(() => {
+      if (isLoggedIn.value) {
+        commentThreadRef.value?.focusInput()
+      }
+    })
+  }
+}
+
+function requestLogin() {
+  // Open the extension popup so the user can log in.
+  browser.runtime.sendMessage({ type: 'OPEN_POPUP' }).catch(() => {})
+}
+
+// If the thread is expanded and an unread count comes in after the fact,
+// auto-mark-seen (e.g. NOTIFICATIONS_CHANGED arrived while expanded).
+watch(unreadCount, (count) => {
+  if (count > 0 && isExpanded.value && noteId.value) {
+    event.emit(createMarkNotificationsSeenForNoteMessage(noteId.value))
+  }
+})
 </script>
 
 <template>
@@ -154,7 +228,7 @@ const isMinimized = computed(() => mustardState.areNotesMinimized)
         </template>
       </MustardNoteHeader>
     </div>
-    <!-- Collapsible body (content + date + slot) -->
+    <!-- Collapsible body (content + footer + date + slot) -->
     <div class="mustard-note-body">
       <div class="mustard-note-body-inner">
         <!-- eslint-disable-next-line vue/no-v-html -->
@@ -166,14 +240,41 @@ const isMinimized = computed(() => mustardState.areNotesMinimized)
         <div v-if="shouldShowCharacterCount" class="character-count over-limit">
           {{ characterCountText }}
         </div>
-        <div class="mustard-note-date">
-          {{ formattedDate }}
-          <IconButton
-            v-if="isRemoteNote && isMyOwnNote"
-            icon="published"
-            :static="true"
-            title="This note is published"
+        <div class="mustard-note-footer">
+          <CommentToggle
+            v-if="showCommentToggle"
+            class="mustard-note-comment-toggle"
+            :count="commentCount"
+            :loading="commentsLoading"
+            :unread="unreadCount"
+            :logged-in="isLoggedIn"
+            :expanded="isExpanded"
+            :note-hovered="isHovered"
+            @click="onToggleComments"
           />
+          <div class="mustard-note-date">
+            {{ formattedDate }}
+            <IconButton
+              v-if="isRemoteNote && isMyOwnNote"
+              icon="published"
+              :static="true"
+              title="This note is published"
+            />
+          </div>
+        </div>
+        <div
+          v-if="showCommentToggle"
+          class="mustard-note-thread-wrapper"
+          :class="{ 'is-open': isExpanded }"
+        >
+          <div class="mustard-note-thread-inner">
+            <MustardCommentThread
+              v-if="isExpanded"
+              ref="commentThreadRef"
+              :note="note"
+              @request-login="requestLogin"
+            />
+          </div>
         </div>
         <slot />
       </div>
@@ -329,6 +430,18 @@ const isMinimized = computed(() => mustardState.areNotesMinimized)
   font-weight: bold;
 }
 
+.mustard-note-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.mustard-note-comment-toggle {
+  flex-shrink: 0;
+}
+
 .mustard-note-date {
   display: flex;
   justify-content: flex-end;
@@ -336,10 +449,44 @@ const isMinimized = computed(() => mustardState.areNotesMinimized)
   gap: 2px;
   font-size: 0.75em;
   opacity: 0.5;
-  margin-top: 8px;
+  margin-left: auto;
 }
 
 .mustard-note-date :deep(.icon-static) {
   padding: 0;
+}
+
+/* Comment thread: grid-row animation for smooth expand/collapse.
+ *
+ * `grid-template-columns: minmax(0, 1fr)` makes the single implicit column
+ * stretch to fill the wrapper's width (i.e. the note body's width) rather
+ * than shrinking to fit its content's preferred width. Without this, the
+ * comment input row (textarea + send button) would only get its intrinsic
+ * preferred width — meaning a `flex: 1` textarea has nothing "left over"
+ * to grow into when the note widens.
+ *
+ * We don't cap the wrapper's width here because the surrounding note
+ * content (`.mustard-note-content` with `max-width: var(...)`) already
+ * bounds the body-inner, which is what we'd inherit anyway. The inner's
+ * `overflow: hidden` keeps any wide comment image / URL clipped to that
+ * bound so the thread can never blow out the note's width. */
+.mustard-note-thread-wrapper {
+  display: grid;
+  grid-template-rows: 0fr;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: var(--mustard-note-content-width);
+  transition:
+    grid-template-rows 0.2s ease,
+    opacity 0.15s ease;
+  opacity: 0;
+}
+
+.mustard-note-thread-wrapper.is-open {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+
+.mustard-note-thread-inner {
+  overflow: hidden;
 }
 </style>

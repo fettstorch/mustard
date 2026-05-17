@@ -7,66 +7,76 @@ This document tracks the current implementation status of Mustard features. Comp
 ```mermaid
 flowchart TB
     subgraph User["User Actions"]
-        Click["Click extension icon"]
+        direction LR
+        Click["Click icon"]
         RightClick["Right-click element"]
+        Expand["Expand thread"]
+        Comment["Submit comment"]
     end
 
     subgraph Extension["Mustard Extension"]
-        Popup["Popup Menu"]
-        Options["Options Page"]
-        BG["Background Service Worker"]
-        CS["Content Script"]
-        CtxMenu["Context Menu"]
-        NoteEditor["Note Editor"]
+        direction LR
+        Popup["Popup<br/>(My Mustard Notes • badge)"]
+        Options["Options"]
+        CS["Content Script<br/>(notes + thread UI + red dot)"]
+        Badge["Icon Badge"]
+        BG["Background SW"]
     end
 
-    subgraph Business["Business Logic"]
-        Manager["MustardNotesManager"]
-        ServiceInterface["MustardNotesService"]
-        LocalService["MustardNotesServiceLocal"]
-        RemoteService["MustardNotesServiceRemote"]
-        ProfileService["MustardProfileServiceBsky"]
+    subgraph Managers["Managers"]
+        direction LR
+        NotesManager["NotesManager"]
+        CommentsManager["CommentsManager"]
+        NotifsManager["NotifsManager"]
+        ProfileService["ProfileService"]
     end
 
-    subgraph Storage["Storage"]
+    subgraph Svcs["Services"]
+        direction LR
+        LocalSvc["NotesServiceLocal"]
+        RemoteSvc["NotesServiceRemote<br/>(cache: index +<br/>myUnreadByPage +<br/>latestNoteAtByPage)"]
+        CommentsSvc["CommentsServiceRemote"]
+        NotifsSvc["NotifsServiceRemote"]
+    end
+
+    subgraph Storage["Storage & External"]
+        direction LR
         ChromeStorage[("browser.storage.local")]
-        Supabase["Supabase Edge Functions"]
-        DB[("Supabase PostgreSQL")]
+        EdgeFns["Edge Functions<br/>auth-bridge • get-index"]
+        DB[("Postgres<br/>notes • comments •<br/>notifications • oauth_*")]
+        BSkyAPI["bsky.social API"]
     end
 
-    subgraph DTOs["DTOs"]
-        DtoNote["DtoMustardNote"]
-        DtoIndex["DtoMustardIndex"]
-    end
+    %% Layer flow
+    Click --> Popup
+    RightClick --> CS
+    Expand --> CS
+    Comment --> CS
 
-    subgraph Page["Web Page"]
-        Elements["Page Elements"]
-        Notes["Injected Notes"]
-    end
+    Popup <-->|"GET_MY_PAGES_OVERVIEW<br/>NOTIFICATIONS_CHANGED"| BG
+    Popup --> Options
+    CS <-->|"notes • comments • notifications<br/>GET_PROFILES • SESSION_CHANGED"| BG
+    BG -->|"setBadgeText"| Badge
 
-    Click -->|"opens"| Popup
-    Popup -->|"gear icon"| Options
-    RightClick -->|"opens"| CtxMenu
-    CtxMenu -->|"opens"| NoteEditor
-
-    CS <-->|"QUERY_NOTES / UPSERT_NOTE / DELETE_NOTE / GET_PROFILES"| BG
-    BG --> Manager
+    BG --> NotesManager
+    BG --> CommentsManager
+    BG --> NotifsManager
     BG --> ProfileService
-    ProfileService -->|"app.bsky.actor.getProfiles"| BSkyAPI["bsky.social API"]
-    Manager --> ServiceInterface
-    ServiceInterface --> LocalService
-    ServiceInterface --> RemoteService
 
-    LocalService <-->|"serialize via"| DtoNote
-    LocalService <-->|"serialize via"| DtoIndex
-    LocalService <--> ChromeStorage
+    NotesManager --> LocalSvc
+    NotesManager --> RemoteSvc
+    CommentsManager --> CommentsSvc
+    NotifsManager --> NotifsSvc
+    NotifsManager --> RemoteSvc
 
-    RemoteService -->|"fetch"| Supabase
-    Supabase --> DB
+    LocalSvc <--> ChromeStorage
+    RemoteSvc -->|"fetch"| EdgeFns
+    CommentsSvc -->|"supabase-js"| DB
+    NotifsSvc -->|"supabase-js"| DB
+    EdgeFns --> DB
+    ProfileService -->|"getProfiles"| BSkyAPI
 
-    CS -->|"DOM injection"| Notes
-    Notes -->|"anchored to"| Elements
-
+    DB -.->|"AFTER INSERT ON comments<br/>(SECURITY DEFINER trigger<br/>writes notifications)"| DB
 ```
 
 ## Completed
@@ -141,6 +151,8 @@ flowchart TB
 - Selector length validation returns `null` for fallback to click position
 - Database migration files: 001 (table structure), 002 (CHECK constraints), 003 (OAuth tables)
 - Notes use fixed positioning + scroll listeners: anchor to elements without affecting page layout or causing scrollbars
+- Comments: flat (no nesting) comment threads on remote notes only; `comments` table (public read, author-only write/delete, 300-char limit, cascades from `notes`); bottom-left `CommentToggle` pill with speech-bubble icon, unread red dot, count, and hover-only "+ Add comment" affordance (CSS-only `grid-template-columns: 0fr→1fr` animation); thread expands downward with `max-height: 240px` scroll, auto-scrolls to newest on open; comments load in parallel with notes (notes paint first); comment authors' avatars fetched via existing `GET_PROFILES`; current user's avatar shown next to input
+- Notifications: `notifications` table (presence = unread, no read column, cascades from `notes` and `comments`); Postgres `SECURITY DEFINER` trigger on `comments` INSERT skips self-comments; extension-icon badge via cross-browser `getActionApi()` shim (`browser.action` MV3 / `browser.browserAction` MV2 fallback); "My Mustard Notes" collapsible section in popup lists pages with notes sorted by unread-count desc then most-recent-note desc; in-page red dot clears when thread expanded (`MARK_NOTIFICATIONS_SEEN_FOR_NOTE` deletes rows); `get-index` edge function extended with `myUnreadByPage` + `latestNoteAtByPage` (single extra notifications query, reuses notes query for timestamps)
 - Note rendering: `white-space: pre-wrap` removed from `.mustard-note-content` (was causing markdown-it's inter-tag `\n` to render as visible blank lines)
 - Note rendering: empty/whitespace-only `<p>` tags stripped from markdown-it output via `EMPTY_P_REGEX` (CSS `p:empty` missed `<p>\n</p>`)
 - Note content trimmed before render and before save to prevent trailing newlines creating phantom `<br>` elements

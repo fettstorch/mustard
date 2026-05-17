@@ -1,6 +1,14 @@
-import { createOpenNoteEditorMessage, type Message } from '@/shared/messaging'
+import {
+  createOpenNoteEditorMessage,
+  type Message,
+  type QueryCommentsResponse,
+  type QueryNotificationsForNotesResponse,
+} from '@/shared/messaging'
 import { mustardNotesManager } from '@/background/business/MustardNotesManager'
+import { mustardCommentsManager } from '@/background/business/MustardCommentsManager'
+import { mustardNotificationsManager } from '@/background/business/MustardNotificationsManager'
 import { DtoMustardNote } from '@/shared/dto/DtoMustardNote'
+import { DtoMustardComment } from '@/shared/dto/DtoMustardComment'
 import { login, getSession, logout } from '@/background/auth/AtprotoAuth'
 import { clearSupabaseJwt, storeSupabaseJwt } from '@/background/auth/SupabaseAuth'
 import { MustardProfileServiceBsky } from '@/background/business/service/MustardProfileServiceBsky'
@@ -23,6 +31,67 @@ export default defineBackground(() => {
     }
   }
 
+  /** Broadcast that the unread-notifications state changed. Popup re-queries; content scripts can refresh in-page dots. */
+  async function broadcastNotificationsChanged() {
+    const tabs = await browser.tabs.query({})
+    for (const tab of tabs) {
+      if (tab.id) {
+        browser.tabs
+          .sendMessage(tab.id, { type: 'NOTIFICATIONS_CHANGED' })
+          .catch(() => {
+            // Popup or content script might not be listening — ignore.
+          })
+      }
+    }
+    // Popup runtime listener is reached via runtime.sendMessage (not tab-scoped).
+    browser.runtime.sendMessage({ type: 'NOTIFICATIONS_CHANGED' }).catch(() => {})
+  }
+
+  /**
+   * Browser-agnostic accessor for the toolbar action API.
+   * Chrome MV3 + Firefox MV3 expose `browser.action`; Firefox MV2 only has
+   * `browser.browserAction`. WXT's `browser` is a raw global passthrough so
+   * we need to fall back ourselves.
+   */
+  function getActionApi():
+    | {
+        setBadgeText: (args: { text: string }) => Promise<void> | void
+        setBadgeBackgroundColor: (args: { color: string }) => Promise<void> | void
+        openPopup?: () => Promise<void>
+      }
+    | null {
+    const b = browser as unknown as Record<string, unknown>
+    return (
+      (b.action as ReturnType<typeof getActionApi>) ??
+      (b.browserAction as ReturnType<typeof getActionApi>) ??
+      null
+    )
+  }
+
+  /** Update the extension-icon badge with the current user's unread total. */
+  async function updateActionBadge(): Promise<void> {
+    const action = getActionApi()
+    if (!action) return
+    try {
+      const session = await getSession()
+      if (!session) {
+        await action.setBadgeText({ text: '' })
+        return
+      }
+      const count = await mustardNotificationsManager.getTotalUnreadCount()
+      await action.setBadgeText({ text: count > 0 ? String(count) : '' })
+      // Mustard accent for visibility; safe in both Chrome and Firefox.
+      try {
+        await action.setBadgeBackgroundColor({ color: '#d32f2f' })
+      } catch {
+        // Firefox MV2 historically required a different signature on older
+        // versions; ignore failures so we never crash the badge update.
+      }
+    } catch (err) {
+      console.debug('mustard [service-worker] updateActionBadge failed:', err)
+    }
+  }
+
   // Create context menu item when extension is installed, and open welcome page on first install
   browser.runtime.onInstalled.addListener((details) => {
     browser.contextMenus.create({
@@ -35,6 +104,9 @@ export default defineBackground(() => {
       browser.tabs.create({ url: 'https://fettstorch.github.io/mustard/' })
     }
   })
+
+  // Initial badge sync at SW startup (best-effort).
+  updateActionBadge()
 
   browser.contextMenus.onClicked.addListener(async (info, tab) => {
     if (info.menuItemId !== 'mustard-add-note' || !tab?.id) return
@@ -112,6 +184,9 @@ export default defineBackground(() => {
 
         if (message.authorId !== 'local') {
           invalidateRemoteIndexCache()
+          // Cascades may have removed comment notifications too.
+          updateActionBadge()
+          broadcastNotificationsChanged()
         }
 
         if (message.authorId === 'local') {
@@ -135,6 +210,7 @@ export default defineBackground(() => {
           await storeSupabaseJwt(result.jwt, result.expiresAt, result.did)
           invalidateRemoteIndexCache()
           broadcastSessionChanged(result.did)
+          updateActionBadge()
           return { did: result.did }
         } catch (err) {
           console.error('ATPROTO_LOGIN failed:', err)
@@ -162,6 +238,7 @@ export default defineBackground(() => {
           await clearSupabaseJwt()
           invalidateRemoteIndexCache()
           broadcastSessionChanged(null)
+          updateActionBadge()
           return null
         } catch (err) {
           console.error('ATPROTO_LOGOUT failed:', err)
@@ -171,7 +248,8 @@ export default defineBackground(() => {
     }
 
     if (message.type === 'OPEN_POPUP') {
-      browser.action.openPopup().catch(() => {})
+      const action = getActionApi()
+      action?.openPopup?.()?.catch(() => {})
       return
     }
 
@@ -182,6 +260,112 @@ export default defineBackground(() => {
         } catch (err) {
           console.error('GET_PROFILES failed:', err)
           return {}
+        }
+      })()
+    }
+
+    if (message.type === 'QUERY_COMMENTS') {
+      return (async () => {
+        try {
+          const map = await mustardCommentsManager.queryCommentsForNotes(message.noteIds)
+          const response: QueryCommentsResponse = {}
+          for (const [noteId, comments] of map.entries()) {
+            response[noteId] = comments.map(DtoMustardComment.toDto)
+          }
+          return response
+        } catch (err) {
+          console.error('QUERY_COMMENTS failed:', err)
+          return {}
+        }
+      })()
+    }
+
+    if (message.type === 'UPSERT_COMMENT') {
+      return (async () => {
+        const session = await getSession()
+        if (!session) {
+          throw new Error('Cannot create comment - user not logged in')
+        }
+
+        await mustardCommentsManager.upsertComment({
+          id: '', // not used by the insert path; service ignores empty string
+          noteId: message.noteId,
+          authorId: session.did,
+          content: message.content,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        })
+
+        // A new comment may produce a notification row for the note's author
+        // (if it isn't a self-comment). Invalidate the cached overview so the
+        // popup picks up the change next time it queries.
+        invalidateRemoteIndexCache()
+
+        const fresh = await mustardCommentsManager.queryCommentsForNote(message.noteId)
+        return fresh.map(DtoMustardComment.toDto)
+      })()
+    }
+
+    if (message.type === 'DELETE_COMMENT') {
+      return (async () => {
+        await mustardCommentsManager.deleteComment(message.commentId)
+        // The cascade may delete an unread notification row for whoever was
+        // about to be notified — refresh badge + overview.
+        invalidateRemoteIndexCache()
+        updateActionBadge()
+        broadcastNotificationsChanged()
+        const fresh = await mustardCommentsManager.queryCommentsForNote(message.noteId)
+        return fresh.map(DtoMustardComment.toDto)
+      })()
+    }
+
+    if (message.type === 'QUERY_NOTIFICATIONS_FOR_NOTES') {
+      return (async () => {
+        try {
+          const session = await getSession()
+          if (!session) return {} as QueryNotificationsForNotesResponse
+          const map = await mustardNotificationsManager.queryUnreadCountsForNotes(
+            message.noteIds,
+          )
+          const response: QueryNotificationsForNotesResponse = {}
+          for (const [noteId, count] of map.entries()) {
+            if (count > 0) response[noteId] = count
+          }
+          return response
+        } catch (err) {
+          console.error('QUERY_NOTIFICATIONS_FOR_NOTES failed:', err)
+          return {}
+        }
+      })()
+    }
+
+    if (message.type === 'MARK_NOTIFICATIONS_SEEN_FOR_NOTE') {
+      return (async () => {
+        try {
+          await mustardNotificationsManager.markSeenForNote(message.noteId)
+          invalidateRemoteIndexCache()
+          await updateActionBadge()
+          broadcastNotificationsChanged()
+        } catch (err) {
+          console.error('MARK_NOTIFICATIONS_SEEN_FOR_NOTE failed:', err)
+        }
+        return null
+      })()
+    }
+
+    if (message.type === 'GET_MY_PAGES_OVERVIEW') {
+      return (async () => {
+        try {
+          const session = await getSession()
+          if (!session) return []
+          const overview = await mustardNotificationsManager.queryMyPagesOverview(session.did)
+          // Sync the badge whenever the popup pulls the overview — this is a
+          // cheap natural-event trigger to keep the badge fresh.
+          updateActionBadge()
+          return overview
+        } catch (err) {
+          console.error('GET_MY_PAGES_OVERVIEW failed:', err)
+          return []
         }
       })()
     }
