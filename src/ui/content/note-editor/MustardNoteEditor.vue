@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, useTemplateRef, computed, ref, inject } from 'vue'
+import { onMounted, onUnmounted, useTemplateRef, computed, ref, inject, nextTick } from 'vue'
 import { useEditor, EditorContent } from '@tiptap/vue-3'
 import StarterKit from '@tiptap/starter-kit'
 import { Image } from '@tiptap/extension-image'
@@ -65,8 +65,12 @@ const anchorDisplay = computed(() => {
 
 const selectorExpanded = ref(false)
 
-onMounted(() => {
+onMounted(async () => {
   document.addEventListener('keydown', handleKeyDown)
+  await nextTick()
+  requestAnimationFrame(() => {
+    editor.value?.commands.focus('end')
+  })
 })
 
 onUnmounted(() => {
