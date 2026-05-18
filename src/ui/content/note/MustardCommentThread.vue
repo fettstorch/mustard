@@ -47,9 +47,7 @@ const isPending = computed(() => {
 })
 
 const canSubmit = computed(() => {
-  return (
-    isLoggedIn.value && !isPending.value && trimmedDraft.value.length > 0 && !isOverLimit.value
-  )
+  return isLoggedIn.value && !isPending.value && trimmedDraft.value.length > 0 && !isOverLimit.value
 })
 
 const characterCountText = computed(() => {

@@ -60,6 +60,12 @@ Simple learnings discovered during development that document how things actually
 
 - `supabase start` only applies migrations on a **fresh** database; subsequent boots against an existing volume skip new migration files → run `supabase migration up` (preserves data) or `supabase db reset` (replays all migrations from scratch) to apply new migrations to an existing local instance
 
+## Firefox MV3 Context Menus Lost on Restart
+
+- `browser.contextMenus.create` called **only** inside `runtime.onInstalled` disappears from the right-click menu after a Firefox restart (bug 1771328, fixed in Fx128) and after any disable→re-enable cycle on any version — Firefox forks lagging behind release (e.g. Zen) are also affected
+- `onInstalled` only fires on install/update, not on browser startup or enable; relying on Firefox to persist MV3 menu entries across SW terminations is unsafe
+- Fix: extract menu registration into an `ensureContextMenu()` that calls `contextMenus.removeAll()` then `.create()`, and invoke it from `onInstalled`, `onStartup`, **and** top-level of the background script — Mozilla's documented workaround
+
 ## Firefox MV2 Action API
 
 - `browser.action` does not exist on Firefox MV2 (only MV3); must fall back to `browser.browserAction` at runtime — WXT's `browser` global is a raw passthrough and does not polyfill this difference

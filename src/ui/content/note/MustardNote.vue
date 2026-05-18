@@ -10,10 +10,7 @@ import CommentToggle from './CommentToggle.vue'
 import MustardCommentThread from './MustardCommentThread.vue'
 import { renderContent } from './render-content'
 import { LIMITS } from '@/shared/constants'
-import {
-  createMarkNotificationsSeenForNoteMessage,
-  type Message,
-} from '@/shared/messaging'
+import { createMarkNotificationsSeenForNoteMessage, type Message } from '@/shared/messaging'
 
 const props = defineProps<{
   note: MustardNote

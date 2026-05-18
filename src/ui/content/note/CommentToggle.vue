@@ -65,14 +65,31 @@ const showDot = computed(() => props.unread > 0)
     type="button"
     class="comment-toggle"
     :class="{ 'is-empty': !loading && count === 0, 'is-expanded': expanded }"
-    :title="loading ? 'Loading comments…' : count > 0 ? `${count} comment${count === 1 ? '' : 's'}` : 'Add the first comment'"
+    :title="
+      loading
+        ? 'Loading comments…'
+        : count > 0
+          ? `${count} comment${count === 1 ? '' : 's'}`
+          : 'Add the first comment'
+    "
     @click="$emit('click')"
     @mousedown.stop
   >
     <span class="comment-toggle-icon" aria-hidden="true">
       <!-- Inline SVG so no extra asset / no CSP image-src concerns -->
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+      <svg
+        width="14"
+        height="14"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2.5"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path
+          d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"
+        />
       </svg>
     </span>
     <span v-if="staticLabel !== null" class="comment-toggle-label">{{ staticLabel }}</span>

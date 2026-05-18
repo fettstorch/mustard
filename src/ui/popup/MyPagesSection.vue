@@ -86,17 +86,13 @@ function toggle() {
     >
       <span class="my-pages-title">
         My Mustard Notes
-        <span v-if="totalUnread > 0" class="my-pages-unread-pill">
-          {{ totalUnread }} unread
-        </span>
+        <span v-if="totalUnread > 0" class="my-pages-unread-pill"> {{ totalUnread }} unread </span>
       </span>
       <span class="my-pages-chevron" :class="{ 'is-open': isExpanded }">›</span>
     </button>
 
     <div v-if="isExpanded" class="my-pages-list">
-      <div v-if="isLoading && overview.length === 0" class="my-pages-status">
-        Loading…
-      </div>
+      <div v-if="isLoading && overview.length === 0" class="my-pages-status">Loading…</div>
       <div v-else-if="overview.length === 0" class="my-pages-status">
         You haven't published any notes yet.
       </div>

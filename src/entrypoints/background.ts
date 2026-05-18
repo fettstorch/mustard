@@ -36,11 +36,9 @@ export default defineBackground(() => {
     const tabs = await browser.tabs.query({})
     for (const tab of tabs) {
       if (tab.id) {
-        browser.tabs
-          .sendMessage(tab.id, { type: 'NOTIFICATIONS_CHANGED' })
-          .catch(() => {
-            // Popup or content script might not be listening — ignore.
-          })
+        browser.tabs.sendMessage(tab.id, { type: 'NOTIFICATIONS_CHANGED' }).catch(() => {
+          // Popup or content script might not be listening — ignore.
+        })
       }
     }
     // Popup runtime listener is reached via runtime.sendMessage (not tab-scoped).
@@ -53,13 +51,11 @@ export default defineBackground(() => {
    * `browser.browserAction`. WXT's `browser` is a raw global passthrough so
    * we need to fall back ourselves.
    */
-  function getActionApi():
-    | {
-        setBadgeText: (args: { text: string }) => Promise<void> | void
-        setBadgeBackgroundColor: (args: { color: string }) => Promise<void> | void
-        openPopup?: () => Promise<void>
-      }
-    | null {
+  function getActionApi(): {
+    setBadgeText: (args: { text: string }) => Promise<void> | void
+    setBadgeBackgroundColor: (args: { color: string }) => Promise<void> | void
+    openPopup?: () => Promise<void>
+  } | null {
     const b = browser as unknown as Record<string, unknown>
     return (
       (b.action as ReturnType<typeof getActionApi>) ??
@@ -92,13 +88,27 @@ export default defineBackground(() => {
     }
   }
 
-  // Create context menu item when extension is installed, and open welcome page on first install
+  // Register the context-menu entry on every background wake-up, not just on
+  // install. Firefox MV3 (bug 1771328, fixed only in Fx128) drops MV3 menu
+  // entries on browser restart when they're created solely in onInstalled,
+  // and disable→re-enable cycles can wipe them on any version. Top-level
+  // registration + onStartup re-registration keeps the entry alive across
+  // service-worker terminations on both Chrome and Firefox.
+  async function ensureContextMenu() {
+    try {
+      await browser.contextMenus.removeAll()
+      browser.contextMenus.create({
+        id: 'mustard-add-note',
+        title: 'Add Mustard',
+        contexts: ['all'],
+      })
+    } catch (err) {
+      console.debug('mustard [service-worker] ensureContextMenu failed:', err)
+    }
+  }
+
   browser.runtime.onInstalled.addListener((details) => {
-    browser.contextMenus.create({
-      id: 'mustard-add-note',
-      title: 'Add Mustard',
-      contexts: ['all'],
-    })
+    ensureContextMenu()
 
     if (details.reason === 'install') {
       browser.tabs.create({ url: 'https://fettstorch.github.io/mustard/' })
@@ -106,10 +116,13 @@ export default defineBackground(() => {
   })
 
   browser.runtime.onStartup.addListener(() => {
+    ensureContextMenu()
     updateActionBadge()
   })
 
-  // Initial badge sync at SW startup (best-effort).
+  // Initial sync at SW startup (best-effort): re-registers the menu if the
+  // browser dropped it, and seeds the badge.
+  ensureContextMenu()
   updateActionBadge()
 
   browser.contextMenus.onClicked.addListener(async (info, tab) => {
@@ -329,9 +342,7 @@ export default defineBackground(() => {
         try {
           const session = await getSession()
           if (!session) return {} as QueryNotificationsForNotesResponse
-          const map = await mustardNotificationsManager.queryUnreadCountsForNotes(
-            message.noteIds,
-          )
+          const map = await mustardNotificationsManager.queryUnreadCountsForNotes(message.noteIds)
           const response: QueryNotificationsForNotesResponse = {}
           for (const [noteId, count] of map.entries()) {
             if (count > 0) response[noteId] = count
