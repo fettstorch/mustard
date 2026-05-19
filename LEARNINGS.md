@@ -62,7 +62,8 @@ Simple learnings discovered during development that document how things actually
 
 ## Firefox MV3 Context Menus Lost on Restart
 
-- `browser.contextMenus.create` called **only** inside `runtime.onInstalled` disappears from the right-click menu after a Firefox restart (bug 1771328, fixed in Fx128) and after any disable→re-enable cycle on any version — Firefox forks lagging behind release (e.g. Zen) are also affected
+- `browser.contextMenus.create` called **only** inside `runtime.onInstalled` disappears from the right-click menu after a disable→re-enable cycle (bug [1817287](https://bugzilla.mozilla.org/show_bug.cgi?id=1817287), still **open** as of 2026-05) — Firefox silently disables/re-enables addons on some browser updates, profile sync events, and Zen-specific update flows
+- A separate restart-related variant (bug [1771328](https://bugzilla.mozilla.org/show_bug.cgi?id=1771328)) was fixed in Fx128, but the re-enable case is the more common trigger today
 - `onInstalled` only fires on install/update, not on browser startup or enable; relying on Firefox to persist MV3 menu entries across SW terminations is unsafe
 - Fix: extract menu registration into an `ensureContextMenu()` that calls `contextMenus.removeAll()` then `.create()`, and invoke it from `onInstalled`, `onStartup`, **and** top-level of the background script — Mozilla's documented workaround
 
