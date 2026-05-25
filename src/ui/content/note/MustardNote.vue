@@ -194,92 +194,113 @@ watch(unreadCount, (count) => {
 </script>
 
 <template>
-  <div
-    class="mustard-note mustard-notes-bg mustard-notes-border mustard-notes-txt mustard-notes-padding"
-    :class="{ 'is-dragging': isDragging, 'is-minimized': isMinimized }"
-    style="width: fit-content; padding-top: 8px; padding-bottom: 4px"
-    @mousedown="onDragStart"
-    @mouseenter="isHovered = true"
-    @mouseleave="isHovered = false"
-  >
-    <!-- Header -->
-    <div class="mustard-note-header">
-      <AuthorAvatar v-if="isRemoteNote" :profile="authorProfile" />
-      <MustardNoteHeader class="mustard-note-actions" style="translate: 5px; flex: 1">
-        <template v-if="isMyOwnNote">
-          <IconButton
-            v-if="isLocalNote"
-            icon="publish"
-            title="Publish this note (do not publish sensitive data)"
-            :disabled="isPublishDisabled"
-            @click="emit('pressed-publish', note)"
-            @mousedown.stop
-          />
-          <IconButton
-            icon="trash"
-            title="Delete this note"
-            :disabled="isPending"
-            @click="emit('pressed-delete', note)"
-            @mousedown.stop
-          />
-        </template>
-      </MustardNoteHeader>
-    </div>
-    <!-- Collapsible body (content + footer + date + slot) -->
-    <div class="mustard-note-body">
-      <div class="mustard-note-body-inner">
-        <!-- eslint-disable-next-line vue/no-v-html -->
-        <div
-          class="mustard-note-content"
-          v-html="renderedContent"
-          @mousedown="onContentMousedown"
-        />
-        <div v-if="shouldShowCharacterCount" class="character-count over-limit">
-          {{ characterCountText }}
-        </div>
-        <div class="mustard-note-footer">
-          <CommentToggle
-            v-if="showCommentToggle"
-            class="mustard-note-comment-toggle"
-            :count="commentCount"
-            :loading="commentsLoading"
-            :unread="unreadCount"
-            :logged-in="isLoggedIn"
-            :expanded="isExpanded"
-            :note-hovered="isHovered"
-            @click="onToggleComments"
-          />
-          <div class="mustard-note-date">
-            {{ formattedDate }}
+  <!--
+    Outer wrapper exists so the &lt;slot/&gt; (e.g. PublishConfirmBubble) can sit
+    OUTSIDE the inner .mustard-note's `overflow: hidden` (which is required for
+    the minimize-collapse animation). The wrapper inherits position: fixed from
+    the parent's `.mustard-positioned` class, so it becomes the positioning
+    context for any absolutely-positioned slot content — same effective
+    placement as before, just not clipped.
+  -->
+  <div class="mustard-note-wrapper">
+    <div
+      class="mustard-note mustard-notes-bg mustard-notes-border mustard-notes-txt mustard-notes-padding"
+      :class="{ 'is-dragging': isDragging, 'is-minimized': isMinimized }"
+      style="width: fit-content; padding-top: 8px; padding-bottom: 4px"
+      @mousedown="onDragStart"
+      @mouseenter="isHovered = true"
+      @mouseleave="isHovered = false"
+    >
+      <!-- Header -->
+      <div class="mustard-note-header">
+        <AuthorAvatar v-if="isRemoteNote" :profile="authorProfile" />
+        <MustardNoteHeader class="mustard-note-actions" style="translate: 5px; flex: 1">
+          <template v-if="isMyOwnNote">
             <IconButton
-              v-if="isRemoteNote && isMyOwnNote"
-              icon="published"
-              :static="true"
-              title="This note is published"
+              v-if="isLocalNote"
+              icon="publish"
+              title="Publish this note (do not publish sensitive data)"
+              :disabled="isPublishDisabled"
+              @click="emit('pressed-publish', note)"
+              @mousedown.stop
             />
+            <IconButton
+              icon="trash"
+              title="Delete this note"
+              :disabled="isPending"
+              @click="emit('pressed-delete', note)"
+              @mousedown.stop
+            />
+          </template>
+        </MustardNoteHeader>
+      </div>
+      <!-- Collapsible body (content + footer + date) -->
+      <div class="mustard-note-body">
+        <div class="mustard-note-body-inner">
+          <!-- eslint-disable-next-line vue/no-v-html -->
+          <div
+            class="mustard-note-content"
+            v-html="renderedContent"
+            @mousedown="onContentMousedown"
+          />
+          <div v-if="shouldShowCharacterCount" class="character-count over-limit">
+            {{ characterCountText }}
+          </div>
+          <div class="mustard-note-footer">
+            <CommentToggle
+              v-if="showCommentToggle"
+              class="mustard-note-comment-toggle"
+              :count="commentCount"
+              :loading="commentsLoading"
+              :unread="unreadCount"
+              :logged-in="isLoggedIn"
+              :expanded="isExpanded"
+              :note-hovered="isHovered"
+              @click="onToggleComments"
+            />
+            <div class="mustard-note-date">
+              {{ formattedDate }}
+              <IconButton
+                v-if="isRemoteNote && isMyOwnNote"
+                icon="published"
+                :static="true"
+                title="This note is published"
+              />
+            </div>
+          </div>
+          <div
+            v-if="showCommentToggle"
+            class="mustard-note-thread-wrapper"
+            :class="{ 'is-open': isExpanded }"
+          >
+            <div class="mustard-note-thread-inner">
+              <MustardCommentThread
+                v-if="isExpanded"
+                ref="commentThreadRef"
+                :note="note"
+                @request-login="requestLogin"
+              />
+            </div>
           </div>
         </div>
-        <div
-          v-if="showCommentToggle"
-          class="mustard-note-thread-wrapper"
-          :class="{ 'is-open': isExpanded }"
-        >
-          <div class="mustard-note-thread-inner">
-            <MustardCommentThread
-              v-if="isExpanded"
-              ref="commentThreadRef"
-              :note="note"
-              @request-login="requestLogin"
-            />
-          </div>
-        </div>
-        <slot />
       </div>
     </div>
+    <!-- Slot rendered outside .mustard-note so absolutely-positioned content
+         (e.g. PublishConfirmBubble) isn't clipped by the note's overflow:hidden -->
+    <slot />
   </div>
 </template>
 
 <style scoped>
+/* Wrapper sizes to the inner .mustard-note (which is `width: fit-content`),
+ * so any absolutely-positioned slot content uses the note's actual bounds
+ * as its containing block. The wrapper itself gets `position: fixed` from
+ * the parent's `.mustard-positioned` class (attribute inheritance), making
+ * it the positioning context for the slot. */
+.mustard-note-wrapper {
+  width: fit-content;
+}
+
 .mustard-note {
   cursor: grab;
   user-select: none;
