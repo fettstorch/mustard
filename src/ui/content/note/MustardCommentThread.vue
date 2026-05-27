@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, inject, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, inject, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import type { Observable } from '@fettstorch/jule'
 import type { MustardComment } from '@/shared/model/MustardComment'
 import type { MustardNote } from '@/shared/model/MustardNote'
@@ -12,6 +12,11 @@ import {
 import { LIMITS } from '@/shared/constants'
 import MustardCommentItem from './MustardCommentItem.vue'
 import AuthorAvatar from './AuthorAvatar.vue'
+import GiphyPicker from '../note-editor/GiphyPicker.vue'
+
+// Matches `/<search-term>` at end of text up to caret. Requires either start-of-input
+// or whitespace before the slash so it doesn't fire inside e.g. a URL (`http://...`).
+const GIPHY_TEXTAREA_REGEX = /(?:^|\s)\/([^\n/]*)$/
 
 const props = defineProps<{
   note: MustardNote
@@ -27,6 +32,58 @@ const event = inject<Observable<Message>>('event')!
 const draft = ref('')
 const scrollEl = ref<HTMLElement | null>(null)
 const textareaEl = ref<HTMLTextAreaElement | null>(null)
+const pickerRef = ref<InstanceType<typeof GiphyPicker> | null>(null)
+
+const giphy = reactive({
+  active: false,
+  query: '',
+  start: 0,
+  end: 0,
+})
+
+/**
+ * Inspects the text up to the caret and toggles the picker state. The `range`
+ * stored on `giphy` describes the text segment that will be replaced when a
+ * GIF is selected (e.g. ` /giphy cats`, with the leading space preserved).
+ */
+function detectGiphyTrigger() {
+  const textarea = textareaEl.value
+  if (!textarea) {
+    giphy.active = false
+    return
+  }
+  const caret = textarea.selectionStart ?? draft.value.length
+  const before = draft.value.slice(0, caret)
+  const match = before.match(GIPHY_TEXTAREA_REGEX)
+  if (!match) {
+    giphy.active = false
+    return
+  }
+  // The capture starts after the leading-whitespace alternation and the `/` — so the
+  // replacement range is exactly `/<query>` (the leading space, if any, is preserved).
+  giphy.active = true
+  giphy.query = (match[1] ?? '').trim()
+  giphy.end = caret
+  giphy.start = caret - (match[1]?.length ?? 0) - 1 // -1 for the leading `/`
+}
+
+const giphyClientRect = () => textareaEl.value?.getBoundingClientRect() ?? null
+
+function onGiphySelect(gif: { src: string }) {
+  if (!giphy.active) return
+  const before = draft.value.slice(0, giphy.start)
+  const after = draft.value.slice(giphy.end)
+  const sep = after.startsWith(' ') || after.startsWith('\n') || after.length === 0 ? '' : ' '
+  draft.value = `${before}${gif.src}${sep}${after}`
+  const newCaret = giphy.start + gif.src.length + sep.length
+  giphy.active = false
+  nextTick(() => {
+    const el = textareaEl.value
+    if (!el) return
+    el.focus()
+    el.setSelectionRange(newCaret, newCaret)
+  })
+}
 
 const comments = computed<MustardComment[]>(() => {
   return props.note.id ? (mustardState.comments[props.note.id] ?? []) : []
@@ -60,6 +117,7 @@ function submit() {
   const content = trimmedDraft.value
   event.emit(createUpsertCommentMessage(props.note.id, content))
   draft.value = ''
+  giphy.active = false
 }
 
 function onDelete(comment: MustardComment) {
@@ -68,12 +126,27 @@ function onDelete(comment: MustardComment) {
 }
 
 function onTextareaKeydown(e: KeyboardEvent) {
-  // Cmd/Ctrl+Enter submits
+  // Cmd/Ctrl+Enter submits — regardless of picker state.
   if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
     e.preventDefault()
     submit()
+    return
+  }
+
+  if (giphy.active) {
+    const handled = pickerRef.value?.onKeyDown?.(e)
+    if (handled) {
+      e.preventDefault()
+    }
   }
 }
+
+function onTextareaInputOrClick() {
+  // Caret may have moved without text changing (arrow keys, click); re-evaluate.
+  detectGiphyTrigger()
+}
+
+watch(draft, detectGiphyTrigger)
 
 async function scrollToBottom() {
   await nextTick()
@@ -126,10 +199,13 @@ defineExpose({
         v-model="draft"
         class="mustard-notes-input mustard-comment-textarea"
         rows="2"
-        placeholder="Add a comment…"
+        placeholder="Add a comment... Or a gif via e.g. /wow"
         :maxlength="LIMITS.COMMENT_CONTENT_MAX_LENGTH * 2"
         :disabled="isPending"
         @keydown="onTextareaKeydown"
+        @keyup="onTextareaInputOrClick"
+        @click="onTextareaInputOrClick"
+        @blur="giphy.active = false"
         @mousedown.stop
       />
       <button
@@ -153,6 +229,16 @@ defineExpose({
     >
       {{ characterCountText }}
     </div>
+
+    <Teleport to="body">
+      <GiphyPicker
+        v-if="giphy.active"
+        ref="pickerRef"
+        :query="giphy.query"
+        :client-rect="giphyClientRect"
+        :on-select="onGiphySelect"
+      />
+    </Teleport>
   </div>
 </template>
 

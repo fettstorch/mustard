@@ -8,9 +8,12 @@ import { Markdown } from '@tiptap/markdown'
 import IconButton from '../IconButton.vue'
 import MustardNoteHeader from '../MustardNoteHeader.vue'
 import { ImageUrlAutoConvert } from './image-url-auto-convert'
+import { GiphySlash } from './giphy-slash'
 import type { MustardNoteAnchorData } from '@/shared/messaging'
 import type { MustardState } from '../mustard-state'
 import { LIMITS } from '@/shared/constants'
+
+const GIPHY_PICKER_HOST_CLASS = 'mustard-giphy-picker-host'
 
 const props = defineProps<{
   anchor: MustardNoteAnchorData | null
@@ -37,10 +40,11 @@ const editor = useEditor({
       },
     }),
     Placeholder.configure({
-      placeholder: 'Write your note...',
+      placeholder: 'Write your note... Or add a gif via /wow',
     }),
     Markdown,
     ImageUrlAutoConvert,
+    GiphySlash,
   ],
   autofocus: true,
   onBlur({ event }) {
@@ -90,6 +94,14 @@ function handleFocusOut(event: FocusEvent) {
   // If focus is moving to another element within the editor, don't close
   if (event.relatedTarget instanceof Node && container.contains(event.relatedTarget)) {
     return
+  }
+
+  // Giphy picker is teleported to document.body. Treat focus moves into it
+  // as "still in editor" so the editor doesn't close behind the picker.
+  if (event.relatedTarget instanceof Element) {
+    if (event.relatedTarget.closest(`.${GIPHY_PICKER_HOST_CLASS}`)) {
+      return
+    }
   }
 
   emit('pressed-x')
