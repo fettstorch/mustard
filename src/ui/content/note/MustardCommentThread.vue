@@ -42,9 +42,8 @@ const giphy = reactive({
 })
 
 /**
- * Inspects the text up to the caret and toggles the picker state. The `range`
- * stored on `giphy` describes the text segment that will be replaced when a
- * GIF is selected (e.g. ` /giphy cats`, with the leading space preserved).
+ * Inspects the text up to the caret and toggles the picker state. When active,
+ * `start`..`end` is the `/<query>` range to be replaced on GIF selection.
  */
 function detectGiphyTrigger() {
   const textarea = textareaEl.value
@@ -53,18 +52,17 @@ function detectGiphyTrigger() {
     return
   }
   const caret = textarea.selectionStart ?? draft.value.length
-  const before = draft.value.slice(0, caret)
-  const match = before.match(GIPHY_TEXTAREA_REGEX)
+  const match = draft.value.slice(0, caret).match(GIPHY_TEXTAREA_REGEX)
   if (!match) {
     giphy.active = false
     return
   }
-  // The capture starts after the leading-whitespace alternation and the `/` — so the
-  // replacement range is exactly `/<query>` (the leading space, if any, is preserved).
+  // [^\n/]* always matches (zero-or-more), so match[1] is guaranteed.
+  const query = match[1]!
   giphy.active = true
-  giphy.query = (match[1] ?? '').trim()
+  giphy.query = query.trim()
   giphy.end = caret
-  giphy.start = caret - (match[1]?.length ?? 0) - 1 // -1 for the leading `/`
+  giphy.start = caret - query.length - 1 // -1 for the leading `/`
 }
 
 const giphyClientRect = () => textareaEl.value?.getBoundingClientRect() ?? null

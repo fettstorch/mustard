@@ -13,8 +13,6 @@ import type { MustardNoteAnchorData } from '@/shared/messaging'
 import type { MustardState } from '../mustard-state'
 import { LIMITS } from '@/shared/constants'
 
-const GIPHY_PICKER_HOST_CLASS = 'mustard-giphy-picker-host'
-
 const props = defineProps<{
   anchor: MustardNoteAnchorData | null
 }>()
@@ -96,12 +94,13 @@ function handleFocusOut(event: FocusEvent) {
     return
   }
 
-  // Giphy picker is teleported to document.body. Treat focus moves into it
+  // Giphy picker is appended to document.body. Treat focus moves into it
   // as "still in editor" so the editor doesn't close behind the picker.
-  if (event.relatedTarget instanceof Element) {
-    if (event.relatedTarget.closest(`.${GIPHY_PICKER_HOST_CLASS}`)) {
-      return
-    }
+  if (
+    event.relatedTarget instanceof Element &&
+    event.relatedTarget.closest('.mustard-giphy-picker')
+  ) {
+    return
   }
 
   emit('pressed-x')

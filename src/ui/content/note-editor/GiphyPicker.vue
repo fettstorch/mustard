@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, computed, onUnmounted } from 'vue'
+import { ref, watch, computed, onUnmounted, useTemplateRef } from 'vue'
 
 type Gif = {
   id: string
@@ -40,7 +40,7 @@ const gifs = ref<Gif[]>([])
 const loading = ref(false)
 const errorMsg = ref<string | null>(null)
 const selectedIndex = ref(0)
-const gridRef = ref<HTMLElement | null>(null)
+const gridRef = useTemplateRef<HTMLElement>('gridRef')
 
 let abortController: AbortController | null = null
 let debounceTimer: number | null = null
@@ -108,18 +108,10 @@ const position = computed(() => {
   return { top: rect.bottom + 6, left: rect.left }
 })
 
-function pick(gif: Gif) {
-  props.onSelect({ src: gif.src })
-}
-
 function scrollSelectedIntoView() {
-  const grid = gridRef.value
-  if (!grid) return
-  const el = grid.children[selectedIndex.value] as HTMLElement | undefined
+  const el = gridRef.value?.children[selectedIndex.value] as HTMLElement | undefined
   el?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
 }
-
-const COLS = 3
 
 function onKeyDown(event: KeyboardEvent): boolean {
   if (!gifs.value.length) return false
@@ -135,13 +127,13 @@ function onKeyDown(event: KeyboardEvent): boolean {
       next = Math.max(selectedIndex.value - 1, 0)
       break
     case 'ArrowDown':
-      next = Math.min(selectedIndex.value + COLS, max)
+      next = Math.min(selectedIndex.value + 3, max)
       break
     case 'ArrowUp':
-      next = Math.max(selectedIndex.value - COLS, 0)
+      next = Math.max(selectedIndex.value - 3, 0)
       break
     case 'Enter':
-      pick(gifs.value[selectedIndex.value]!)
+      props.onSelect({ src: gifs.value[selectedIndex.value]!.src })
       return true
     default:
       return false
@@ -180,7 +172,7 @@ defineExpose({ onKeyDown })
         class="picker-cell"
         :class="{ 'picker-cell-selected': index === selectedIndex }"
         :title="gif.title"
-        @click="pick(gif)"
+        @click="props.onSelect({ src: gif.src })"
         @mouseenter="selectedIndex = index"
         @mousedown.prevent
       >
@@ -283,8 +275,7 @@ defineExpose({ onKeyDown })
   min-width: 0;
   transition:
     transform 0.1s ease,
-    box-shadow 0.1s ease,
-    border-color 0.1s ease;
+    box-shadow 0.1s ease;
 }
 
 .picker-cell-selected {

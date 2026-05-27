@@ -1,23 +1,29 @@
 import { Extension } from '@tiptap/core'
 import { VueRenderer } from '@tiptap/vue-3'
 import Suggestion from '@tiptap/suggestion'
-import type { SuggestionProps, SuggestionKeyDownProps } from '@tiptap/suggestion'
+import type { SuggestionProps } from '@tiptap/suggestion'
 import { PluginKey } from '@tiptap/pm/state'
 import GiphyPicker from './GiphyPicker.vue'
 
-export const GiphyPluginKey = new PluginKey('giphySlash')
+const pluginKey = new PluginKey('giphySlash')
 
-export type GiphyPickerSelection = { src: string }
+type Selection = { src: string }
 
 type PickerInstance = InstanceType<typeof GiphyPicker> & {
   onKeyDown?: (event: KeyboardEvent) => boolean
 }
 
+const toPickerProps = (props: SuggestionProps<unknown, Selection>) => ({
+  query: props.query.trim(),
+  clientRect: props.clientRect,
+  onSelect: (gif: Selection) => props.command(gif),
+})
+
 /**
- * Slash command that opens a Giphy picker. Trigger: `/giphy <search>`.
+ * Slash command that opens a Giphy picker. Trigger: `/<search>`.
  *
  * Uses `@tiptap/suggestion` to track the query; the popup is a Vue component
- * appended to `document.body` (so it isn't clipped by note overflow).
+ * appended directly to `document.body` (so it isn't clipped by note overflow).
  *
  * Focus stays in the editor the whole time:
  * - Keyboard nav is forwarded from suggestion's `onKeyDown` to the picker.
@@ -28,66 +34,40 @@ export const GiphySlash = Extension.create({
 
   addProseMirrorPlugins() {
     return [
-      Suggestion<unknown, GiphyPickerSelection>({
+      Suggestion<unknown, Selection>({
         editor: this.editor,
         char: '/',
         allowSpaces: true,
-        pluginKey: GiphyPluginKey,
+        pluginKey,
         items: () => [],
         command: ({ editor, range, props }) => {
           editor.chain().focus().deleteRange(range).setImage({ src: props.src }).run()
         },
         render: () => {
           let renderer: VueRenderer | null = null
-          let container: HTMLElement | null = null
-
-          const mount = (props: SuggestionProps<unknown, GiphyPickerSelection>) => {
-            renderer = new VueRenderer(GiphyPicker, {
-              editor: props.editor,
-              props: {
-                query: props.query.trim(),
-                clientRect: props.clientRect,
-                onSelect: (gif: GiphyPickerSelection) => props.command(gif),
-              },
-            })
-            container = document.createElement('div')
-            container.className = 'mustard-giphy-picker-host'
-            container.appendChild(renderer.element as HTMLElement)
-            document.body.appendChild(container)
-          }
-
-          const unmount = () => {
-            renderer?.destroy()
-            container?.remove()
-            renderer = null
-            container = null
-          }
+          let pickerEl: HTMLElement | null = null
 
           return {
             onStart(props) {
-              mount(props)
-            },
-
-            onUpdate(props) {
-              if (!renderer) {
-                mount(props)
-                return
-              }
-              renderer.updateProps({
-                query: props.query.trim(),
-                clientRect: props.clientRect,
-                onSelect: (gif: GiphyPickerSelection) => props.command(gif),
+              renderer = new VueRenderer(GiphyPicker, {
+                editor: props.editor,
+                props: toPickerProps(props),
               })
+              pickerEl = renderer.element as HTMLElement
+              document.body.appendChild(pickerEl)
             },
-
-            onKeyDown(props: SuggestionKeyDownProps): boolean {
-              if (!renderer) return false
-              const ref = renderer.ref as PickerInstance | null
-              return ref?.onKeyDown?.(props.event) ?? false
+            onUpdate(props) {
+              renderer?.updateProps(toPickerProps(props))
             },
-
+            onKeyDown({ event }) {
+              const ref = renderer?.ref as PickerInstance | null
+              return ref?.onKeyDown?.(event) ?? false
+            },
             onExit() {
-              unmount()
+              renderer?.destroy()
+              pickerEl?.remove()
+              renderer = null
+              pickerEl = null
             },
           }
         },
