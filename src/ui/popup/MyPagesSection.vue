@@ -182,27 +182,8 @@ function toggle() {
   margin-top: 4px;
   /* Reserve room for the scrollbar so rows don't shift when it appears. */
   scrollbar-gutter: stable;
-  /* Firefox: thin bar with mustard-brown thumb on a transparent track. */
-  scrollbar-width: thin;
-  scrollbar-color: var(--mustard-brown-border) transparent;
-}
-
-/* WebKit (Chrome/Edge/Safari) scrollbar styling — matches the Firefox tokens above. */
-.my-pages-list::-webkit-scrollbar {
-  width: 8px;
-}
-
-.my-pages-list::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.my-pages-list::-webkit-scrollbar-thumb {
-  background-color: var(--mustard-brown-border);
-  border-radius: 4px;
-}
-
-.my-pages-list::-webkit-scrollbar-thumb:hover {
-  background-color: var(--mustard-brown-dark);
+  /* Scrollbar appearance comes from the global Mustard rules in
+     src/styles/mustard-notes.css (scoped to .mustard-popup descendants). */
 }
 
 .my-pages-status {

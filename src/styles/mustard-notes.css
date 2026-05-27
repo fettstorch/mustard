@@ -115,3 +115,52 @@
   background: #ffb800 !important;
   transition: background 0.2s ease;
 }
+
+/* ---------------------------------------------------------------- */
+/* Global Mustard scrollbar styling.                                  */
+/*                                                                    */
+/* Applies to every scrollable descendant of a Mustard root container */
+/* so any scroll region across the extension (note comments, popup    */
+/* my-pages list, future panels, ...) automatically gets the mustard- */
+/* brown thumb on a transparent track without per-component setup.    */
+/*                                                                    */
+/* Roots:                                                             */
+/*   #mustard-host : content-script root (notes + comment threads)    */
+/*   .mustard-popup : extension popup                                 */
+/*                                                                    */
+/* Scoping to these roots is critical — the content script injects    */
+/* this CSS into the host page, and we must NOT restyle host-page     */
+/* scrollbars.                                                        */
+/*                                                                    */
+/* Firefox: scrollbar-width / scrollbar-color are inherited, so       */
+/* setting them on the roots covers all descendants automatically.    */
+/* WebKit pseudo-elements aren't inherited — target descendants       */
+/* explicitly.                                                        */
+/* ---------------------------------------------------------------- */
+#mustard-host,
+.mustard-popup {
+  scrollbar-width: thin;
+  scrollbar-color: var(--mustard-brown-border) transparent;
+}
+
+#mustard-host ::-webkit-scrollbar,
+.mustard-popup ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+#mustard-host ::-webkit-scrollbar-track,
+.mustard-popup ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+#mustard-host ::-webkit-scrollbar-thumb,
+.mustard-popup ::-webkit-scrollbar-thumb {
+  background-color: var(--mustard-brown-border);
+  border-radius: 4px;
+}
+
+#mustard-host ::-webkit-scrollbar-thumb:hover,
+.mustard-popup ::-webkit-scrollbar-thumb:hover {
+  background-color: var(--mustard-brown-dark);
+}
