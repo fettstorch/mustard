@@ -168,6 +168,28 @@ const logoUrl = browser.runtime.getURL('/mustard_bottle_smile_512.png')
   </div>
 </template>
 
+<!--
+  Non-scoped: hide the browser-default popup-level scrollbars (Firefox draws
+  ugly grey ones, WebKit auto-hides). Scrolling still works — when the popup
+  content exceeds the browser's popup ceiling, the body still scrolls so the
+  logout button stays reachable; only the scrollbar chrome is invisible.
+-->
+<style>
+html,
+body {
+  /* Firefox */
+  scrollbar-width: none;
+  /* legacy Edge/IE */
+  -ms-overflow-style: none;
+}
+
+html::-webkit-scrollbar,
+body::-webkit-scrollbar {
+  /* Chrome/Safari/Edge */
+  display: none;
+}
+</style>
+
 <style scoped>
 .mustard-popup {
   width: 300px;

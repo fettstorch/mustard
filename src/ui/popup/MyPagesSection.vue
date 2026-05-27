@@ -170,12 +170,39 @@ function toggle() {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  /* Generous cap so users see a lot at a glance, then scroll for the rest. */
+  /* Generous cap so users see a lot at a glance, then scroll for the rest.
+     If the total popup exceeds the browser's popup ceiling, the popup body
+     still scrolls (its scrollbars are hidden in MustardPopupMenu) so the
+     logout button further down stays reachable. */
   max-height: 420px;
   overflow-y: auto;
+  /* Without explicit overflow-x, the spec coerces it to auto, which yields a
+     horizontal scrollbar on subpixel rounding. Force it off. */
+  overflow-x: hidden;
   margin-top: 4px;
   /* Reserve room for the scrollbar so rows don't shift when it appears. */
   scrollbar-gutter: stable;
+  /* Firefox: thin bar with mustard-brown thumb on a transparent track. */
+  scrollbar-width: thin;
+  scrollbar-color: var(--mustard-brown-border) transparent;
+}
+
+/* WebKit (Chrome/Edge/Safari) scrollbar styling — matches the Firefox tokens above. */
+.my-pages-list::-webkit-scrollbar {
+  width: 8px;
+}
+
+.my-pages-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.my-pages-list::-webkit-scrollbar-thumb {
+  background-color: var(--mustard-brown-border);
+  border-radius: 4px;
+}
+
+.my-pages-list::-webkit-scrollbar-thumb:hover {
+  background-color: var(--mustard-brown-dark);
 }
 
 .my-pages-status {
