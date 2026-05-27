@@ -147,6 +147,14 @@ function onContentMousedown(e: MouseEvent) {
 :deep(.mustard-comment-content .mustard-note-image) {
   pointer-events: none;
   user-select: none;
+  /* Override the global .mustard-note-image `min-width: 100%` so GIFs render
+   * at a comment-appropriate size instead of stretching to fill the column. */
+  min-width: 0;
+  max-width: 200px;
+  max-height: 200px;
+  width: auto;
+  height: auto;
+  object-fit: contain;
 }
 
 :deep(.mustard-comment-content .mustard-note-link) {
