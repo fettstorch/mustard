@@ -248,13 +248,21 @@ export class MustardNotesServiceRemote implements MustardNotesService {
 
   /**
    * Repost a note (grant visibility to the current user's followers).
-   * The reposter_id is enforced by RLS to be the authenticated user; the insert
-   * is idempotent thanks to the UNIQUE (note_id, reposter_id) constraint.
+   * The reposter_id is enforced by RLS to be the authenticated user.
+   *
+   * `ignoreDuplicates: true` makes this emit `ON CONFLICT DO NOTHING`, so a
+   * retry / double-click on an existing (note_id, reposter_id) row is a silent
+   * no-op. We deliberately avoid the default upsert (`DO UPDATE`), which would
+   * require an UPDATE RLS policy we don't want to grant — keeping the table
+   * insert/delete-only.
    */
   async repostNote(noteId: string, reposterId: string): Promise<void> {
     const { error } = await supabase
       .from('reposts')
-      .upsert({ note_id: noteId, reposter_id: reposterId }, { onConflict: 'note_id,reposter_id' })
+      .upsert(
+        { note_id: noteId, reposter_id: reposterId },
+        { onConflict: 'note_id,reposter_id', ignoreDuplicates: true },
+      )
 
     if (error) {
       throw new Error(`Failed to repost note: ${error.message}`)
