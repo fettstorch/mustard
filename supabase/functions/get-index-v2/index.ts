@@ -156,6 +156,36 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Reposts: a repost is a visibility grant. Find every note that the user or
+    // someone they follow has reposted — these become visible even when the user
+    // doesn't follow the original author. We layer this alongside the author
+    // index (NOT merged into it): merging the original author would over-fetch
+    // ALL of that author's notes on the page, leaking notes that weren't reposted.
+    // The client fetches reposted notes by id, so we only need note ids here.
+    const repostersByNoteId: Record<string, string[]> = {}
+
+    for (let i = 0; i < allDids.length; i += BATCH_SIZE) {
+      const batch = allDids.slice(i, i + BATCH_SIZE)
+      const { data, error } = await supabase
+        .from('reposts')
+        .select('note_id, reposter_id')
+        .in('reposter_id', batch)
+
+      if (error) {
+        throw new Error(`Reposts query failed: ${error.message}`)
+      }
+
+      for (const row of (data ?? []) as { note_id: string; reposter_id: string }[]) {
+        const list = (repostersByNoteId[row.note_id] ??= [])
+        if (!list.includes(row.reposter_id)) {
+          list.push(row.reposter_id)
+        }
+      }
+    }
+
+    // Distinct note ids the user may now see via repost (in-network reposters only).
+    const repostedNoteIds = Object.keys(repostersByNoteId)
+
     // Build per-page unread map for the requesting user.
     // notifications.recipient_id = did → only this user's notifications.
     const myUnreadByPage: Record<string, number> = {}
@@ -182,6 +212,8 @@ Deno.serve(async (req) => {
         index,
         myUnreadByPage,
         latestNoteAtByPage,
+        repostedNoteIds,
+        repostersByNoteId,
       }),
       {
         status: 200,

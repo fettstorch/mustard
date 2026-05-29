@@ -7,7 +7,12 @@ import MustardNote from './note/MustardNote.vue'
 import PublishConfirmBubble from './PublishConfirmBubble.vue'
 import type { MustardNote as MustardNoteType } from '@/shared/model/MustardNote'
 import type { Observable } from '@fettstorch/jule'
-import { createUpsertNoteMessage, createDeleteNoteMessage, type Message } from '@/shared/messaging'
+import {
+  createUpsertNoteMessage,
+  createDeleteNoteMessage,
+  createSetRepostMessage,
+  type Message,
+} from '@/shared/messaging'
 import { LIMITS } from '@/shared/constants'
 
 const PUBLISH_CONFIRM_DISMISSED_KEY = 'mustard-publish-confirm-dismissed'
@@ -236,6 +241,12 @@ function onNoteDelete(note: MustardNoteType) {
   mustardState.pendingNoteIds[note.id] = true
   event.emit(createDeleteNoteMessage(note.id, note.anchorData.pageUrl, note.authorId))
 }
+
+/** Note: user toggled the repost button on a note */
+function onNoteRepost(note: MustardNoteType, reposted: boolean) {
+  if (!note.id) return
+  event.emit(createSetRepostMessage(note.id, note.anchorData.pageUrl, reposted))
+}
 </script>
 
 <template>
@@ -251,6 +262,7 @@ function onNoteDelete(note: MustardNoteType) {
         :style="{ left: `${position.x}px`, top: `${position.y}px` }"
         @pressed-publish="onNotePublish"
         @pressed-delete="onNoteDelete"
+        @pressed-repost="onNoteRepost"
         @drag="(offset) => setDragOffset(note.id, offset)"
       >
         <PublishConfirmBubble

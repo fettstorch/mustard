@@ -220,6 +220,28 @@ export default defineBackground(() => {
       })()
     }
 
+    if (message.type === 'SET_REPOST') {
+      return (async () => {
+        const session = await getSession()
+        if (!session) {
+          console.error('Cannot repost - user not logged in')
+          return []
+        }
+
+        await mustardNotesManager.setRepost(message.noteId, session.did, message.reposted)
+
+        // Repost changes visibility → bust the index cache so the next query
+        // recomputes reposted note ids / reposter lists.
+        invalidateRemoteIndexCache()
+
+        const allNotes = await mustardNotesManager.queryMustardNotesFor(
+          message.pageUrl,
+          session.did,
+        )
+        return allNotes.map(DtoMustardNote.toDto)
+      })()
+    }
+
     if (message.type === 'ATPROTO_LOGIN') {
       return (async () => {
         try {

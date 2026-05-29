@@ -6,6 +6,7 @@ import type { MustardState } from '../mustard-state'
 import IconButton from '../IconButton.vue'
 import MustardNoteHeader from '../MustardNoteHeader.vue'
 import AuthorAvatar from './AuthorAvatar.vue'
+import RepostAvatarStack from './RepostAvatarStack.vue'
 import CommentToggle from './CommentToggle.vue'
 import MustardCommentThread from './MustardCommentThread.vue'
 import { renderContent } from './render-content'
@@ -20,6 +21,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'pressed-publish', note: MustardNote): void
   (e: 'pressed-delete', note: MustardNote): void
+  (e: 'pressed-repost', note: MustardNote, reposted: boolean): void
   (e: 'drag', offset: { x: number; y: number }): void
 }>()
 
@@ -100,6 +102,33 @@ const authorProfile = computed(() => {
   if (!isRemoteNote.value) return null
   return mustardState.profiles[props.note.authorId] ?? null
 })
+
+const reposterProfiles = computed(() =>
+  props.note.reposterIds.map((id) => mustardState.profiles[id] ?? null),
+)
+
+const hasReposters = computed(() => props.note.reposterIds.length > 0)
+
+/** True when the current user has reposted this note. */
+const isRepostedByMe = computed(() => {
+  const did = mustardState.currentUserDid
+  return did !== null && props.note.reposterIds.includes(did)
+})
+
+/** Show the repost toggle on remote notes that aren't mine, when logged in. */
+const showRepostButton = computed(
+  () => isRemoteNote.value && !isMyOwnNote.value && isLoggedIn.value,
+)
+
+// Accumulating rotation: each press adds a full turn, which the CSS ease-out
+// transition animates as a single 360° spin (and keeps spinning forward on
+// repeated presses — no jump-back).
+const repostRotation = ref(0)
+
+function onRepostClick() {
+  repostRotation.value += 360
+  emit('pressed-repost', props.note, !isRepostedByMe.value)
+}
 
 const renderedContent = computed(() => {
   return renderContent(props.note.content)
@@ -213,7 +242,12 @@ watch(unreadCount, (count) => {
     >
       <!-- Header -->
       <div class="mustard-note-header">
-        <AuthorAvatar v-if="isRemoteNote" :profile="authorProfile" />
+        <RepostAvatarStack
+          v-if="isRemoteNote && hasReposters"
+          :author="authorProfile"
+          :reposters="reposterProfiles"
+        />
+        <AuthorAvatar v-else-if="isRemoteNote" :profile="authorProfile" />
         <MustardNoteHeader class="mustard-note-actions" style="translate: 5px; flex: 1">
           <template v-if="isMyOwnNote">
             <IconButton
@@ -232,6 +266,21 @@ watch(unreadCount, (count) => {
               @mousedown.stop
             />
           </template>
+          <span
+            v-if="showRepostButton"
+            class="mustard-repost-toggle"
+            :style="{ transform: `rotate(${repostRotation}deg)` }"
+          >
+            <IconButton
+              icon="repost"
+              :class="{ 'is-reposted': isRepostedByMe }"
+              :title="
+                isRepostedByMe ? 'Remove your repost' : 'Repost so your followers can see this'
+              "
+              @click="onRepostClick"
+              @mousedown.stop
+            />
+          </span>
         </MustardNoteHeader>
       </div>
       <!-- Collapsible body (content + footer + date) -->
@@ -356,6 +405,30 @@ watch(unreadCount, (count) => {
 
 .mustard-note.is-minimized:hover .mustard-note-header {
   margin-bottom: 8px;
+}
+
+/* Repost toggle: hidden by default, fades in only while the note is hovered so
+ * resting notes stay clean. The `transform` (set inline per-press) animates as a
+ * 360° ease-out spin on each press. Two transitions on one element: a quick
+ * opacity fade and a slower rotation. */
+.mustard-repost-toggle {
+  display: inline-flex;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 0.15s ease,
+    transform 0.5s ease-out;
+}
+
+.mustard-note:hover .mustard-repost-toggle {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Subtle highlight ring once the user has reposted (visible on hover). */
+.mustard-repost-toggle :deep(.is-reposted) {
+  border-radius: 6px;
+  background: var(--mustard-glass-strong);
 }
 
 /* Header actions: hidden when minimized, fade in on hover */

@@ -75,6 +75,19 @@ export type DeleteNoteMessage = Satisfies<
   }
 >
 
+// Content script → service worker: repost / un-repost a remote note. A repost is
+// a visibility grant — it lets the current user's followers see the note too.
+// Response: fresh DtoMustardNote[] for the page (so the avatar stack updates).
+export type SetRepostMessage = Satisfies<
+  BaseMessage,
+  {
+    type: 'SET_REPOST'
+    noteId: string
+    pageUrl: string
+    reposted: boolean
+  }
+>
+
 // AT Protocol auth messages - handled by service worker since popup can close during OAuth flow
 export type AtprotoLoginMessage = Satisfies<
   BaseMessage,
@@ -241,6 +254,7 @@ export type Message =
   | UpsertNoteMessage
   | QueryNotesMessage
   | DeleteNoteMessage
+  | SetRepostMessage
   | AtprotoLoginMessage
   | GetAtprotoSessionMessage
   | AtprotoLogoutMessage
@@ -294,6 +308,19 @@ export function createDeleteNoteMessage(
     noteId,
     pageUrl,
     authorId,
+  }
+}
+
+export function createSetRepostMessage(
+  noteId: string,
+  pageUrl: string,
+  reposted: boolean,
+): SetRepostMessage {
+  return {
+    type: 'SET_REPOST',
+    noteId,
+    pageUrl,
+    reposted,
   }
 }
 

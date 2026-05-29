@@ -12,8 +12,10 @@ function sortByCreationDateAsc(notes: MustardNote[]): MustardNote[] {
 // Local service: stores notes in chrome.storage.local (offline, not published)
 const localService: MustardNotesService = new MustardNotesServiceLocal()
 
-// Remote service: stores notes on Supabase (published, visible to followers)
-const remoteService: MustardNotesService = new MustardNotesServiceRemote()
+// Remote service: stores notes on Supabase (published, visible to followers).
+// Typed concretely (not as MustardNotesService) so repost methods are reachable —
+// reposting is inherently a remote-only operation.
+const remoteService = new MustardNotesServiceRemote()
 
 /**
  * Facade that coordinates local and remote mustard notes services.
@@ -71,6 +73,18 @@ export const mustardNotesManager = {
       await localService.upsertNote(note)
     } else {
       await remoteService.upsertNote(note)
+    }
+  },
+
+  /**
+   * Repost or un-repost a remote note (visibility grant). Remote-only.
+   * @param reposterId - The current user's DID
+   */
+  async setRepost(noteId: string, reposterId: string, reposted: boolean): Promise<void> {
+    if (reposted) {
+      await remoteService.repostNote(noteId, reposterId)
+    } else {
+      await remoteService.unrepostNote(noteId, reposterId)
     }
   },
 

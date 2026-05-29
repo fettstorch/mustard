@@ -9,9 +9,19 @@ import saveIconUrl from '@/assets/icons/save_disk_48.png'
 import trashIconUrl from '@/assets/icons/delete_bin_48.png'
 import publishIconUrl from '@/assets/icons/publish_arrow_blue_48.png'
 import publishedIconUrl from '@/assets/icons/published_cloud_check_48.png'
+import repostIconUrl from '@/assets/icons/repost_arrow_blue_120.png'
 
 const props = defineProps<{
-  icon: 'x' | 'upvote' | 'eye-open' | 'eye-closed' | 'save' | 'trash' | 'publish' | 'published'
+  icon:
+    | 'x'
+    | 'upvote'
+    | 'eye-open'
+    | 'eye-closed'
+    | 'save'
+    | 'trash'
+    | 'publish'
+    | 'published'
+    | 'repost'
   disabled?: boolean
   /** If true, renders as a static indicator without hover/click styles */
   static?: boolean
@@ -35,6 +45,8 @@ const iconUrl = computed(() => {
     return publishIconUrl
   } else if (props.icon === 'published') {
     return publishedIconUrl
+  } else if (props.icon === 'repost') {
+    return repostIconUrl
   }
   throw new Error(`Invalid icon: ${props.icon}`)
 })
