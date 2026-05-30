@@ -62,9 +62,12 @@ export default defineContentScript({
         .catch(() => {})
     }
 
-    /** Fetches profiles for remote note authors that aren't already cached */
+    /** Fetches profiles for remote note authors + reposters that aren't already cached */
     function fetchProfilesForNotes(notes: MustardNote[]) {
-      fetchProfiles(notes.filter((n) => n.authorId !== 'local').map((n) => n.authorId))
+      const ids = notes
+        .filter((n) => n.authorId !== 'local')
+        .flatMap((n) => [n.authorId, ...n.reposterIds])
+      fetchProfiles(ids)
     }
 
     function collectRemoteNoteIds(notes: MustardNote[]): string[] {
@@ -416,6 +419,21 @@ export default defineContentScript({
           })
           .catch((err) => {
             console.error('mustard [content-script] DELETE_NOTE failed:', err)
+          })
+      }
+
+      if (message.type === 'SET_REPOST') {
+        browser.runtime
+          .sendMessage(toPlain(message))
+          .then((dtos: DtoMustardNote[]) => {
+            console.debug('mustard [content-script] received notes after repost:', dtos)
+            const newNotes = (dtos ?? []).map(DtoMustardNote.fromDto)
+            mustardState.notes = newNotes
+            // Reposter avatars need their profiles resolved for the stack.
+            fetchProfilesForNotes(newNotes)
+          })
+          .catch((err) => {
+            console.error('mustard [content-script] SET_REPOST failed:', err)
           })
       }
 

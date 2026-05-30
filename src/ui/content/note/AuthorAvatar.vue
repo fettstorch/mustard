@@ -57,11 +57,6 @@ const profileUrl = computed(() => {
   height: 100%;
   border-radius: 50%;
   object-fit: cover;
-  transition: opacity 0.15s ease;
-}
-
-.author-avatar:hover .avatar-image {
-  opacity: 0.8;
 }
 
 .avatar-placeholder {

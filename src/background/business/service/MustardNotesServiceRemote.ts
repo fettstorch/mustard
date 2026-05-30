@@ -22,6 +22,10 @@ type IndexCachePayload = {
   myUnreadByPage: Record<string, number>
   /** pageUrl → most recent updated_at (Unix ms) across the cached user's own notes */
   latestNoteAtByPage: Record<string, number>
+  /** Note ids visible to the cached user via repost (reposted by them or someone they follow). */
+  repostedNoteIds: string[]
+  /** noteId → DIDs (cached user + their follows) who reposted it. Drives the avatar stack. */
+  repostersByNoteId: Record<string, string[]>
 }
 
 let indexCache: (IndexCachePayload & { userId: string; timestamp: number }) | null = null
@@ -43,6 +47,8 @@ interface GetIndexResponse {
   index: Record<string, string[]>
   myUnreadByPage?: Record<string, number>
   latestNoteAtByPage?: Record<string, number>
+  repostedNoteIds?: string[]
+  repostersByNoteId?: Record<string, string[]>
 }
 
 /**
@@ -94,6 +100,8 @@ async function getCachedIndexPayload(userId?: string): Promise<IndexCachePayload
       index,
       myUnreadByPage: data.myUnreadByPage ?? {},
       latestNoteAtByPage: data.latestNoteAtByPage ?? {},
+      repostedNoteIds: data.repostedNoteIds ?? [],
+      repostersByNoteId: data.repostersByNoteId ?? {},
     }
 
     indexCache = { ...payload, userId, timestamp: now }
@@ -130,26 +138,52 @@ export class MustardNotesServiceRemote implements MustardNotesService {
     }
 
     try {
-      // First, get the index to know which authors to query
-      const index = await this.queryIndex(userId)
+      const payload = await getCachedIndexPayload(userId)
+      if (!payload) return []
+
+      const { index, repostedNoteIds, repostersByNoteId } = payload
       const authorIds = index.getUsersForPage(pageUrl)
 
-      if (authorIds.length === 0) {
-        return []
+      // Two visibility channels, merged below:
+      //   1. author channel — notes on this page by authors I follow (the existing path)
+      //   2. repost channel — specific notes reposted by me or someone I follow,
+      //      fetched by id so we DON'T over-fetch the original author's other notes.
+      const notesById = new Map<string, DbNote>()
+
+      if (authorIds.length > 0) {
+        const { data, error } = await supabase
+          .from('notes')
+          .select('*')
+          .eq('page_url', pageUrl)
+          .in('author_id', authorIds)
+
+        if (error) {
+          throw new Error(`Supabase query failed: ${error.message}`)
+        }
+        for (const row of (data || []) as DbNote[]) notesById.set(row.id, row)
       }
 
-      // Query notes for this page from these authors
-      const { data, error } = await supabase
-        .from('notes')
-        .select('*')
-        .eq('page_url', pageUrl)
-        .in('author_id', authorIds)
+      if (repostedNoteIds.length > 0) {
+        // Batch the id filter to stay within PostgREST URI limits.
+        const BATCH_SIZE = 200
+        for (let i = 0; i < repostedNoteIds.length; i += BATCH_SIZE) {
+          const batch = repostedNoteIds.slice(i, i + BATCH_SIZE)
+          const { data, error } = await supabase
+            .from('notes')
+            .select('*')
+            .eq('page_url', pageUrl)
+            .in('id', batch)
 
-      if (error) {
-        throw new Error(`Supabase query failed: ${error.message}`)
+          if (error) {
+            throw new Error(`Supabase reposted-notes query failed: ${error.message}`)
+          }
+          for (const row of (data || []) as DbNote[]) notesById.set(row.id, row)
+        }
       }
 
-      return (data || []).map(dbNoteToMustardNote)
+      return [...notesById.values()].map((row) =>
+        dbNoteToMustardNote(row, repostersByNoteId[row.id] ?? []),
+      )
     } catch (error) {
       console.error('Failed to query remote notes:', error)
       return []
@@ -211,14 +245,51 @@ export class MustardNotesServiceRemote implements MustardNotesService {
       throw new Error(`Failed to delete note: ${error.message}`)
     }
   }
+
+  /**
+   * Repost a note (grant visibility to the current user's followers).
+   * The reposter_id is enforced by RLS to be the authenticated user.
+   *
+   * `ignoreDuplicates: true` makes this emit `ON CONFLICT DO NOTHING`, so a
+   * retry / double-click on an existing (note_id, reposter_id) row is a silent
+   * no-op. We deliberately avoid the default upsert (`DO UPDATE`), which would
+   * require an UPDATE RLS policy we don't want to grant — keeping the table
+   * insert/delete-only.
+   */
+  async repostNote(noteId: string, reposterId: string): Promise<void> {
+    const { error } = await supabase
+      .from('reposts')
+      .upsert(
+        { note_id: noteId, reposter_id: reposterId },
+        { onConflict: 'note_id,reposter_id', ignoreDuplicates: true },
+      )
+
+    if (error) {
+      throw new Error(`Failed to repost note: ${error.message}`)
+    }
+  }
+
+  /** Remove the current user's repost of a note. */
+  async unrepostNote(noteId: string, reposterId: string): Promise<void> {
+    const { error } = await supabase
+      .from('reposts')
+      .delete()
+      .eq('note_id', noteId)
+      .eq('reposter_id', reposterId)
+
+    if (error) {
+      throw new Error(`Failed to remove repost: ${error.message}`)
+    }
+  }
 }
 
 // Helper to convert database row to MustardNote
-function dbNoteToMustardNote(dbNote: DbNote): MustardNote {
+function dbNoteToMustardNote(dbNote: DbNote, reposterIds: string[] = []): MustardNote {
   return {
     id: dbNote.id,
     authorId: dbNote.author_id,
     content: dbNote.content,
+    reposterIds,
     anchorData: {
       pageUrl: dbNote.page_url,
       elementSelector: dbNote.element_selector,

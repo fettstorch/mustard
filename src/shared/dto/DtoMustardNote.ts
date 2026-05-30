@@ -11,6 +11,8 @@ export type DtoMustardNote = {
   content: string
   anchorData: MustardNoteAnchorData
   updatedAt: number // Unix timestamp in milliseconds
+  /** Optional: omitted by older stored local notes and by upsert payloads (server-derived). */
+  reposterIds?: string[]
 }
 
 export namespace DtoMustardNote {
@@ -21,6 +23,7 @@ export namespace DtoMustardNote {
       content: note.content,
       anchorData: note.anchorData,
       updatedAt: note.updatedAt.getTime(),
+      reposterIds: note.reposterIds,
     }
   }
 
@@ -31,6 +34,7 @@ export namespace DtoMustardNote {
       content: dto.content,
       anchorData: dto.anchorData,
       updatedAt: new Date(dto.updatedAt),
+      reposterIds: dto.reposterIds ?? [],
     }
   }
 }
