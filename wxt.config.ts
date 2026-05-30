@@ -71,6 +71,13 @@ export default defineConfig({
         '@': fileURLToPath(new URL('./src', import.meta.url)),
       },
     },
+    // Scope the dependency scanner to the real extension entrypoints. Without
+    // this, Vite globs **/*.html across the whole tree and crawls into dist/
+    // (build output) and docs/ (the website) — and dist/*.html gets rewritten
+    // mid-build, so the scan races against files that momentarily don't exist.
+    optimizeDeps: {
+      entries: ['src/entrypoints/**/*.html'],
+    },
     build: {
       assetsInlineLimit: 65536,
     },
