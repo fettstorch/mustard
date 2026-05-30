@@ -39,6 +39,7 @@
     "@tsconfig/node24": "^24.0.3",
     "@types/markdown-it": "^14.1.2",
     "@types/node": "^24.10.4",
+    "@vitejs/plugin-vue": "^6.0.7",
     "@vue/eslint-config-prettier": "^10.2.0",
     "@vue/eslint-config-typescript": "^14.6.0",
     "@vue/tsconfig": "^0.8.1",
@@ -49,6 +50,7 @@
     "prettier": "3.7.4",
     "stmux": "^1.8.11",
     "typescript": "~5.9.3",
+    "vite": "^8.0.11",
     "vue-tsc": "^3.2.1",
     "wxt": "^0.20.25"
   },
