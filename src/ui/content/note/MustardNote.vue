@@ -269,7 +269,7 @@ watch(unreadCount, (count) => {
           <span
             v-if="showRepostButton"
             class="mustard-repost-toggle"
-            :style="{ transform: `rotate(${repostRotation}deg)` }"
+            :style="{ '--repost-rotation': `${repostRotation}deg` }"
           >
             <IconButton
               icon="repost"
@@ -408,16 +408,20 @@ watch(unreadCount, (count) => {
 }
 
 /* Repost toggle: hidden by default, fades in only while the note is hovered so
- * resting notes stay clean. The `transform` (set inline per-press) animates as a
- * 360° ease-out spin on each press. Two transitions on one element: a quick
- * opacity fade and a slower rotation. */
+ * resting notes stay clean. The rotation (set per-press via the --repost-rotation
+ * custom property) animates as a 360° ease-out spin on the icon image only — the
+ * wrapper carries the press-indicator background, so rotating it would spin that
+ * darkened hover/active frame too. */
 .mustard-repost-toggle {
   display: inline-flex;
   opacity: 0;
   pointer-events: none;
-  transition:
-    opacity 0.15s ease,
-    transform 0.5s ease-out;
+  transition: opacity 0.15s ease;
+}
+
+.mustard-repost-toggle :deep(img) {
+  transform: rotate(var(--repost-rotation, 0deg));
+  transition: transform 0.5s ease-out;
 }
 
 .mustard-note:hover .mustard-repost-toggle {
