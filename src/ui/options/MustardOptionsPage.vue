@@ -28,6 +28,8 @@ const helloMustardUrl = 'https://fettstorch.github.io/mustard/'
 const showPublishWarning = ref(true)
 const minimizeNotes = ref(false)
 const showAnchorInEditor = ref(false)
+const minimizeShortcut = ref<string>('')
+const shortcutsUrl = ref<string>('')
 
 onMounted(async () => {
   const result = await browser.storage.local.get([
@@ -38,7 +40,28 @@ onMounted(async () => {
   showPublishWarning.value = !result[PUBLISH_CONFIRM_DISMISSED_KEY]
   minimizeNotes.value = !!result[NOTES_MINIMIZED_KEY]
   showAnchorInEditor.value = !!result[SHOW_ANCHOR_IN_EDITOR_KEY]
+
+  // Read the live keybinding so it stays accurate after the user rebinds.
+  try {
+    const commands = (await browser.commands?.getAll?.()) ?? []
+    const cmd = commands.find((c) => c.name === 'toggle-minimize-notes')
+    minimizeShortcut.value = cmd?.shortcut || ''
+  } catch {
+    // commands API unavailable — leave shortcut empty.
+  }
+
+  // Firefox has no deep link to per-extension shortcut management; about:addons
+  // is the closest. Chromium browsers expose chrome://extensions/shortcuts.
+  const isFirefox = typeof (browser.runtime as { getBrowserInfo?: unknown }).getBrowserInfo === 'function'
+  shortcutsUrl.value = isFirefox ? 'about:addons' : 'chrome://extensions/shortcuts'
 })
+
+function openShortcutsPage() {
+  // chrome:// and about: URLs can't be opened via window.open — must use tabs.create.
+  if (shortcutsUrl.value) {
+    browser.tabs.create({ url: shortcutsUrl.value }).catch(() => {})
+  }
+}
 
 function onPublishWarningChange() {
   browser.storage.local.set({ [PUBLISH_CONFIRM_DISMISSED_KEY]: !showPublishWarning.value })
@@ -116,6 +139,18 @@ function openKofi() {
           />
           <span class="pref-label">Show anchor data in editor</span>
         </label>
+      </section>
+
+      <section class="shortcuts-section">
+        <h2 class="section-title">Keyboard shortcuts</h2>
+        <div class="shortcut-row">
+          <span class="pref-label">Toggle minimize notes</span>
+          <kbd v-if="minimizeShortcut" class="shortcut-key">{{ minimizeShortcut }}</kbd>
+          <span v-else class="shortcut-unset">Not set</span>
+        </div>
+        <a class="welcome-link" @click.prevent="openShortcutsPage">
+          Customize shortcuts &rarr;
+        </a>
       </section>
 
       <section class="link-section">
@@ -256,5 +291,33 @@ h1 {
 
 .pref-label {
   font-size: 0.875rem;
+}
+
+.shortcuts-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.shortcut-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.shortcut-key {
+  font-family: var(--mustard-font);
+  font-size: 0.8rem;
+  padding: 2px 8px;
+  border-radius: 6px;
+  border: 2px solid var(--mustard-border);
+  background: var(--mustard-glass);
+  color: var(--mustard-text);
+}
+
+.shortcut-unset {
+  font-size: 0.8rem;
+  opacity: 0.6;
+  font-style: italic;
 }
 </style>

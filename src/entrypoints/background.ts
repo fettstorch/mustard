@@ -134,6 +134,22 @@ export default defineBackground(() => {
     }
   })
 
+  // Keyboard shortcuts (manifest `commands` field). Toggling storage here
+  // automatically fans out to content scripts + popup + options via the
+  // existing storage.onChanged listeners — no extra messaging needed.
+  const NOTES_MINIMIZED_KEY = 'mustard-notes-minimized'
+  browser.commands?.onCommand.addListener(async (command) => {
+    if (command === 'toggle-minimize-notes') {
+      try {
+        const { [NOTES_MINIMIZED_KEY]: current } =
+          await browser.storage.local.get(NOTES_MINIMIZED_KEY)
+        await browser.storage.local.set({ [NOTES_MINIMIZED_KEY]: !current })
+      } catch (err) {
+        console.debug('mustard [service-worker] toggle-minimize-notes failed:', err)
+      }
+    }
+  })
+
   // Receiving messages from the content-script and popup.
   // Returning a Promise from the listener works on both Chrome (99+) and Firefox.
   browser.runtime.onMessage.addListener((message: Message) => {

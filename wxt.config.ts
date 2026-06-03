@@ -47,6 +47,19 @@ export default defineConfig({
       : {}),
     permissions: ['storage', 'contextMenus', 'identity'],
     host_permissions: ['<all_urls>'],
+    // Keyboard shortcuts. Users can rebind via:
+    //   - Chrome:  chrome://extensions/shortcuts
+    //   - Firefox: about:addons → ⚙ → "Manage Extension Shortcuts"
+    // Chrome caps suggested_key commands at 4 (WXT's dev reload uses one slot
+    // in dev mode, leaving 3 — production has all 4 available).
+    commands: {
+      'toggle-minimize-notes': {
+        description: 'Toggle minimize Mustard notes',
+        suggested_key: {
+          default: 'Alt+Shift+M',
+        },
+      },
+    },
     content_security_policy: {
       extension_pages: "script-src 'self'; object-src 'self'; img-src 'self' https: data:",
     },
