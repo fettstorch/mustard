@@ -354,6 +354,13 @@ watch(unreadCount, (count) => {
   cursor: grab;
   user-select: none;
   overflow: hidden;
+  /* Explicit baseline so the minimize transition can interpolate max-width.
+   * Without this the unminimized state computes to `max-width: none`, which
+   * is not a length and therefore not smoothly interpolatable with `38px` —
+   * the browser falls back to discrete animation (instant jump). Matches the
+   * inner content's max-width + outer horizontal padding (1em total from
+   * .mustard-notes-padding). */
+  max-width: calc(var(--mustard-note-content-max-width) + 1em);
 }
 
 .mustard-note.is-dragging {
