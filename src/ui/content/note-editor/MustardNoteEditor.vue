@@ -217,7 +217,7 @@ function handlePublish() {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  max-width: var(--mustard-note-content-width);
+  max-width: var(--mustard-note-content-max-width);
 }
 
 .anchor-row {
