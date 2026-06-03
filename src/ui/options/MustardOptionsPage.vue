@@ -30,7 +30,10 @@ const showPublishWarning = ref(true)
 const minimizeNotes = ref(false)
 const showAnchorInEditor = ref(false)
 const minimizeShortcut = ref<string>('')
+const popupShortcut = ref<string>('')
 const shortcutsUrl = ref<string>('')
+const isFirefoxBrowser = ref<boolean>(false)
+const isMacPlatform = ref<boolean>(false)
 
 onMounted(async () => {
   const result = await browser.storage.local.get([
@@ -42,26 +45,38 @@ onMounted(async () => {
   minimizeNotes.value = !!result[NOTES_MINIMIZED_KEY]
   showAnchorInEditor.value = !!result[SHOW_ANCHOR_IN_EDITOR_KEY]
 
-  // Read the live keybinding so it stays accurate after the user rebinds.
+  // Read the live keybindings so they stay accurate after the user rebinds.
+  // The popup command is `_execute_action` (Chrome MV3) or
+  // `_execute_browser_action` (Firefox MV2) — check both.
   try {
     const commands = (await browser.commands?.getAll?.()) ?? []
-    const cmd = commands.find((c) => c.name === 'toggle-minimize-notes')
-    minimizeShortcut.value = cmd?.shortcut || ''
+    minimizeShortcut.value =
+      commands.find((c) => c.name === 'toggle-minimize-notes')?.shortcut || ''
+    popupShortcut.value =
+      commands.find(
+        (c) => c.name === '_execute_action' || c.name === '_execute_browser_action',
+      )?.shortcut || ''
   } catch {
-    // commands API unavailable — leave shortcut empty.
+    // commands API unavailable — leave shortcuts empty.
   }
 
-  // Firefox has no deep link to per-extension shortcut management; about:addons
-  // is the closest. Chromium browsers expose chrome://extensions/shortcuts.
-  const isFirefox = typeof (browser.runtime as { getBrowserInfo?: unknown }).getBrowserInfo === 'function'
-  shortcutsUrl.value = isFirefox ? 'about:addons' : 'chrome://extensions/shortcuts'
+  // Chromium exposes chrome://extensions/shortcuts and allows extensions to
+  // open it via tabs.create. Firefox blocks extensions from opening `about:`
+  // URLs (only a small whitelist like about:blank is allowed), so we surface
+  // navigation instructions instead of a clickable link there.
+  const isFirefox =
+    typeof (browser.runtime as { getBrowserInfo?: unknown }).getBrowserInfo === 'function'
+  isFirefoxBrowser.value = isFirefox
+  shortcutsUrl.value = isFirefox ? '' : 'chrome://extensions/shortcuts'
+  // Pick the right modifier for the Firefox add-ons shortcut hint.
+  isMacPlatform.value = /Mac/i.test(navigator.userAgent)
 })
 
 function openShortcutsPage() {
-  // chrome:// and about: URLs can't be opened via window.open — must use tabs.create.
-  if (shortcutsUrl.value) {
-    browser.tabs.create({ url: shortcutsUrl.value }).catch(() => {})
-  }
+  if (!shortcutsUrl.value) return
+  browser.tabs.create({ url: shortcutsUrl.value }).catch((err) => {
+    console.warn('Could not open shortcuts page:', err)
+  })
 }
 
 function onPublishWarningChange() {
@@ -145,13 +160,30 @@ function openKofi() {
       <section class="shortcuts-section">
         <h2 class="section-title">Keyboard shortcuts</h2>
         <div class="shortcut-row">
+          <span class="pref-label">Open Mustard popup</span>
+          <kbd v-if="popupShortcut" class="shortcut-key">{{ popupShortcut }}</kbd>
+          <span v-else class="shortcut-unset">Not set</span>
+        </div>
+        <div class="shortcut-row">
           <span class="pref-label">Toggle minimize notes</span>
           <kbd v-if="minimizeShortcut" class="shortcut-key">{{ minimizeShortcut }}</kbd>
           <span v-else class="shortcut-unset">Not set</span>
         </div>
-        <a class="welcome-link" @click.prevent="openShortcutsPage">
+        <a
+          v-if="!isFirefoxBrowser"
+          class="welcome-link"
+          @click.prevent="openShortcutsPage"
+        >
           Customize shortcuts &rarr;
         </a>
+        <p v-else class="shortcut-hint">
+          To customize, open Firefox's application menu (☰) and choose
+          <strong>Extensions and themes</strong> (or press
+          <kbd class="shortcut-key">{{ isMacPlatform ? '⌘⇧A' : 'Ctrl+Shift+A' }}</kbd>).
+          Then click the <strong>⚙</strong> icon in the
+          <strong>top right</strong> and pick
+          <strong>Manage Extension Shortcuts</strong>.
+        </p>
       </section>
 
       <section class="link-section">
@@ -334,5 +366,19 @@ h1 {
   font-size: 0.8rem;
   opacity: 0.6;
   font-style: italic;
+}
+
+.shortcut-hint {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  opacity: 0.85;
+}
+
+.shortcut-hint .shortcut-key {
+  /* Inline keycap inside the hint — match the row keycap style but smaller */
+  font-size: 0.72rem;
+  padding: 1px 6px;
+  box-shadow: 0 1px 0 var(--mustard-border);
 }
 </style>

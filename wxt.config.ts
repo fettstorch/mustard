@@ -52,11 +52,22 @@ export default defineConfig({
     //   - Firefox: about:addons → ⚙ → "Manage Extension Shortcuts"
     // Chrome caps suggested_key commands at 4 (WXT's dev reload uses one slot
     // in dev mode, leaving 3 — production has all 4 available).
+    //
+    // The reserved "open the popup" command name differs per manifest version:
+    //   - MV3 (Chrome): `_execute_action`
+    //   - MV2 (Firefox, as WXT currently generates): `_execute_browser_action`
+    // Using the wrong one is silently ignored, so we branch on the target.
     commands: {
+      [browser === 'firefox' ? '_execute_browser_action' : '_execute_action']: {
+        description: 'Open the Mustard popup',
+        suggested_key: {
+          default: 'Alt+Shift+M',
+        },
+      },
       'toggle-minimize-notes': {
         description: 'Toggle minimize Mustard notes',
         suggested_key: {
-          default: 'Alt+Shift+M',
+          default: 'Alt+Shift+Z',
         },
       },
     },
