@@ -24,6 +24,7 @@ const SHOW_ANCHOR_IN_EDITOR_KEY = 'mustard-show-anchor-in-editor'
 
 const logoUrl = browser.runtime.getURL('/mustard_bottle_smile_512.png')
 const helloMustardUrl = 'https://fettstorch.github.io/mustard/'
+const bskyProfileUrl = 'https://bsky.app/profile/mustardnotes.com'
 
 const showPublishWarning = ref(true)
 const minimizeNotes = ref(false)
@@ -158,6 +159,9 @@ function openKofi() {
         <a :href="helloMustardUrl" target="_blank" class="welcome-link">
           View Hello Mustard &amp; getting started guide
         </a>
+        <a :href="bskyProfileUrl" target="_blank" class="welcome-link">
+          @mustardnotes.com on Bluesky
+        </a>
       </section>
     </div>
   </div>
@@ -176,7 +180,9 @@ function openKofi() {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 32px;
+  margin-bottom: 28px;
+  padding-bottom: 20px;
+  border-bottom: 2px solid var(--mustard-border-subtle);
 }
 
 .logo {
@@ -200,19 +206,30 @@ h1 {
 .content {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 18px;
 }
 
-.support-section {
+/* All sections share a glass-card treatment so each block reads as its
+ * own grouping rather than blending into a single wall of text. */
+.content > section {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
+  padding: 18px 20px;
+  background: var(--mustard-glass);
+  border: 1.5px solid var(--mustard-border-subtle);
+  border-radius: 12px;
 }
 
 .section-title {
   margin: 0;
-  font-size: 1rem;
-  font-weight: 600;
+  padding-bottom: 10px;
+  border-bottom: 1.5px solid var(--mustard-border-subtle);
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--mustard-border);
 }
 
 .section-desc {
@@ -293,26 +310,24 @@ h1 {
   font-size: 0.875rem;
 }
 
-.shortcuts-section {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
 .shortcut-row {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 12px;
 }
 
 .shortcut-key {
   font-family: var(--mustard-font);
   font-size: 0.8rem;
-  padding: 2px 8px;
+  font-weight: 600;
+  padding: 3px 10px;
   border-radius: 6px;
-  border: 2px solid var(--mustard-border);
-  background: var(--mustard-glass);
+  border: 1.5px solid var(--mustard-border);
+  background: var(--mustard-glass-strong);
   color: var(--mustard-text);
+  /* Subtle keycap depth */
+  box-shadow: 0 1.5px 0 var(--mustard-border);
 }
 
 .shortcut-unset {
