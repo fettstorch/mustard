@@ -118,12 +118,27 @@ onUnmounted(() => {
 })
 
 function handleKeyDown(event: KeyboardEvent) {
-  if (event.key === 'Escape') {
-    if (pendingPublish.value) {
-      pendingPublish.value = null
-    } else if (mustardState.editor.isOpen) {
-      mustardState.editor.isOpen = false
-    }
+  if (event.key !== 'Escape') return
+
+  if (pendingPublish.value) {
+    pendingPublish.value = null
+    return
+  }
+  if (mustardState.editor.isOpen) {
+    mustardState.editor.isOpen = false
+    return
+  }
+
+  // Comment-thread close on Esc: be a polite citizen on the host page.
+  // - Bubble phase + no stopPropagation/preventDefault → page handlers always run.
+  // - Skip if the page already handled it (defaultPrevented) or an IME is composing.
+  if (event.defaultPrevented || event.isComposing) return
+  const expandedIds = Object.keys(mustardState.expandedCommentNoteIds).filter(
+    (id) => mustardState.expandedCommentNoteIds[id],
+  )
+  if (expandedIds.length === 0) return
+  for (const id of expandedIds) {
+    mustardState.expandedCommentNoteIds[id] = false
   }
 }
 
