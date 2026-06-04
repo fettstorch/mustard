@@ -12,8 +12,9 @@ import {
   createGetProfilesMessage,
   createGetNotesVisibleMessage,
   createSetNotesVisibleMessage,
+  sendMessage,
+  sendTabMessage,
   type AtprotoSessionResponse,
-  type GetProfilesResponse,
 } from '@/shared/messaging'
 import type { UserProfile } from '@/shared/model/UserProfile'
 import BlueskyLogin from './auth/BlueskyLogin.vue'
@@ -29,9 +30,7 @@ const activeTabId = ref<number | null>(null)
 
 onMounted(async () => {
   // Get session via service worker (auth state lives there)
-  const existingSession = (await browser.runtime.sendMessage(
-    createGetAtprotoSessionMessage(),
-  )) as AtprotoSessionResponse
+  const existingSession = await sendMessage(createGetAtprotoSessionMessage())
   if (existingSession) {
     session.value = existingSession
   }
@@ -45,8 +44,7 @@ onMounted(async () => {
   if (tab?.id && tab.url && (tab.url.startsWith('http://') || tab.url.startsWith('https://'))) {
     activeTabId.value = tab.id
     try {
-      const visible = await browser.tabs.sendMessage(tab.id, createGetNotesVisibleMessage())
-      areNotesVisible.value = visible
+      areNotesVisible.value = await sendTabMessage(tab.id, createGetNotesVisibleMessage())
     } catch {
       // Content script not yet injected on this tab (e.g. tab was open before install)
     }
@@ -57,7 +55,7 @@ async function toggleNotesVisibility() {
   if (!activeTabId.value) return
   try {
     const newVisible = !areNotesVisible.value
-    await browser.tabs.sendMessage(activeTabId.value, createSetNotesVisibleMessage(newVisible))
+    await sendTabMessage(activeTabId.value, createSetNotesVisibleMessage(newVisible))
     areNotesVisible.value = newVisible
   } catch {
     // Content script not available on this tab
@@ -75,9 +73,7 @@ watch(
   session,
   async (newSession) => {
     if (newSession) {
-      const profiles = (await browser.runtime.sendMessage(
-        createGetProfilesMessage([newSession.did]),
-      )) as GetProfilesResponse
+      const profiles = await sendMessage(createGetProfilesMessage([newSession.did]))
       profile.value = profiles[newSession.did] ?? null
     } else {
       profile.value = null
@@ -92,7 +88,7 @@ function onLoginSuccess(newSession: NonNullable<AtprotoSessionResponse>) {
 
 async function handleLogout() {
   if (!session.value) return
-  await browser.runtime.sendMessage(createAtprotoLogoutMessage(session.value.did))
+  await sendMessage(createAtprotoLogoutMessage(session.value.did))
   session.value = null
 }
 

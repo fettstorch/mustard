@@ -1,5 +1,8 @@
 import {
   createOpenNoteEditorMessage,
+  broadcastToAllTabs,
+  sendMessage,
+  sendTabMessage,
   type Message,
   type QueryCommentsResponse,
   type QueryNotificationsForNotesResponse,
@@ -21,28 +24,14 @@ export default defineBackground(() => {
 
   /** Broadcast session change to all tabs so content scripts can update their state */
   async function broadcastSessionChanged(did: string | null) {
-    const tabs = await browser.tabs.query({})
-    for (const tab of tabs) {
-      if (tab.id) {
-        browser.tabs.sendMessage(tab.id, { type: 'SESSION_CHANGED', did }).catch(() => {
-          // Tab might not have content script loaded, ignore errors
-        })
-      }
-    }
+    await broadcastToAllTabs({ type: 'SESSION_CHANGED', did })
   }
 
   /** Broadcast that the unread-notifications state changed. Popup re-queries; content scripts can refresh in-page dots. */
   async function broadcastNotificationsChanged() {
-    const tabs = await browser.tabs.query({})
-    for (const tab of tabs) {
-      if (tab.id) {
-        browser.tabs.sendMessage(tab.id, { type: 'NOTIFICATIONS_CHANGED' }).catch(() => {
-          // Popup or content script might not be listening — ignore.
-        })
-      }
-    }
+    await broadcastToAllTabs({ type: 'NOTIFICATIONS_CHANGED' })
     // Popup runtime listener is reached via runtime.sendMessage (not tab-scoped).
-    browser.runtime.sendMessage({ type: 'NOTIFICATIONS_CHANGED' }).catch(() => {})
+    sendMessage({ type: 'NOTIFICATIONS_CHANGED' }).catch(() => {})
   }
 
   /**
@@ -128,7 +117,7 @@ export default defineBackground(() => {
   browser.contextMenus.onClicked.addListener(async (info, tab) => {
     if (info.menuItemId !== 'mustard-add-note' || !tab?.id) return
     try {
-      await browser.tabs.sendMessage(tab.id, createOpenNoteEditorMessage())
+      await sendTabMessage(tab.id, createOpenNoteEditorMessage())
     } catch {
       // Content script not available (tab predates extension load, or context was invalidated).
     }

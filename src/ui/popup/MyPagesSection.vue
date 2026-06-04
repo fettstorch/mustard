@@ -10,7 +10,7 @@
  * Clicking a page row opens that URL in a new tab.
  */
 import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { createGetMyPagesOverviewMessage } from '@/shared/messaging'
+import { createGetMyPagesOverviewMessage, sendMessage } from '@/shared/messaging'
 import type { DtoMyPagesOverview } from '@/shared/dto/DtoMyPagesOverview'
 
 const overview = ref<DtoMyPagesOverview>([])
@@ -24,9 +24,7 @@ const totalUnread = computed(() =>
 async function refresh() {
   isLoading.value = true
   try {
-    const data = (await browser.runtime.sendMessage(
-      createGetMyPagesOverviewMessage(),
-    )) as DtoMyPagesOverview | null
+    const data = await sendMessage(createGetMyPagesOverviewMessage())
     overview.value = data ?? []
   } catch (err) {
     console.error('MyPagesSection.refresh failed:', err)

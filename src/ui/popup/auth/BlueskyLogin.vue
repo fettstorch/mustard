@@ -6,7 +6,11 @@
  * Uses messaging to service worker because popup can close during OAuth flow.
  */
 import { ref } from 'vue'
-import { createAtprotoLoginMessage, type AtprotoSessionResponse } from '@/shared/messaging'
+import {
+  createAtprotoLoginMessage,
+  sendMessage,
+  type AtprotoSessionResponse,
+} from '@/shared/messaging'
 
 const emit = defineEmits<{
   success: [session: NonNullable<AtprotoSessionResponse>]
@@ -26,9 +30,7 @@ async function submit() {
 
   try {
     // Send to service worker - it handles OAuth and persists across popup close
-    const session = (await browser.runtime.sendMessage(
-      createAtprotoLoginMessage(handle),
-    )) as AtprotoSessionResponse
+    const session = await sendMessage(createAtprotoLoginMessage(handle))
     if (session) {
       emit('success', session)
     } else {

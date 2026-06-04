@@ -53,9 +53,8 @@ onMounted(async () => {
     minimizeShortcut.value =
       commands.find((c) => c.name === 'toggle-minimize-notes')?.shortcut || ''
     popupShortcut.value =
-      commands.find(
-        (c) => c.name === '_execute_action' || c.name === '_execute_browser_action',
-      )?.shortcut || ''
+      commands.find((c) => c.name === '_execute_action' || c.name === '_execute_browser_action')
+        ?.shortcut || ''
   } catch {
     // commands API unavailable — leave shortcuts empty.
   }
@@ -169,19 +168,14 @@ function openKofi() {
           <kbd v-if="minimizeShortcut" class="shortcut-key">{{ minimizeShortcut }}</kbd>
           <span v-else class="shortcut-unset">Not set</span>
         </div>
-        <a
-          v-if="!isFirefoxBrowser"
-          class="welcome-link"
-          @click.prevent="openShortcutsPage"
-        >
+        <a v-if="!isFirefoxBrowser" class="welcome-link" @click.prevent="openShortcutsPage">
           Customize shortcuts &rarr;
         </a>
         <p v-else class="shortcut-hint">
           To customize, open Firefox's application menu (☰) and choose
           <strong>Extensions and themes</strong> (or press
-          <kbd class="shortcut-key">{{ isMacPlatform ? '⌘⇧A' : 'Ctrl+Shift+A' }}</kbd>).
-          Then click the <strong>⚙</strong> icon in the
-          <strong>top right</strong> and pick
+          <kbd class="shortcut-key">{{ isMacPlatform ? '⌘⇧A' : 'Ctrl+Shift+A' }}</kbd
+          >). Then click the <strong>⚙</strong> icon in the <strong>top right</strong> and pick
           <strong>Manage Extension Shortcuts</strong>.
         </p>
       </section>

@@ -1,5 +1,6 @@
 import type { DtoMustardNote } from './dto/DtoMustardNote'
 import type { DtoMustardComment } from './dto/DtoMustardComment'
+import type { DtoMyPagesOverview } from './dto/DtoMyPagesOverview'
 import type { Satisfies } from './Satisfies'
 import type { UserProfile, UserId } from './model/UserProfile'
 
@@ -127,7 +128,7 @@ export type AtprotoSessionResponse = {
 } | null
 
 // Response type for GET_PROFILES - map of userId to profile (null if not found)
-export type GetProfilesResponse = Record<string, UserProfile | null>
+type GetProfilesResponse = Record<string, UserProfile | null>
 
 // Popup → content script: query whether notes are visible on this page
 export type GetNotesVisibleMessage = Satisfies<
@@ -271,6 +272,90 @@ export type Message =
   | MarkNotificationsSeenForNoteMessage
   | GetMyPagesOverviewMessage
   | NotificationsChangedMessage
+
+/**
+ * Maps each message type to the value its handler resolves with. Drives the
+ * typed `sendMessage` / `sendTabMessage` wrappers below so call sites get a
+ * precisely-typed response instead of `any` (no more per-call casts).
+ *
+ * `void` entries are fire-and-forget (broadcasts / one-way notifications).
+ */
+type MessageResponses = {
+  OPEN_NOTE_EDITOR: void
+  UPSERT_NOTE: DtoMustardNote[]
+  QUERY_NOTES: DtoMustardNote[]
+  DELETE_NOTE: DtoMustardNote[]
+  SET_REPOST: DtoMustardNote[]
+  ATPROTO_LOGIN: { did: string } | null
+  GET_ATPROTO_SESSION: AtprotoSessionResponse
+  ATPROTO_LOGOUT: null
+  GET_PROFILES: GetProfilesResponse
+  GET_NOTES_VISIBLE: boolean
+  SET_NOTES_VISIBLE: boolean
+  SESSION_CHANGED: void
+  SESSION_EXPIRED: void
+  OPEN_POPUP: void
+  QUERY_COMMENTS: QueryCommentsResponse
+  UPSERT_COMMENT: DtoMustardComment[]
+  DELETE_COMMENT: DtoMustardComment[]
+  QUERY_NOTIFICATIONS_FOR_NOTES: QueryNotificationsForNotesResponse
+  MARK_NOTIFICATIONS_SEEN_FOR_NOTE: null
+  GET_MY_PAGES_OVERVIEW: DtoMyPagesOverview
+  NOTIFICATIONS_CHANGED: void
+}
+
+type ResponseFor<T extends Message['type']> = MessageResponses[T]
+
+/**
+ * Strip Vue reactive Proxies (and any other non-cloneable wrappers) before a
+ * message crosses the extension boundary. Firefox's `structuredClone` rejects
+ * proxies; Chrome serializes silently. Doing it here means callers never have
+ * to remember (see LEARNINGS.md → Cross-Browser Extension Messaging).
+ */
+function toPlainMessage<M extends Message>(message: M): M {
+  return JSON.parse(JSON.stringify(message)) as M
+}
+
+/**
+ * Send a message to the service worker (and any other extension pages).
+ *
+ * Use this from a content script or popup to talk to the background. The
+ * browser routes `runtime.sendMessage` to extension contexts only — it can NOT
+ * target a specific web page's content script, which is why `sendTabMessage`
+ * also exists. Response type is inferred from `message.type` (no casts).
+ */
+export function sendMessage<M extends Message>(message: M): Promise<ResponseFor<M['type']>> {
+  return browser.runtime.sendMessage(toPlainMessage(message)) as Promise<ResponseFor<M['type']>>
+}
+
+/**
+ * Send a message to one specific tab's content script (background → page).
+ *
+ * The service worker has no `runtime` channel to a given page, so it must
+ * address the content script by tab id via `tabs.sendMessage` (this is the
+ * inverse direction of `sendMessage`). Used for per-tab pushes like
+ * SESSION_CHANGED or asking the active tab whether notes are visible.
+ */
+export function sendTabMessage<M extends Message>(
+  tabId: number,
+  message: M,
+): Promise<ResponseFor<M['type']>> {
+  return browser.tabs.sendMessage(tabId, toPlainMessage(message)) as Promise<ResponseFor<M['type']>>
+}
+
+/**
+ * Fire-and-forget broadcast of a message to every open tab's content script.
+ * Tabs without a listening content script (e.g. opened before the extension
+ * loaded) reject silently and are ignored.
+ */
+export async function broadcastToAllTabs<M extends Message>(message: M): Promise<void> {
+  const tabs = await browser.tabs.query({})
+  for (const tab of tabs) {
+    if (tab.id !== undefined) {
+      void sendTabMessage(tab.id, message).catch(() => {})
+    }
+  }
+}
 
 export function createOpenNoteEditorMessage(): OpenNoteEditorMessage {
   return {
