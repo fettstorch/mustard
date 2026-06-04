@@ -24,7 +24,11 @@ type IndexCachePayload = {
   latestNoteAtByPage: Record<string, number>
   /** Note ids visible to the cached user via repost (reposted by them or someone they follow). */
   repostedNoteIds: string[]
-  /** noteId → DIDs (cached user + their follows) who reposted it. Drives the avatar stack. */
+  /**
+   * noteId → ALL DIDs who reposted it (global, not just the viewer's follows).
+   * Only populated for notes the viewer can already see, so it never widens
+   * visibility — it just drives the full avatar stack / social-proof display.
+   */
   repostersByNoteId: Record<string, string[]>
 }
 

@@ -156,23 +156,63 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Reposts: a repost is a visibility grant. Find every note that the user or
-    // someone they follow has reposted — these become visible even when the user
-    // doesn't follow the original author. We layer this alongside the author
-    // index (NOT merged into it): merging the original author would over-fetch
-    // ALL of that author's notes on the page, leaking notes that weren't reposted.
-    // The client fetches reposted notes by id, so we only need note ids here.
-    const repostersByNoteId: Record<string, string[]> = {}
+    // Reposts have TWO independent roles, deliberately decoupled below:
+    //
+    //   1. VISIBILITY (scoped to my network): a note becomes visible to me only
+    //      when I — or someone I follow — reposted it. This MUST stay scoped so I
+    //      never inherit a stranger's OTHER notes (a repost is a per-note grant,
+    //      not a follow). We layer it alongside the author index (NOT merged into
+    //      it): merging the original author would over-fetch ALL of that author's
+    //      notes on the page, leaking notes that weren't reposted.
+    //
+    //   2. SOCIAL PROOF (global): once a note is visible to me, the avatar stack
+    //      should show EVERY reposter — including reposters I don't follow — so the
+    //      "reposted by …" signal reflects reality. This widens only the displayed
+    //      avatars, never the index/visibility.
+
+    // --- Role 1: which notes become visible to me via an in-network repost ---
+    // The client fetches these reposted notes by id, so we only need note ids here.
+    const repostedNoteIdSet = new Set<string>()
 
     for (let i = 0; i < allDids.length; i += BATCH_SIZE) {
       const batch = allDids.slice(i, i + BATCH_SIZE)
       const { data, error } = await supabase
         .from('reposts')
-        .select('note_id, reposter_id')
+        .select('note_id')
         .in('reposter_id', batch)
 
       if (error) {
-        throw new Error(`Reposts query failed: ${error.message}`)
+        throw new Error(`Reposts visibility query failed: ${error.message}`)
+      }
+
+      for (const row of (data ?? []) as { note_id: string }[]) {
+        repostedNoteIdSet.add(row.note_id)
+      }
+    }
+
+    const repostedNoteIds = [...repostedNoteIdSet]
+
+    // --- Role 2: the FULL reposter list for every note I can actually see ---
+    // Visible notes = author-channel notes (mine + my follows', already fetched
+    // above) ∪ notes I gained access to via an in-network repost. We then look up
+    // ALL reposters of those notes (no reposter_id filter), so a stranger who
+    // reposted a note I can see still shows up in the avatar stack — without ever
+    // widening my index.
+    const visibleNoteIdSet = new Set<string>(repostedNoteIdSet)
+    for (const note of notes) visibleNoteIdSet.add(note.id)
+    const visibleNoteIds = [...visibleNoteIdSet]
+
+    const repostersByNoteId: Record<string, string[]> = {}
+
+    for (let i = 0; i < visibleNoteIds.length; i += BATCH_SIZE) {
+      const batch = visibleNoteIds.slice(i, i + BATCH_SIZE)
+      const { data, error } = await supabase
+        .from('reposts')
+        .select('note_id, reposter_id')
+        .in('note_id', batch)
+
+      if (error) {
+        throw new Error(`Reposters query failed: ${error.message}`)
       }
 
       for (const row of (data ?? []) as { note_id: string; reposter_id: string }[]) {
@@ -182,9 +222,6 @@ Deno.serve(async (req) => {
         }
       }
     }
-
-    // Distinct note ids the user may now see via repost (in-network reposters only).
-    const repostedNoteIds = Object.keys(repostersByNoteId)
 
     // Build per-page unread map for the requesting user.
     // notifications.recipient_id = did → only this user's notifications.
