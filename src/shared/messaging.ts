@@ -304,7 +304,7 @@ type MessageResponses = {
   NOTIFICATIONS_CHANGED: void
 }
 
-type ResponseFor<T extends Message['type']> = MessageResponses[T]
+export type ResponseFor<T extends Message['type']> = MessageResponses[T]
 
 /**
  * Strip Vue reactive Proxies (and any other non-cloneable wrappers) before a
