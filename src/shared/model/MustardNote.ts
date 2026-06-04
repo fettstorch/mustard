@@ -1,4 +1,4 @@
-import type { MustardNoteAnchorData } from '../messaging'
+import type { MustardNoteAnchorData } from './MustardNoteAnchorData'
 
 export type MustardNote = {
   id: string | null // null means the note is not yet saved (either local or remote)

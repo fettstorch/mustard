@@ -1,5 +1,5 @@
 import { reactive } from 'vue'
-import type { MustardNoteAnchorData } from '@/shared/messaging'
+import type { MustardNoteAnchorData } from '@/shared/model/MustardNoteAnchorData'
 import type { MustardNote } from '@/shared/model/MustardNote'
 import type { MustardComment } from '@/shared/model/MustardComment'
 import type { UserProfile } from '@/shared/model/UserProfile'

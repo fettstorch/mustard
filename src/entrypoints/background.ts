@@ -391,7 +391,11 @@ export default defineBackground(() => {
   // Firefox. Unhandled types return undefined (no response).
   browser.runtime.onMessage.addListener((message: Message) => {
     const handler = handlers[message.type]
-    console.debug('mustard [service-worker] onMessage:', message, handler ? 'has handler' : 'no handler')
+    console.debug(
+      'mustard [service-worker] onMessage:',
+      message,
+      handler ? 'has handler' : 'no handler',
+    )
     if (!handler) return
     // The map guarantees handler matches message.type at runtime; TS can't
     // correlate the indexed union, so we assert the call here.

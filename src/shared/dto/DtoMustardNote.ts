@@ -1,4 +1,4 @@
-import type { MustardNoteAnchorData } from '@/shared/messaging'
+import type { MustardNoteAnchorData } from '@/shared/model/MustardNoteAnchorData'
 import type { MustardNote } from '@/shared/model/MustardNote'
 
 /**

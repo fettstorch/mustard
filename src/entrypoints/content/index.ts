@@ -7,8 +7,8 @@ import {
   createQueryNotificationsForNotesMessage,
   sendMessage,
   type Message,
-  type MustardNoteAnchorData,
 } from '@/shared/messaging'
+import type { MustardNoteAnchorData } from '@/shared/model/MustardNoteAnchorData'
 import { LIMITS } from '@/shared/constants'
 import { DtoMustardNote } from '@/shared/dto/DtoMustardNote'
 import { DtoMustardComment } from '@/shared/dto/DtoMustardComment'

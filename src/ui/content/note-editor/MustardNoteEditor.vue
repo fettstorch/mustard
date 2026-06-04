@@ -9,7 +9,7 @@ import IconButton from '../IconButton.vue'
 import MustardNoteHeader from '../MustardNoteHeader.vue'
 import { ImageUrlAutoConvert } from './image-url-auto-convert'
 import { GiphySlash } from './giphy-slash'
-import type { MustardNoteAnchorData } from '@/shared/messaging'
+import type { MustardNoteAnchorData } from '@/shared/model/MustardNoteAnchorData'
 import type { MustardState } from '../mustard-state'
 import { LIMITS } from '@/shared/constants'
 
