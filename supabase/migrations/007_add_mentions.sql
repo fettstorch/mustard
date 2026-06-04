@@ -7,6 +7,13 @@
 ALTER TABLE notes ADD COLUMN IF NOT EXISTS mentions TEXT[] NOT NULL DEFAULT '{}';
 ALTER TABLE comments ADD COLUMN IF NOT EXISTS mentions TEXT[] NOT NULL DEFAULT '{}';
 
+-- GIN indexes for the mention-visibility lookups in get-index-v2
+-- (`mentions @> ARRAY[did]`). Without them, array-containment queries seq-scan
+-- every note/comment; GIN indexes each DID element so the scan is index-backed
+-- as the tables grow.
+CREATE INDEX IF NOT EXISTS idx_notes_mentions ON notes USING GIN (mentions);
+CREATE INDEX IF NOT EXISTS idx_comments_mentions ON comments USING GIN (mentions);
+
 -- 2. notifications: add a type + allow note-only (comment-less) rows ----------
 ALTER TABLE notifications ADD COLUMN IF NOT EXISTS type TEXT NOT NULL DEFAULT 'comment';
 ALTER TABLE notifications ALTER COLUMN comment_id DROP NOT NULL;
