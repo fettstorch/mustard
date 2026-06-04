@@ -192,6 +192,43 @@ Deno.serve(async (req) => {
 
     const repostedNoteIds = [...repostedNoteIdSet]
 
+    // --- Mention visibility (per-note grant, exactly like a repost) ---
+    // A note becomes visible to me when I'm @-mentioned in it, OR in any of its
+    // comments — even if I don't follow the author. This matters most for COMMENT
+    // mentions: the commenter may be my mutual while the note's author is a
+    // stranger to me, so without this grant the mention notification would point
+    // at a note I can't see. Returned as ids the client fetches by id (never
+    // merged into the author index, so it can't leak the author's OTHER notes).
+    const mentionedNoteIdSet = new Set<string>()
+
+    {
+      const { data, error } = await supabase
+        .from('notes')
+        .select('id')
+        .contains('mentions', [did])
+      if (error) {
+        throw new Error(`Note-mention visibility query failed: ${error.message}`)
+      }
+      for (const row of (data ?? []) as { id: string }[]) {
+        mentionedNoteIdSet.add(row.id)
+      }
+    }
+
+    {
+      const { data, error } = await supabase
+        .from('comments')
+        .select('note_id')
+        .contains('mentions', [did])
+      if (error) {
+        throw new Error(`Comment-mention visibility query failed: ${error.message}`)
+      }
+      for (const row of (data ?? []) as { note_id: string }[]) {
+        mentionedNoteIdSet.add(row.note_id)
+      }
+    }
+
+    const mentionedNoteIds = [...mentionedNoteIdSet]
+
     // --- Role 2: the FULL reposter list for every note I can actually see ---
     // Visible notes = author-channel notes (mine + my follows', already fetched
     // above) ∪ notes I gained access to via an in-network repost. We then look up
@@ -200,6 +237,7 @@ Deno.serve(async (req) => {
     // widening my index.
     const visibleNoteIdSet = new Set<string>(repostedNoteIdSet)
     for (const note of notes) visibleNoteIdSet.add(note.id)
+    for (const id of mentionedNoteIdSet) visibleNoteIdSet.add(id)
     const visibleNoteIds = [...visibleNoteIdSet]
 
     const repostersByNoteId: Record<string, string[]> = {}
@@ -250,6 +288,7 @@ Deno.serve(async (req) => {
         myUnreadByPage,
         latestNoteAtByPage,
         repostedNoteIds,
+        mentionedNoteIds,
         repostersByNoteId,
       }),
       {

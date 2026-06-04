@@ -1,8 +1,10 @@
 import type { DtoMustardNote } from './dto/DtoMustardNote'
 import type { DtoMustardComment } from './dto/DtoMustardComment'
 import type { DtoMyPagesOverview } from './dto/DtoMyPagesOverview'
+import type { DtoMustardMention } from './dto/DtoMustardMention'
 import type { Satisfies } from './Satisfies'
 import type { UserProfile, UserId } from './model/UserProfile'
+import type { BskyProfile } from './model/BskyProfile'
 
 type BaseMessage = {
   type: string
@@ -93,6 +95,18 @@ export type GetProfilesMessage = Satisfies<
     userIds: UserId[]
   }
 >
+
+// Content script → service worker: the current user's mutuals (people they
+// follow who also follow them back). Powers the @-mention autocomplete.
+// Response: BskyProfile[] (handle guaranteed).
+export type GetMutualsMessage = Satisfies<
+  BaseMessage,
+  {
+    type: 'GET_MUTUALS'
+  }
+>
+
+type GetMutualsResponse = BskyProfile[]
 
 // Response types for AT Protocol auth messages
 export type AtprotoSessionResponse = {
@@ -211,6 +225,27 @@ export type GetMyPagesOverviewMessage = Satisfies<
   }
 >
 
+// Popup → service worker: the current user's unread @-mentions (in notes or
+// comments). Response: DtoMustardMention[] (newest first).
+export type GetMyMentionsMessage = Satisfies<
+  BaseMessage,
+  {
+    type: 'GET_MY_MENTIONS'
+  }
+>
+
+type GetMyMentionsResponse = DtoMustardMention[]
+
+// Popup → service worker: the user acted on a mention notification; delete it.
+// Response: void.
+export type MarkMentionSeenMessage = Satisfies<
+  BaseMessage,
+  {
+    type: 'MARK_MENTION_SEEN'
+    notificationId: string
+  }
+>
+
 // Broadcast: notifications state changed (mark-seen, new fetch with deltas).
 // Tells the popup to re-query the overview and lets content scripts know to
 // refresh their unread counters if needed.
@@ -232,6 +267,7 @@ export type Message =
   | GetAtprotoSessionMessage
   | AtprotoLogoutMessage
   | GetProfilesMessage
+  | GetMutualsMessage
   | GetNotesVisibleMessage
   | SetNotesVisibleMessage
   | SessionChangedMessage
@@ -243,6 +279,8 @@ export type Message =
   | QueryNotificationsForNotesMessage
   | MarkNotificationsSeenForNoteMessage
   | GetMyPagesOverviewMessage
+  | GetMyMentionsMessage
+  | MarkMentionSeenMessage
   | NotificationsChangedMessage
 
 /**
@@ -262,6 +300,7 @@ type MessageResponses = {
   GET_ATPROTO_SESSION: AtprotoSessionResponse
   ATPROTO_LOGOUT: null
   GET_PROFILES: GetProfilesResponse
+  GET_MUTUALS: GetMutualsResponse
   GET_NOTES_VISIBLE: boolean
   SET_NOTES_VISIBLE: boolean
   SESSION_CHANGED: void
@@ -273,6 +312,8 @@ type MessageResponses = {
   QUERY_NOTIFICATIONS_FOR_NOTES: QueryNotificationsForNotesResponse
   MARK_NOTIFICATIONS_SEEN_FOR_NOTE: null
   GET_MY_PAGES_OVERVIEW: DtoMyPagesOverview
+  GET_MY_MENTIONS: GetMyMentionsResponse
+  MARK_MENTION_SEEN: null
   NOTIFICATIONS_CHANGED: void
 }
 
@@ -408,6 +449,12 @@ export function createGetProfilesMessage(userIds: UserId[]): GetProfilesMessage 
   }
 }
 
+export function createGetMutualsMessage(): GetMutualsMessage {
+  return {
+    type: 'GET_MUTUALS',
+  }
+}
+
 export function createGetNotesVisibleMessage(): GetNotesVisibleMessage {
   return {
     type: 'GET_NOTES_VISIBLE',
@@ -468,5 +515,18 @@ export function createMarkNotificationsSeenForNoteMessage(
 export function createGetMyPagesOverviewMessage(): GetMyPagesOverviewMessage {
   return {
     type: 'GET_MY_PAGES_OVERVIEW',
+  }
+}
+
+export function createGetMyMentionsMessage(): GetMyMentionsMessage {
+  return {
+    type: 'GET_MY_MENTIONS',
+  }
+}
+
+export function createMarkMentionSeenMessage(notificationId: string): MarkMentionSeenMessage {
+  return {
+    type: 'MARK_MENTION_SEEN',
+    notificationId,
   }
 }

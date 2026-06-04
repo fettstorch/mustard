@@ -5,11 +5,14 @@ import {
   createGetProfilesMessage,
   createQueryCommentsMessage,
   createQueryNotificationsForNotesMessage,
+  createMarkNotificationsSeenForNoteMessage,
   sendMessage,
   type Message,
 } from '@/shared/messaging'
 import type { MustardNoteAnchorData } from '@/shared/model/MustardNoteAnchorData'
 import { LIMITS } from '@/shared/constants'
+import { extractMentionDids } from '@/shared/mentions'
+import { PENDING_FOCUS_KEY, type PendingFocus } from '@/shared/pending-focus'
 import { DtoMustardNote } from '@/shared/dto/DtoMustardNote'
 import { DtoMustardComment } from '@/shared/dto/DtoMustardComment'
 import MustardContent from '@/ui/content/MustardContent.vue'
@@ -58,12 +61,14 @@ export default defineContentScript({
         .catch(() => {})
     }
 
-    /** Fetches profiles for remote note authors + reposters that aren't already cached */
+    /** Fetches profiles for remote note authors + reposters + mentioned users that aren't already cached */
     function fetchProfilesForNotes(notes: MustardNote[]) {
       const ids = notes
         .filter((n) => n.authorId !== 'local')
         .flatMap((n) => [n.authorId, ...n.reposterIds])
-      fetchProfiles(ids)
+      // Mentioned DIDs (from `@[did]` sentinels) so mentions resolve to handles.
+      const mentionIds = notes.flatMap((n) => extractMentionDids(n.content))
+      fetchProfiles([...ids, ...mentionIds])
     }
 
     function collectRemoteNoteIds(notes: MustardNote[]): string[] {
@@ -96,7 +101,11 @@ export default defineContentScript({
             const comments: MustardComment[] = dtos.map(DtoMustardComment.fromDto)
             mustardState.comments[noteId] = comments
             mustardState.commentsLoadState[noteId] = 'loaded'
-            for (const c of comments) allAuthorIds.push(c.authorId)
+            for (const c of comments) {
+              allAuthorIds.push(c.authorId)
+              // Mentioned DIDs in the comment so @-mentions resolve to handles.
+              allAuthorIds.push(...extractMentionDids(c.content))
+            }
           }
           if (allAuthorIds.length > 0) fetchProfiles(allAuthorIds)
         })
@@ -126,6 +135,7 @@ export default defineContentScript({
             if (count > 0) next[noteId] = count
           }
           mustardState.unreadByNoteId = next
+          maybeApplyPendingFocus()
         })
         .catch((err) => {
           console.error('mustard [content-script] QUERY_NOTIFICATIONS_FOR_NOTES failed:', err)
@@ -172,6 +182,82 @@ export default defineContentScript({
     function getCurrentPageUrl(): string {
       return currentPageUrl
     }
+
+    // --- Pending focus (deep-link from the popup) ---
+    // The popup writes a PendingFocus before opening a page; we consume it once
+    // here to expand the relevant comment thread(s) and scroll the note into
+    // view. It's retried as notes/unread-counts arrive (whichever the focus
+    // needs) and cleared after it successfully applies.
+    let pendingFocus: PendingFocus | null = null
+
+    function scrollToNote(noteId: string): void {
+      const note = mustardState.notes.find((n) => n.id === noteId)
+      if (!note) return
+      // The note is fixed-positioned at its host-page anchor, so bringing the
+      // anchor element into view brings the note with it. Fall back to the
+      // recorded click position when the anchor element can't be found.
+      requestAnimationFrame(() => {
+        const selector = note.anchorData.elementSelector
+        const el = selector ? document.querySelector<HTMLElement>(selector) : null
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        } else {
+          const top = note.anchorData.clickPosition.yPx - window.innerHeight / 2
+          window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
+        }
+      })
+    }
+
+    function maybeApplyPendingFocus(): void {
+      if (!pendingFocus || pendingFocus.pageUrl !== getCurrentPageUrl()) return
+      if (mustardState.notes.length === 0) return // wait for notes to load
+
+      let targetIds: string[]
+      const targetNoteId = pendingFocus.noteId
+      if (targetNoteId) {
+        // Bail (don't keep waiting) if the note simply isn't visible to this user.
+        if (!mustardState.notes.some((n) => n.id === targetNoteId)) {
+          pendingFocus = null
+          return
+        }
+        targetIds = [targetNoteId]
+      } else {
+        // Page-row case: focus notes that currently have unread comments. If
+        // none are loaded yet, wait — fetchUnreadForNotes will retry us.
+        targetIds = Object.keys(mustardState.unreadByNoteId).filter(
+          (id) => (mustardState.unreadByNoteId[id] ?? 0) > 0,
+        )
+        if (targetIds.length === 0) return
+      }
+
+      mustardState.areNotesVisible = true
+      for (const id of targetIds) {
+        mustardState.expandedCommentNoteIds[id] = true
+        // Reading the thread acknowledges its unread comment notifications.
+        // Routed through the same event the manual toggle uses, so the optimistic
+        // clear + sendMessage stay in one canonical place.
+        if (mustardState.unreadByNoteId[id]) {
+          event.emit(createMarkNotificationsSeenForNoteMessage(id))
+        }
+      }
+      scrollToNote(targetIds[0]!)
+      pendingFocus = null
+    }
+
+    browser.storage.local
+      .get(PENDING_FOCUS_KEY)
+      .then((result) => {
+        const focus = result[PENDING_FOCUS_KEY] as PendingFocus | undefined
+        if (focus) {
+          // One-shot: clear immediately so it never fires on later navigations.
+          browser.storage.local.remove(PENDING_FOCUS_KEY).catch(() => {})
+          if (focus.pageUrl === getCurrentPageUrl()) {
+            pendingFocus = focus
+            maybeApplyPendingFocus()
+          }
+        }
+      })
+      .catch(() => {})
 
     function handleUrlChange() {
       const newUrl = normalizePageUrl(window.location.href)
@@ -302,6 +388,7 @@ export default defineContentScript({
       .then((dtos) => {
         console.debug('mustard [content-script] received notes:', dtos)
         applyNotesResponse(dtos, { withComments: true })
+        maybeApplyPendingFocus()
       })
       .catch(() => {})
 
@@ -434,7 +521,10 @@ export default defineContentScript({
             const comments = (dtos ?? []).map(DtoMustardComment.fromDto)
             mustardState.comments[message.noteId] = comments
             mustardState.commentsLoadState[message.noteId] = 'loaded'
-            fetchProfiles(comments.map((c) => c.authorId))
+            fetchProfiles([
+              ...comments.map((c) => c.authorId),
+              ...comments.flatMap((c) => extractMentionDids(c.content)),
+            ])
           })
           .catch((err) => {
             console.error('mustard [content-script] UPSERT_COMMENT failed:', err)

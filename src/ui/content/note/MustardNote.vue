@@ -135,7 +135,9 @@ function onRepostClick() {
 }
 
 const renderedContent = computed(() => {
-  return renderContent(props.note.content)
+  // Resolve mentioned DIDs to their current handle from the profile cache.
+  // Re-renders automatically as profiles arrive (reactive read).
+  return renderContent(props.note.content, (did) => mustardState.profiles[did]?.handle)
 })
 
 const isOverLimit = computed(() => {

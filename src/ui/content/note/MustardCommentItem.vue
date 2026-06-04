@@ -25,7 +25,9 @@ const isMine = computed(() => {
 
 const isPending = computed(() => !!mustardState.pendingCommentIds[props.comment.id])
 
-const renderedContent = computed(() => renderContent(props.comment.content))
+const renderedContent = computed(() =>
+  renderContent(props.comment.content, (did) => mustardState.profiles[did]?.handle),
+)
 
 const handle = computed(() => profile.value?.handle ?? null)
 

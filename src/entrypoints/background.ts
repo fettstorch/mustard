@@ -16,10 +16,12 @@ import { DtoMustardComment } from '@/shared/dto/DtoMustardComment'
 import { login, getSession, logout } from '@/background/auth/AtprotoAuth'
 import { clearSupabaseJwt, storeSupabaseJwt } from '@/background/auth/SupabaseAuth'
 import { MustardProfileServiceBsky } from '@/background/business/service/MustardProfileServiceBsky'
+import { MustardMutualsServiceBsky } from '@/background/business/service/MustardMutualsServiceBsky'
 import { invalidateRemoteIndexCache } from '@/background/business/service/MustardNotesServiceRemote'
 
 export default defineBackground(() => {
   const profileService = new MustardProfileServiceBsky()
+  const mutualsService = new MustardMutualsServiceBsky()
 
   console.log('Mustard background service worker loaded')
 
@@ -274,6 +276,7 @@ export default defineBackground(() => {
         await logout(message.did)
         await clearSupabaseJwt()
         invalidateRemoteIndexCache()
+        mutualsService.clear()
         broadcastSessionChanged(null)
         updateActionBadge()
         return null
@@ -294,6 +297,17 @@ export default defineBackground(() => {
       } catch (err) {
         console.error('GET_PROFILES failed:', err)
         return {}
+      }
+    },
+
+    GET_MUTUALS: async () => {
+      try {
+        const session = await getSession()
+        if (!session) return []
+        return await mutualsService.getMutuals(session.did)
+      } catch (err) {
+        console.error('GET_MUTUALS failed:', err)
+        return []
       }
     },
 
@@ -383,6 +397,27 @@ export default defineBackground(() => {
         console.error('GET_MY_PAGES_OVERVIEW failed:', err)
         return []
       }
+    },
+
+    GET_MY_MENTIONS: async () => {
+      try {
+        const session = await getSession()
+        if (!session) return []
+        return await mustardNotificationsManager.getMyMentions()
+      } catch (err) {
+        console.error('GET_MY_MENTIONS failed:', err)
+        return []
+      }
+    },
+
+    MARK_MENTION_SEEN: async (message) => {
+      try {
+        await mustardNotificationsManager.markMentionSeen(message.notificationId)
+        afterNotificationMutation()
+      } catch (err) {
+        console.error('MARK_MENTION_SEEN failed:', err)
+      }
+      return null
     },
   }
 

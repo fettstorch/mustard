@@ -2,12 +2,14 @@ import type { MustardComment } from '@/shared/model/MustardComment'
 import type { MustardCommentsService } from './MustardCommentsService'
 import { supabase } from '@/background/supabase-client'
 import { LIMITS } from '@/shared/constants'
+import { deriveMentions } from '@/shared/mentions'
 
 interface DbComment {
   id: string
   note_id: string
   author_id: string
   content: string
+  mentions: string[]
   created_at: string
   updated_at: string
 }
@@ -62,6 +64,9 @@ export class MustardCommentsServiceRemote implements MustardCommentsService {
       note_id: comment.noteId,
       author_id: comment.authorId,
       content: comment.content,
+      // Mentions are derived from content at this write boundary (content is the
+      // source of truth); the column exists only for the notification trigger.
+      mentions: deriveMentions(comment.content, comment.authorId),
       updated_at: comment.updatedAt.toISOString(),
     }
 
