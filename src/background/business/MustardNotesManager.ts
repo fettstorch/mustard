@@ -2,7 +2,7 @@ import type { MustardNote } from '@/shared/model/MustardNote'
 import { MustardIndex } from '@/shared/model/MustardIndex'
 import type { MustardNotesService } from './service/MustardNotesService'
 import { MustardNotesServiceLocal } from './service/MustardNotesServiceLocal'
-import { MustardNotesServiceRemote } from './service/MustardNotesServiceRemote'
+import { mustardNotesServiceRemote } from './service/MustardNotesServiceRemote'
 
 /** Sort notes by date ascending so newest notes render last (on top). */
 function sortByCreationDateAsc(notes: MustardNote[]): MustardNote[] {
@@ -13,9 +13,9 @@ function sortByCreationDateAsc(notes: MustardNote[]): MustardNote[] {
 const localService: MustardNotesService = new MustardNotesServiceLocal()
 
 // Remote service: stores notes on Supabase (published, visible to followers).
-// Typed concretely (not as MustardNotesService) so repost methods are reachable —
-// reposting is inherently a remote-only operation.
-const remoteService = new MustardNotesServiceRemote()
+// Shared singleton (cache lives in module scope) — also exposes repost methods
+// concretely, since reposting is inherently a remote-only operation.
+const remoteService = mustardNotesServiceRemote
 
 /**
  * Facade that coordinates local and remote mustard notes services.

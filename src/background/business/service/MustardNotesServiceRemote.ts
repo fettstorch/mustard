@@ -113,7 +113,7 @@ async function getCachedIndexPayload(userId?: string): Promise<IndexCachePayload
   }
 }
 
-export class MustardNotesServiceRemote implements MustardNotesService {
+class MustardNotesServiceRemote implements MustardNotesService {
   async queryIndex(userId?: string): Promise<MustardIndex> {
     const payload = await getCachedIndexPayload(userId)
     return payload?.index ?? new MustardIndexClass(new Map())
@@ -282,6 +282,14 @@ export class MustardNotesServiceRemote implements MustardNotesService {
     }
   }
 }
+
+/**
+ * Shared singleton. The index cache lives in module scope, so this service is
+ * inherently process-wide — exporting one instance keeps every consumer (notes
+ * + notifications managers) on the same cached state instead of each `new`-ing
+ * its own object that only stayed consistent by accident via the module cache.
+ */
+export const mustardNotesServiceRemote = new MustardNotesServiceRemote()
 
 // Helper to convert database row to MustardNote
 function dbNoteToMustardNote(dbNote: DbNote, reposterIds: string[] = []): MustardNote {

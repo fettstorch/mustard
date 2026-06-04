@@ -1,9 +1,9 @@
 import type { DtoMyPagesOverview } from '@/shared/dto/DtoMyPagesOverview'
 import { MustardNotificationsServiceRemote } from './service/MustardNotificationsServiceRemote'
-import { MustardNotesServiceRemote } from './service/MustardNotesServiceRemote'
+import { mustardNotesServiceRemote } from './service/MustardNotesServiceRemote'
 
 const notificationsService = new MustardNotificationsServiceRemote()
-const notesService = new MustardNotesServiceRemote()
+const notesService = mustardNotesServiceRemote
 
 /**
  * Facade for unread-notification operations.
