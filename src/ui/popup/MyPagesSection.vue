@@ -9,9 +9,12 @@
  * The section is collapsible (click the header to expand/collapse).
  * Clicking a page row opens that URL in a new tab.
  */
-import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { createGetMyPagesOverviewMessage } from '@/shared/messaging'
+import { computed, onMounted, ref } from 'vue'
+import { createGetMyPagesOverviewMessage, sendMessage } from '@/shared/messaging'
 import type { DtoMyPagesOverview } from '@/shared/dto/DtoMyPagesOverview'
+import { useNotificationsChanged } from './use-notifications-changed'
+import { openPageFocused } from './open-page-focused'
+import { displayUrl } from './display-url'
 
 const overview = ref<DtoMyPagesOverview>([])
 const isExpanded = ref(false)
@@ -24,9 +27,7 @@ const totalUnread = computed(() =>
 async function refresh() {
   isLoading.value = true
   try {
-    const data = (await browser.runtime.sendMessage(
-      createGetMyPagesOverviewMessage(),
-    )) as DtoMyPagesOverview | null
+    const data = await sendMessage(createGetMyPagesOverviewMessage())
     overview.value = data ?? []
   } catch (err) {
     console.error('MyPagesSection.refresh failed:', err)
@@ -36,39 +37,13 @@ async function refresh() {
   }
 }
 
-function onNotificationsChanged(message: unknown) {
-  if (
-    typeof message === 'object' &&
-    message !== null &&
-    (message as { type?: string }).type === 'NOTIFICATIONS_CHANGED'
-  ) {
-    refresh()
-  }
-}
+onMounted(refresh)
+useNotificationsChanged(refresh)
 
-onMounted(() => {
-  refresh()
-  browser.runtime.onMessage.addListener(onNotificationsChanged)
-  // Auto-expand if there are unread items so the user spots them immediately.
-  // We can only know after the first refresh; a brief watch handles it.
-})
-
-onUnmounted(() => {
-  browser.runtime.onMessage.removeListener(onNotificationsChanged)
-})
-
-function openPage(pageUrl: string) {
-  browser.tabs.create({ url: pageUrl, active: true }).catch(() => {})
-}
-
-function displayUrl(pageUrl: string): string {
-  try {
-    const u = new URL(pageUrl)
-    const path = u.pathname === '/' ? '' : u.pathname
-    return `${u.host}${path}`
-  } catch {
-    return pageUrl
-  }
+async function openPage(pageUrl: string) {
+  // No specific note here (this row is a page, possibly many notes) — null tells
+  // the content script to expand whichever notes have unread comments.
+  await openPageFocused(pageUrl, null)
 }
 
 function toggle() {

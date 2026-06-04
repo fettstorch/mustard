@@ -5,6 +5,7 @@ import { supabase } from '@/background/supabase-client'
 import { getSupabaseJwt } from '@/background/auth/SupabaseAuth'
 import { MustardIndex as MustardIndexClass } from '@/shared/model/MustardIndex'
 import { LIMITS } from '@/shared/constants'
+import { deriveMentions } from '@/shared/mentions'
 
 // Versioned endpoint. The legacy `get-index` function is kept deployed for
 // older clients (which send the anon key as Bearer); this client mints a
@@ -24,7 +25,13 @@ type IndexCachePayload = {
   latestNoteAtByPage: Record<string, number>
   /** Note ids visible to the cached user via repost (reposted by them or someone they follow). */
   repostedNoteIds: string[]
-  /** noteId → DIDs (cached user + their follows) who reposted it. Drives the avatar stack. */
+  /** Note ids visible to the cached user because they're @-mentioned in the note or one of its comments. */
+  mentionedNoteIds: string[]
+  /**
+   * noteId → ALL DIDs who reposted it (global, not just the viewer's follows).
+   * Only populated for notes the viewer can already see, so it never widens
+   * visibility — it just drives the full avatar stack / social-proof display.
+   */
   repostersByNoteId: Record<string, string[]>
 }
 
@@ -35,6 +42,7 @@ interface DbNote {
   author_id: string
   page_url: string
   content: string
+  mentions: string[]
   element_selector: string | null
   relative_position_x: number
   relative_position_y: number
@@ -48,7 +56,30 @@ interface GetIndexResponse {
   myUnreadByPage?: Record<string, number>
   latestNoteAtByPage?: Record<string, number>
   repostedNoteIds?: string[]
+  mentionedNoteIds?: string[]
   repostersByNoteId?: Record<string, string[]>
+}
+
+/** Fetch notes by id (scoped to a page), batched to stay within PostgREST URI limits. */
+async function fetchNotesByIdForPage(
+  pageUrl: string,
+  noteIds: string[],
+  into: Map<string, DbNote>,
+): Promise<void> {
+  const BATCH_SIZE = 200
+  for (let i = 0; i < noteIds.length; i += BATCH_SIZE) {
+    const batch = noteIds.slice(i, i + BATCH_SIZE)
+    const { data, error } = await supabase
+      .from('notes')
+      .select('*')
+      .eq('page_url', pageUrl)
+      .in('id', batch)
+
+    if (error) {
+      throw new Error(`Supabase by-id notes query failed: ${error.message}`)
+    }
+    for (const row of (data || []) as DbNote[]) into.set(row.id, row)
+  }
 }
 
 /**
@@ -101,6 +132,7 @@ async function getCachedIndexPayload(userId?: string): Promise<IndexCachePayload
       myUnreadByPage: data.myUnreadByPage ?? {},
       latestNoteAtByPage: data.latestNoteAtByPage ?? {},
       repostedNoteIds: data.repostedNoteIds ?? [],
+      mentionedNoteIds: data.mentionedNoteIds ?? [],
       repostersByNoteId: data.repostersByNoteId ?? {},
     }
 
@@ -113,7 +145,7 @@ async function getCachedIndexPayload(userId?: string): Promise<IndexCachePayload
   }
 }
 
-export class MustardNotesServiceRemote implements MustardNotesService {
+class MustardNotesServiceRemote implements MustardNotesService {
   async queryIndex(userId?: string): Promise<MustardIndex> {
     const payload = await getCachedIndexPayload(userId)
     return payload?.index ?? new MustardIndexClass(new Map())
@@ -141,13 +173,16 @@ export class MustardNotesServiceRemote implements MustardNotesService {
       const payload = await getCachedIndexPayload(userId)
       if (!payload) return []
 
-      const { index, repostedNoteIds, repostersByNoteId } = payload
+      const { index, repostedNoteIds, mentionedNoteIds, repostersByNoteId } = payload
       const authorIds = index.getUsersForPage(pageUrl)
 
-      // Two visibility channels, merged below:
+      // Three visibility channels, merged below:
       //   1. author channel — notes on this page by authors I follow (the existing path)
-      //   2. repost channel — specific notes reposted by me or someone I follow,
-      //      fetched by id so we DON'T over-fetch the original author's other notes.
+      //   2. repost channel — specific notes reposted by me or someone I follow
+      //   3. mention channel — specific notes where I'm @-mentioned (in the note
+      //      or one of its comments)
+      // Channels 2 & 3 are fetched by id so we DON'T over-fetch the original
+      // author's other notes on this page.
       const notesById = new Map<string, DbNote>()
 
       if (authorIds.length > 0) {
@@ -163,23 +198,8 @@ export class MustardNotesServiceRemote implements MustardNotesService {
         for (const row of (data || []) as DbNote[]) notesById.set(row.id, row)
       }
 
-      if (repostedNoteIds.length > 0) {
-        // Batch the id filter to stay within PostgREST URI limits.
-        const BATCH_SIZE = 200
-        for (let i = 0; i < repostedNoteIds.length; i += BATCH_SIZE) {
-          const batch = repostedNoteIds.slice(i, i + BATCH_SIZE)
-          const { data, error } = await supabase
-            .from('notes')
-            .select('*')
-            .eq('page_url', pageUrl)
-            .in('id', batch)
-
-          if (error) {
-            throw new Error(`Supabase reposted-notes query failed: ${error.message}`)
-          }
-          for (const row of (data || []) as DbNote[]) notesById.set(row.id, row)
-        }
-      }
+      await fetchNotesByIdForPage(pageUrl, repostedNoteIds, notesById)
+      await fetchNotesByIdForPage(pageUrl, mentionedNoteIds, notesById)
 
       return [...notesById.values()].map((row) =>
         dbNoteToMustardNote(row, repostersByNoteId[row.id] ?? []),
@@ -213,6 +233,9 @@ export class MustardNotesServiceRemote implements MustardNotesService {
       author_id: note.authorId,
       page_url: note.anchorData.pageUrl,
       content: note.content,
+      // Mentions are derived from content at this write boundary (content is the
+      // source of truth); the column exists only for the notification trigger.
+      mentions: deriveMentions(note.content, note.authorId),
       element_selector: note.anchorData.elementSelector,
       relative_position_x: note.anchorData.relativePosition.xP,
       relative_position_y: note.anchorData.relativePosition.yP,
@@ -282,6 +305,14 @@ export class MustardNotesServiceRemote implements MustardNotesService {
     }
   }
 }
+
+/**
+ * Shared singleton. The index cache lives in module scope, so this service is
+ * inherently process-wide — exporting one instance keeps every consumer (notes
+ * + notifications managers) on the same cached state instead of each `new`-ing
+ * its own object that only stayed consistent by accident via the module cache.
+ */
+export const mustardNotesServiceRemote = new MustardNotesServiceRemote()
 
 // Helper to convert database row to MustardNote
 function dbNoteToMustardNote(dbNote: DbNote, reposterIds: string[] = []): MustardNote {

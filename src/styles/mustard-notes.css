@@ -110,6 +110,30 @@
   margin: 4px 0;
 }
 
+/* @-mention.
+   Rendered form (<a> inside note/comment content) intentionally inherits the
+   normal note-link styling (.mustard-note-link) so a mention looks like every
+   other link in a note — only word-break is matched here. */
+.mustard-note-content a.mustard-note-mention,
+.mustard-comment-content a.mustard-note-mention {
+  word-break: break-all;
+}
+
+/* Editor chip (atom inline node inside .ProseMirror): non-clickable token, so
+   it keeps the distinct brown chip look instead of a link style. */
+.ProseMirror .mustard-note-mention {
+  color: var(--mustard-border);
+  font-weight: 600;
+  text-decoration: none;
+  border-radius: 4px;
+  padding: 0 1px;
+  cursor: default;
+}
+
+.ProseMirror .mustard-note-mention.ProseMirror-selectednode {
+  background: var(--mustard-glass-strong);
+}
+
 /* Highlight for the element a note will be anchored to (shown while editor is open) */
 .mustard-highlight {
   background: #ffb800 !important;

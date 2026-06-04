@@ -1,9 +1,12 @@
 import type { DtoMyPagesOverview } from '@/shared/dto/DtoMyPagesOverview'
+import type { DtoMustardMention } from '@/shared/dto/DtoMustardMention'
 import { MustardNotificationsServiceRemote } from './service/MustardNotificationsServiceRemote'
-import { MustardNotesServiceRemote } from './service/MustardNotesServiceRemote'
+import { MustardProfileServiceBsky } from './service/MustardProfileServiceBsky'
+import { mustardNotesServiceRemote } from './service/MustardNotesServiceRemote'
 
 const notificationsService = new MustardNotificationsServiceRemote()
-const notesService = new MustardNotesServiceRemote()
+const profileService = new MustardProfileServiceBsky()
+const notesService = mustardNotesServiceRemote
 
 /**
  * Facade for unread-notification operations.
@@ -32,6 +35,38 @@ export const mustardNotificationsManager = {
       console.error('Failed to count notifications:', error)
       return 0
     }
+  },
+
+  /**
+   * The current user's unread @-mentions (note + comment), newest first, with
+   * each actor (the person who mentioned you) resolved to a profile so the popup
+   * can render avatar + handle without an extra round-trip.
+   */
+  async getMyMentions(): Promise<DtoMustardMention[]> {
+    const raw = await notificationsService.getMyMentions()
+    const actorIds = [...new Set(raw.map((m) => m.actorId))]
+    const profiles = actorIds.length > 0 ? await profileService.getProfiles(actorIds) : {}
+
+    return raw.map((m) => {
+      const profile = profiles[m.actorId] ?? null
+      return {
+        id: m.id,
+        noteId: m.noteId,
+        pageUrl: m.pageUrl,
+        actorId: m.actorId,
+        actorHandle: profile?.handle ?? null,
+        actorDisplayName: profile?.displayName ?? null,
+        actorAvatarUrl: profile?.avatarUrl ?? null,
+        source: m.source,
+        snippet: m.snippet,
+        createdAt: m.createdAt,
+      } satisfies DtoMustardMention
+    })
+  },
+
+  /** Acknowledge a single mention by its notification id. */
+  async markMentionSeen(notificationId: string): Promise<void> {
+    await notificationsService.markMentionSeen(notificationId)
   },
 
   /**

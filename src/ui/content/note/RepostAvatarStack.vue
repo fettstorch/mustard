@@ -9,7 +9,7 @@ const MAX_VISIBLE_REPOSTERS = 3
 const props = defineProps<{
   /** The note's original author — always rendered front-most (on top). */
   author: UserProfile | null
-  /** Reposters (people the viewer follows). May be empty. */
+  /** All reposters of the note (may include accounts the viewer doesn't follow). May be empty. */
   reposters: (UserProfile | null)[]
 }>()
 

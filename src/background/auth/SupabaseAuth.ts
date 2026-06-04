@@ -3,6 +3,7 @@
 // Subsequent JWTs are obtained via auth-bridge refresh using the expired JWT as proof.
 
 import { getSession, clearStoredSession } from './AtprotoAuth'
+import { broadcastToAllTabs } from '@/shared/messaging'
 
 const STORAGE_KEY = 'supabase_jwt'
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
@@ -103,11 +104,6 @@ function isExpiringSoon(expiresAt: number): boolean {
 
 /** Notify all tabs that the session has been cleared so content scripts can update. */
 async function broadcastSessionCleared(): Promise<void> {
-  const tabs = await browser.tabs.query({})
-  for (const tab of tabs) {
-    if (tab.id) {
-      browser.tabs.sendMessage(tab.id, { type: 'SESSION_CHANGED', did: null }).catch(() => {})
-      browser.tabs.sendMessage(tab.id, { type: 'SESSION_EXPIRED' }).catch(() => {})
-    }
-  }
+  await broadcastToAllTabs({ type: 'SESSION_CHANGED', did: null })
+  await broadcastToAllTabs({ type: 'SESSION_EXPIRED' })
 }

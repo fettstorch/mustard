@@ -1,6 +1,10 @@
 import {
   createOpenNoteEditorMessage,
+  broadcastToAllTabs,
+  sendMessage,
+  sendTabMessage,
   type Message,
+  type ResponseFor,
   type QueryCommentsResponse,
   type QueryNotificationsForNotesResponse,
 } from '@/shared/messaging'
@@ -12,37 +16,37 @@ import { DtoMustardComment } from '@/shared/dto/DtoMustardComment'
 import { login, getSession, logout } from '@/background/auth/AtprotoAuth'
 import { clearSupabaseJwt, storeSupabaseJwt } from '@/background/auth/SupabaseAuth'
 import { MustardProfileServiceBsky } from '@/background/business/service/MustardProfileServiceBsky'
+import { MustardMutualsServiceBsky } from '@/background/business/service/MustardMutualsServiceBsky'
 import { invalidateRemoteIndexCache } from '@/background/business/service/MustardNotesServiceRemote'
 
 export default defineBackground(() => {
   const profileService = new MustardProfileServiceBsky()
+  const mutualsService = new MustardMutualsServiceBsky()
 
   console.log('Mustard background service worker loaded')
 
   /** Broadcast session change to all tabs so content scripts can update their state */
   async function broadcastSessionChanged(did: string | null) {
-    const tabs = await browser.tabs.query({})
-    for (const tab of tabs) {
-      if (tab.id) {
-        browser.tabs.sendMessage(tab.id, { type: 'SESSION_CHANGED', did }).catch(() => {
-          // Tab might not have content script loaded, ignore errors
-        })
-      }
-    }
+    await broadcastToAllTabs({ type: 'SESSION_CHANGED', did })
   }
 
   /** Broadcast that the unread-notifications state changed. Popup re-queries; content scripts can refresh in-page dots. */
   async function broadcastNotificationsChanged() {
-    const tabs = await browser.tabs.query({})
-    for (const tab of tabs) {
-      if (tab.id) {
-        browser.tabs.sendMessage(tab.id, { type: 'NOTIFICATIONS_CHANGED' }).catch(() => {
-          // Popup or content script might not be listening — ignore.
-        })
-      }
-    }
+    await broadcastToAllTabs({ type: 'NOTIFICATIONS_CHANGED' })
     // Popup runtime listener is reached via runtime.sendMessage (not tab-scoped).
-    browser.runtime.sendMessage({ type: 'NOTIFICATIONS_CHANGED' }).catch(() => {})
+    sendMessage({ type: 'NOTIFICATIONS_CHANGED' }).catch(() => {})
+  }
+
+  /**
+   * Shared cleanup after a mutation that can change THIS user's unread
+   * notifications (remote note/comment deletion cascades, mark-seen): drop the
+   * stale index cache, refresh the toolbar badge, and tell the popup + content
+   * scripts. Fire-and-forget — callers don't need to await the fan-out.
+   */
+  function afterNotificationMutation(): void {
+    invalidateRemoteIndexCache()
+    void updateActionBadge()
+    void broadcastNotificationsChanged()
   }
 
   /**
@@ -128,7 +132,7 @@ export default defineBackground(() => {
   browser.contextMenus.onClicked.addListener(async (info, tab) => {
     if (info.menuItemId !== 'mustard-add-note' || !tab?.id) return
     try {
-      await browser.tabs.sendMessage(tab.id, createOpenNoteEditorMessage())
+      await sendTabMessage(tab.id, createOpenNoteEditorMessage())
     } catch {
       // Content script not available (tab predates extension load, or context was invalidated).
     }
@@ -150,278 +154,286 @@ export default defineBackground(() => {
     }
   })
 
-  // Receiving messages from the content-script and popup.
-  // Returning a Promise from the listener works on both Chrome (99+) and Firefox.
-  browser.runtime.onMessage.addListener((message: Message) => {
-    console.debug('mustard [service-worker] onMessage:', message)
+  // One async handler per message type the service worker owns. Messages that
+  // belong to other contexts (e.g. SESSION_CHANGED → content script) are simply
+  // absent and fall through to "no response" in the listener below.
+  type MessageHandlers = {
+    [K in Message['type']]?: (
+      message: Extract<Message, { type: K }>,
+    ) => ResponseFor<K> | Promise<ResponseFor<K>>
+  }
 
-    if (message.type === 'UPSERT_NOTE') {
-      return (async () => {
-        const session = await getSession()
-        const target = message.target
-        const pageUrl = message.data.anchorData.pageUrl
+  const handlers: MessageHandlers = {
+    UPSERT_NOTE: async (message) => {
+      const session = await getSession()
+      const target = message.target
+      const pageUrl = message.data.anchorData.pageUrl
 
-        let authorId: string
-        if (target === 'local') {
-          authorId = 'local'
-        } else {
-          if (!session) {
-            console.error('Cannot publish note - user not logged in')
-            return []
-          }
-          authorId = session.did
-        }
-
-        const note = DtoMustardNote.fromDto({
-          id: target === 'local' ? crypto.randomUUID() : null,
-          authorId,
-          content: message.data.content,
-          anchorData: message.data.anchorData,
-          updatedAt: message.data.updatedAt,
-        })
-
-        await mustardNotesManager.upsertNote(note, target)
-
-        if (target === 'remote') {
-          invalidateRemoteIndexCache()
-        }
-
-        if (target === 'local') {
-          const localNotes = await mustardNotesManager.queryLocalNotesFor(pageUrl)
-          return localNotes.map(DtoMustardNote.toDto)
-        }
-
-        const allNotes = await mustardNotesManager.queryMustardNotesFor(pageUrl, session!.did)
-
-        if (message.localNoteIdToDelete) {
-          await mustardNotesManager.deleteNote(message.localNoteIdToDelete, pageUrl, 'local')
-          const filteredNotes = allNotes.filter((n) => n.id !== message.localNoteIdToDelete)
-          return filteredNotes.map(DtoMustardNote.toDto)
-        }
-
-        return allNotes.map(DtoMustardNote.toDto)
-      })()
-    }
-
-    if (message.type === 'QUERY_NOTES') {
-      return (async () => {
-        const session = await getSession()
-        const notes = await mustardNotesManager.queryMustardNotesFor(message.pageUrl, session?.did)
-        return notes.map(DtoMustardNote.toDto)
-      })()
-    }
-
-    if (message.type === 'DELETE_NOTE') {
-      return (async () => {
-        await mustardNotesManager.deleteNote(message.noteId, message.pageUrl, message.authorId)
-
-        if (message.authorId !== 'local') {
-          invalidateRemoteIndexCache()
-          // Cascades may have removed comment notifications too.
-          updateActionBadge()
-          broadcastNotificationsChanged()
-        }
-
-        if (message.authorId === 'local') {
-          const localNotes = await mustardNotesManager.queryLocalNotesFor(message.pageUrl)
-          return localNotes.map(DtoMustardNote.toDto)
-        }
-
-        const session = await getSession()
-        const allNotes = await mustardNotesManager.queryMustardNotesFor(
-          message.pageUrl,
-          session?.did,
-        )
-        return allNotes.map(DtoMustardNote.toDto)
-      })()
-    }
-
-    if (message.type === 'SET_REPOST') {
-      return (async () => {
-        const session = await getSession()
+      let authorId: string
+      if (target === 'local') {
+        authorId = 'local'
+      } else {
         if (!session) {
-          console.error('Cannot repost - user not logged in')
+          console.error('Cannot publish note - user not logged in')
           return []
         }
+        authorId = session.did
+      }
 
-        await mustardNotesManager.setRepost(message.noteId, session.did, message.reposted)
+      const note = DtoMustardNote.fromDto({
+        id: target === 'local' ? crypto.randomUUID() : null,
+        authorId,
+        content: message.data.content,
+        anchorData: message.data.anchorData,
+        updatedAt: message.data.updatedAt,
+      })
 
-        // Repost changes visibility → bust the index cache so the next query
-        // recomputes reposted note ids / reposter lists.
+      await mustardNotesManager.upsertNote(note, target)
+
+      if (target === 'local') {
+        const localNotes = await mustardNotesManager.queryLocalNotesFor(pageUrl)
+        return localNotes.map(DtoMustardNote.toDto)
+      }
+
+      invalidateRemoteIndexCache()
+      const allNotes = await mustardNotesManager.queryMustardNotesFor(pageUrl, session!.did)
+
+      if (message.localNoteIdToDelete) {
+        await mustardNotesManager.deleteNote(message.localNoteIdToDelete, pageUrl, 'local')
+        const filteredNotes = allNotes.filter((n) => n.id !== message.localNoteIdToDelete)
+        return filteredNotes.map(DtoMustardNote.toDto)
+      }
+
+      return allNotes.map(DtoMustardNote.toDto)
+    },
+
+    QUERY_NOTES: async (message) => {
+      const session = await getSession()
+      const notes = await mustardNotesManager.queryMustardNotesFor(message.pageUrl, session?.did)
+      return notes.map(DtoMustardNote.toDto)
+    },
+
+    DELETE_NOTE: async (message) => {
+      await mustardNotesManager.deleteNote(message.noteId, message.pageUrl, message.authorId)
+
+      if (message.authorId === 'local') {
+        const localNotes = await mustardNotesManager.queryLocalNotesFor(message.pageUrl)
+        return localNotes.map(DtoMustardNote.toDto)
+      }
+
+      // Deleting a remote note cascades and may remove comment notifications too.
+      afterNotificationMutation()
+
+      const session = await getSession()
+      const allNotes = await mustardNotesManager.queryMustardNotesFor(message.pageUrl, session?.did)
+      return allNotes.map(DtoMustardNote.toDto)
+    },
+
+    SET_REPOST: async (message) => {
+      const session = await getSession()
+      if (!session) {
+        console.error('Cannot repost - user not logged in')
+        return []
+      }
+
+      await mustardNotesManager.setRepost(message.noteId, session.did, message.reposted)
+
+      // Repost changes visibility → bust the index cache so the next query
+      // recomputes reposted note ids / reposter lists.
+      invalidateRemoteIndexCache()
+
+      const allNotes = await mustardNotesManager.queryMustardNotesFor(message.pageUrl, session.did)
+      return allNotes.map(DtoMustardNote.toDto)
+    },
+
+    ATPROTO_LOGIN: async (message) => {
+      try {
+        const result = await login(message.handle)
+        await storeSupabaseJwt(result.jwt, result.expiresAt, result.did)
         invalidateRemoteIndexCache()
+        broadcastSessionChanged(result.did)
+        updateActionBadge()
+        return { did: result.did }
+      } catch (err) {
+        console.error('ATPROTO_LOGIN failed:', err)
+        return null
+      }
+    },
 
-        const allNotes = await mustardNotesManager.queryMustardNotesFor(
-          message.pageUrl,
-          session.did,
-        )
-        return allNotes.map(DtoMustardNote.toDto)
-      })()
-    }
+    GET_ATPROTO_SESSION: async () => {
+      try {
+        const session = await getSession()
+        updateActionBadge()
+        return session ? { did: session.did } : null
+      } catch (err) {
+        console.error('GET_ATPROTO_SESSION failed:', err)
+        return null
+      }
+    },
 
-    if (message.type === 'ATPROTO_LOGIN') {
-      return (async () => {
-        try {
-          const result = await login(message.handle)
-          await storeSupabaseJwt(result.jwt, result.expiresAt, result.did)
-          invalidateRemoteIndexCache()
-          broadcastSessionChanged(result.did)
-          updateActionBadge()
-          return { did: result.did }
-        } catch (err) {
-          console.error('ATPROTO_LOGIN failed:', err)
-          return null
-        }
-      })()
-    }
+    ATPROTO_LOGOUT: async (message) => {
+      try {
+        await logout(message.did)
+        await clearSupabaseJwt()
+        invalidateRemoteIndexCache()
+        mutualsService.clear()
+        broadcastSessionChanged(null)
+        updateActionBadge()
+        return null
+      } catch (err) {
+        console.error('ATPROTO_LOGOUT failed:', err)
+        return null
+      }
+    },
 
-    if (message.type === 'GET_ATPROTO_SESSION') {
-      return (async () => {
-        try {
-          const session = await getSession()
-          updateActionBadge()
-          return session ? { did: session.did } : null
-        } catch (err) {
-          console.error('GET_ATPROTO_SESSION failed:', err)
-          return null
-        }
-      })()
-    }
-
-    if (message.type === 'ATPROTO_LOGOUT') {
-      return (async () => {
-        try {
-          await logout(message.did)
-          await clearSupabaseJwt()
-          invalidateRemoteIndexCache()
-          broadcastSessionChanged(null)
-          updateActionBadge()
-          return null
-        } catch (err) {
-          console.error('ATPROTO_LOGOUT failed:', err)
-          return null
-        }
-      })()
-    }
-
-    if (message.type === 'OPEN_POPUP') {
+    OPEN_POPUP: () => {
       const action = getActionApi()
       action?.openPopup?.()?.catch(() => {})
-      return
-    }
+    },
 
-    if (message.type === 'GET_PROFILES') {
-      return (async () => {
-        try {
-          return await profileService.getProfiles(message.userIds)
-        } catch (err) {
-          console.error('GET_PROFILES failed:', err)
-          return {}
-        }
-      })()
-    }
+    GET_PROFILES: async (message) => {
+      try {
+        return await profileService.getProfiles(message.userIds)
+      } catch (err) {
+        console.error('GET_PROFILES failed:', err)
+        return {}
+      }
+    },
 
-    if (message.type === 'QUERY_COMMENTS') {
-      return (async () => {
-        try {
-          const map = await mustardCommentsManager.queryCommentsForNotes(message.noteIds)
-          const response: QueryCommentsResponse = {}
-          for (const [noteId, comments] of map.entries()) {
-            response[noteId] = comments.map(DtoMustardComment.toDto)
-          }
-          return response
-        } catch (err) {
-          console.error('QUERY_COMMENTS failed:', err)
-          return {}
-        }
-      })()
-    }
-
-    if (message.type === 'UPSERT_COMMENT') {
-      return (async () => {
+    GET_MUTUALS: async () => {
+      try {
         const session = await getSession()
-        if (!session) {
-          throw new Error('Cannot create comment - user not logged in')
+        if (!session) return []
+        return await mutualsService.getMutuals(session.did)
+      } catch (err) {
+        console.error('GET_MUTUALS failed:', err)
+        return []
+      }
+    },
+
+    QUERY_COMMENTS: async (message) => {
+      try {
+        const map = await mustardCommentsManager.queryCommentsForNotes(message.noteIds)
+        const response: QueryCommentsResponse = {}
+        for (const [noteId, comments] of map.entries()) {
+          response[noteId] = comments.map(DtoMustardComment.toDto)
         }
+        return response
+      } catch (err) {
+        console.error('QUERY_COMMENTS failed:', err)
+        return {}
+      }
+    },
 
-        await mustardCommentsManager.upsertComment({
-          id: '', // not used by the insert path; service ignores empty string
-          noteId: message.noteId,
-          authorId: session.did,
-          content: message.content,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        })
+    UPSERT_COMMENT: async (message) => {
+      const session = await getSession()
+      if (!session) {
+        throw new Error('Cannot create comment - user not logged in')
+      }
 
-        // A new comment may produce a notification row for the note's author
-        // (if it isn't a self-comment). Invalidate the cached overview so the
-        // popup picks up the change next time it queries.
-        invalidateRemoteIndexCache()
+      await mustardCommentsManager.upsertComment({
+        id: '', // not used by the insert path; service ignores empty string
+        noteId: message.noteId,
+        authorId: session.did,
+        content: message.content,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
 
-        const fresh = await mustardCommentsManager.queryCommentsForNote(message.noteId)
-        return fresh.map(DtoMustardComment.toDto)
-      })()
-    }
+      // A new comment notifies the note's *author* (not the commenter), so this
+      // user's own badge/overview is unaffected — only the cached index needs
+      // busting so the author picks it up on their next query.
+      invalidateRemoteIndexCache()
 
-    if (message.type === 'DELETE_COMMENT') {
-      return (async () => {
-        await mustardCommentsManager.deleteComment(message.commentId)
-        // The cascade may delete an unread notification row for whoever was
-        // about to be notified — refresh badge + overview.
-        invalidateRemoteIndexCache()
+      const fresh = await mustardCommentsManager.queryCommentsForNote(message.noteId)
+      return fresh.map(DtoMustardComment.toDto)
+    },
+
+    DELETE_COMMENT: async (message) => {
+      await mustardCommentsManager.deleteComment(message.commentId)
+      // The cascade may delete an unread notification row for whoever was about
+      // to be notified — refresh badge + overview.
+      afterNotificationMutation()
+      const fresh = await mustardCommentsManager.queryCommentsForNote(message.noteId)
+      return fresh.map(DtoMustardComment.toDto)
+    },
+
+    QUERY_NOTIFICATIONS_FOR_NOTES: async (message) => {
+      try {
+        const session = await getSession()
+        if (!session) return {}
+        const map = await mustardNotificationsManager.queryUnreadCountsForNotes(message.noteIds)
+        const response: QueryNotificationsForNotesResponse = {}
+        for (const [noteId, count] of map.entries()) {
+          if (count > 0) response[noteId] = count
+        }
+        return response
+      } catch (err) {
+        console.error('QUERY_NOTIFICATIONS_FOR_NOTES failed:', err)
+        return {}
+      }
+    },
+
+    MARK_NOTIFICATIONS_SEEN_FOR_NOTE: async (message) => {
+      try {
+        await mustardNotificationsManager.markSeenForNote(message.noteId)
+        afterNotificationMutation()
+      } catch (err) {
+        console.error('MARK_NOTIFICATIONS_SEEN_FOR_NOTE failed:', err)
+      }
+      return null
+    },
+
+    GET_MY_PAGES_OVERVIEW: async () => {
+      try {
+        const session = await getSession()
+        if (!session) return []
+        const overview = await mustardNotificationsManager.queryMyPagesOverview(session.did)
+        // Sync the badge whenever the popup pulls the overview — this is a
+        // cheap natural-event trigger to keep the badge fresh.
         updateActionBadge()
-        broadcastNotificationsChanged()
-        const fresh = await mustardCommentsManager.queryCommentsForNote(message.noteId)
-        return fresh.map(DtoMustardComment.toDto)
-      })()
-    }
+        return overview
+      } catch (err) {
+        console.error('GET_MY_PAGES_OVERVIEW failed:', err)
+        return []
+      }
+    },
 
-    if (message.type === 'QUERY_NOTIFICATIONS_FOR_NOTES') {
-      return (async () => {
-        try {
-          const session = await getSession()
-          if (!session) return {} as QueryNotificationsForNotesResponse
-          const map = await mustardNotificationsManager.queryUnreadCountsForNotes(message.noteIds)
-          const response: QueryNotificationsForNotesResponse = {}
-          for (const [noteId, count] of map.entries()) {
-            if (count > 0) response[noteId] = count
-          }
-          return response
-        } catch (err) {
-          console.error('QUERY_NOTIFICATIONS_FOR_NOTES failed:', err)
-          return {}
-        }
-      })()
-    }
+    GET_MY_MENTIONS: async () => {
+      try {
+        const session = await getSession()
+        if (!session) return []
+        return await mustardNotificationsManager.getMyMentions()
+      } catch (err) {
+        console.error('GET_MY_MENTIONS failed:', err)
+        return []
+      }
+    },
 
-    if (message.type === 'MARK_NOTIFICATIONS_SEEN_FOR_NOTE') {
-      return (async () => {
-        try {
-          await mustardNotificationsManager.markSeenForNote(message.noteId)
-          invalidateRemoteIndexCache()
-          await updateActionBadge()
-          broadcastNotificationsChanged()
-        } catch (err) {
-          console.error('MARK_NOTIFICATIONS_SEEN_FOR_NOTE failed:', err)
-        }
-        return null
-      })()
-    }
+    MARK_MENTION_SEEN: async (message) => {
+      try {
+        await mustardNotificationsManager.markMentionSeen(message.notificationId)
+        afterNotificationMutation()
+      } catch (err) {
+        console.error('MARK_MENTION_SEEN failed:', err)
+      }
+      return null
+    },
+  }
 
-    if (message.type === 'GET_MY_PAGES_OVERVIEW') {
-      return (async () => {
-        try {
-          const session = await getSession()
-          if (!session) return []
-          const overview = await mustardNotificationsManager.queryMyPagesOverview(session.did)
-          // Sync the badge whenever the popup pulls the overview — this is a
-          // cheap natural-event trigger to keep the badge fresh.
-          updateActionBadge()
-          return overview
-        } catch (err) {
-          console.error('GET_MY_PAGES_OVERVIEW failed:', err)
-          return []
-        }
-      })()
-    }
+  // Receiving messages from the content-script and popup. Dispatch to the
+  // matching handler; returning its Promise works on both Chrome (99+) and
+  // Firefox. Unhandled types return undefined (no response).
+  browser.runtime.onMessage.addListener((message: Message) => {
+    const handler = handlers[message.type]
+    console.debug(
+      'mustard [service-worker] onMessage:',
+      message,
+      handler ? 'has handler' : 'no handler',
+    )
+    if (!handler) return
+    // The map guarantees handler matches message.type at runtime; TS can't
+    // correlate the indexed union, so we assert the call here.
+    return (handler as (m: Message) => Promise<unknown> | void)(message)
   })
 })

@@ -11,7 +11,11 @@ import CommentToggle from './CommentToggle.vue'
 import MustardCommentThread from './MustardCommentThread.vue'
 import { renderContent } from './render-content'
 import { LIMITS } from '@/shared/constants'
-import { createMarkNotificationsSeenForNoteMessage, type Message } from '@/shared/messaging'
+import {
+  createMarkNotificationsSeenForNoteMessage,
+  sendMessage,
+  type Message,
+} from '@/shared/messaging'
 
 const props = defineProps<{
   note: MustardNote
@@ -131,7 +135,9 @@ function onRepostClick() {
 }
 
 const renderedContent = computed(() => {
-  return renderContent(props.note.content)
+  // Resolve mentioned DIDs to their current handle from the profile cache.
+  // Re-renders automatically as profiles arrive (reactive read).
+  return renderContent(props.note.content, (did) => mustardState.profiles[did]?.handle)
 })
 
 const isOverLimit = computed(() => {
@@ -210,7 +216,7 @@ function onToggleComments() {
 
 function requestLogin() {
   // Open the extension popup so the user can log in.
-  browser.runtime.sendMessage({ type: 'OPEN_POPUP' }).catch(() => {})
+  sendMessage({ type: 'OPEN_POPUP' }).catch(() => {})
 }
 
 // If the thread is expanded and an unread count comes in after the fact,

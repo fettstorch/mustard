@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { ref, watch, computed, onUnmounted, useTemplateRef } from 'vue'
+// GIPHY requires a "Powered By GIPHY" attribution mark wherever the API is used.
+// Static "Light Backgrounds" logo mark — suited to the bright mustard gradient.
+import giphyAttributionUrl from '@/assets/giphy-attribution.png'
 
 type Gif = {
   id: string
@@ -180,7 +183,15 @@ defineExpose({ onKeyDown })
       </button>
     </div>
 
-    <div class="picker-footer">↑↓→← navigate · ↵ select</div>
+    <div class="picker-footer">
+      <img
+        class="picker-attribution"
+        :src="giphyAttributionUrl"
+        alt="Powered by GIPHY"
+        referrerpolicy="no-referrer"
+      />
+      <span class="picker-hint">↑↓→← navigate · ↵ select</span>
+    </div>
   </div>
 </template>
 
@@ -294,11 +305,30 @@ defineExpose({ onKeyDown })
 }
 
 .picker-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   padding: 4px 8px;
+  border-top: 1px solid var(--mustard-border-subtle);
+}
+
+/* Required GIPHY attribution mark. Kept at full opacity for brand legibility;
+ * height-constrained so the 200px source asset stays crisp in the footer. */
+.picker-attribution {
+  height: 14px;
+  width: auto;
+  flex: none;
+  display: block;
+  pointer-events: none;
+}
+
+.picker-hint {
   font-size: 10px;
   opacity: 0.55;
-  border-top: 1px solid var(--mustard-border-subtle);
-  text-align: center;
   letter-spacing: 0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 </style>

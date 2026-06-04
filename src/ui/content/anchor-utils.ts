@@ -1,4 +1,4 @@
-import type { MustardNoteAnchorData } from '@/shared/messaging'
+import type { MustardNoteAnchorData } from '@/shared/model/MustardNoteAnchorData'
 
 export function calculateAnchorPosition(anchor: MustardNoteAnchorData): { x: number; y: number } {
   const element = findAnchorElement(anchor)

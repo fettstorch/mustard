@@ -1,15 +1,11 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, useTemplateRef, computed, ref, inject, nextTick } from 'vue'
 import { useEditor, EditorContent } from '@tiptap/vue-3'
-import StarterKit from '@tiptap/starter-kit'
-import { Image } from '@tiptap/extension-image'
-import { Placeholder } from '@tiptap/extensions'
-import { Markdown } from '@tiptap/markdown'
 import IconButton from '../IconButton.vue'
 import MustardNoteHeader from '../MustardNoteHeader.vue'
-import { ImageUrlAutoConvert } from './image-url-auto-convert'
-import { GiphySlash } from './giphy-slash'
-import type { MustardNoteAnchorData } from '@/shared/messaging'
+import { createEditorExtensions } from './editor-extensions'
+import { useMentionMutuals } from './use-mention-mutuals'
+import type { MustardNoteAnchorData } from '@/shared/model/MustardNoteAnchorData'
 import type { MustardState } from '../mustard-state'
 import { LIMITS } from '@/shared/constants'
 
@@ -26,24 +22,15 @@ const emit = defineEmits<{
 const mustardState = inject<MustardState>('mustardState')!
 const editorContainerRef = useTemplateRef<HTMLDivElement>('editorContainer')
 
+// Mutuals power the @-mention autocomplete; the getter is read lazily by the
+// mention suggestion on each keystroke.
+const { mutuals } = useMentionMutuals()
+
 const editor = useEditor({
-  extensions: [
-    StarterKit.configure({}),
-    Image.configure({
-      inline: false,
-      HTMLAttributes: {
-        class: 'mustard-note-image',
-        draggable: 'false',
-        referrerpolicy: 'no-referrer',
-      },
-    }),
-    Placeholder.configure({
-      placeholder: 'Write your note... Or add a gif via /wow',
-    }),
-    Markdown,
-    ImageUrlAutoConvert,
-    GiphySlash,
-  ],
+  extensions: createEditorExtensions({
+    placeholder: 'Write your note... Or add a gif via /wow, mention with @',
+    getMutuals: () => mutuals.value,
+  }),
   autofocus: true,
   onBlur({ event }) {
     handleFocusOut(event as FocusEvent)
@@ -94,11 +81,11 @@ function handleFocusOut(event: FocusEvent) {
     return
   }
 
-  // Giphy picker is appended to document.body. Treat focus moves into it
-  // as "still in editor" so the editor doesn't close behind the picker.
+  // The Giphy + mention pickers are appended to document.body. Treat focus
+  // moves into either as "still in editor" so the editor doesn't close behind it.
   if (
     event.relatedTarget instanceof Element &&
-    event.relatedTarget.closest('.mustard-giphy-picker')
+    event.relatedTarget.closest('.mustard-giphy-picker, .mustard-mention-picker')
   ) {
     return
   }
@@ -113,14 +100,12 @@ function getEditorContent(): string {
 
 function handleSave() {
   // Allow local saves even if over limit - user's local storage
-  const content = getEditorContent()
-  emit('pressed-save', { content })
+  emit('pressed-save', { content: getEditorContent() })
 }
 
 function handlePublish() {
   if (isOverLimit.value) return
-  const content = getEditorContent()
-  emit('pressed-publish', { content })
+  emit('pressed-publish', { content: getEditorContent() })
 }
 </script>
 

@@ -1,38 +1,13 @@
 import type { DtoMustardNote } from './dto/DtoMustardNote'
 import type { DtoMustardComment } from './dto/DtoMustardComment'
+import type { DtoMyPagesOverview } from './dto/DtoMyPagesOverview'
+import type { DtoMustardMention } from './dto/DtoMustardMention'
 import type { Satisfies } from './Satisfies'
 import type { UserProfile, UserId } from './model/UserProfile'
+import type { BskyProfile } from './model/BskyProfile'
 
 type BaseMessage = {
   type: string
-}
-
-/**
- * Data about where a mustard note is anchored on the page.
- *
- * Anchor resolution strategy:
- * 1. Try to find element using `elementSelector` (e.g., "#myId" or "div.class > span")
- * 2. If found and has dimensions, position using `relativePosition` (% within element)
- * 3. If not found or zero dimensions, fall back to `clickPosition` (absolute viewport position)
- *
- * Both position types are ALWAYS stored because we can't predict at storage time whether
- * the element will exist or have valid dimensions when the note is later rendered.
- * The `clickPosition` serves as a runtime fallback, not a storage-time decision.
- */
-export type MustardNoteAnchorData = {
-  pageUrl: string
-  /** CSS selector to find the anchored element (e.g., "#myId" or "div > span:nth-child(2)") */
-  elementSelector: string | null
-  /** Position as percentage (0-100) relative to the anchored element's dimensions */
-  relativePosition: {
-    xP: number // 0-100 percentage relative to element
-    yP: number // 0-100 percentage relative to element
-  }
-  /** Absolute position as fallback when element can't be found or has zero dimensions */
-  clickPosition: {
-    xVw: number // viewport width percentage (0-100)
-    yPx: number // pixels from top (includes scroll offset)
-  }
 }
 
 // Message to trigger opening the note editor (anchor data captured in content script)
@@ -121,13 +96,25 @@ export type GetProfilesMessage = Satisfies<
   }
 >
 
+// Content script → service worker: the current user's mutuals (people they
+// follow who also follow them back). Powers the @-mention autocomplete.
+// Response: BskyProfile[] (handle guaranteed).
+export type GetMutualsMessage = Satisfies<
+  BaseMessage,
+  {
+    type: 'GET_MUTUALS'
+  }
+>
+
+type GetMutualsResponse = BskyProfile[]
+
 // Response types for AT Protocol auth messages
 export type AtprotoSessionResponse = {
   did: string
 } | null
 
 // Response type for GET_PROFILES - map of userId to profile (null if not found)
-export type GetProfilesResponse = Record<string, UserProfile | null>
+type GetProfilesResponse = Record<string, UserProfile | null>
 
 // Popup → content script: query whether notes are visible on this page
 export type GetNotesVisibleMessage = Satisfies<
@@ -238,6 +225,27 @@ export type GetMyPagesOverviewMessage = Satisfies<
   }
 >
 
+// Popup → service worker: the current user's unread @-mentions (in notes or
+// comments). Response: DtoMustardMention[] (newest first).
+export type GetMyMentionsMessage = Satisfies<
+  BaseMessage,
+  {
+    type: 'GET_MY_MENTIONS'
+  }
+>
+
+type GetMyMentionsResponse = DtoMustardMention[]
+
+// Popup → service worker: the user acted on a mention notification; delete it.
+// Response: void.
+export type MarkMentionSeenMessage = Satisfies<
+  BaseMessage,
+  {
+    type: 'MARK_MENTION_SEEN'
+    notificationId: string
+  }
+>
+
 // Broadcast: notifications state changed (mark-seen, new fetch with deltas).
 // Tells the popup to re-query the overview and lets content scripts know to
 // refresh their unread counters if needed.
@@ -259,6 +267,7 @@ export type Message =
   | GetAtprotoSessionMessage
   | AtprotoLogoutMessage
   | GetProfilesMessage
+  | GetMutualsMessage
   | GetNotesVisibleMessage
   | SetNotesVisibleMessage
   | SessionChangedMessage
@@ -270,7 +279,96 @@ export type Message =
   | QueryNotificationsForNotesMessage
   | MarkNotificationsSeenForNoteMessage
   | GetMyPagesOverviewMessage
+  | GetMyMentionsMessage
+  | MarkMentionSeenMessage
   | NotificationsChangedMessage
+
+/**
+ * Maps each message type to the value its handler resolves with. Drives the
+ * typed `sendMessage` / `sendTabMessage` wrappers below so call sites get a
+ * precisely-typed response instead of `any` (no more per-call casts).
+ *
+ * `void` entries are fire-and-forget (broadcasts / one-way notifications).
+ */
+type MessageResponses = {
+  OPEN_NOTE_EDITOR: void
+  UPSERT_NOTE: DtoMustardNote[]
+  QUERY_NOTES: DtoMustardNote[]
+  DELETE_NOTE: DtoMustardNote[]
+  SET_REPOST: DtoMustardNote[]
+  ATPROTO_LOGIN: { did: string } | null
+  GET_ATPROTO_SESSION: AtprotoSessionResponse
+  ATPROTO_LOGOUT: null
+  GET_PROFILES: GetProfilesResponse
+  GET_MUTUALS: GetMutualsResponse
+  GET_NOTES_VISIBLE: boolean
+  SET_NOTES_VISIBLE: boolean
+  SESSION_CHANGED: void
+  SESSION_EXPIRED: void
+  OPEN_POPUP: void
+  QUERY_COMMENTS: QueryCommentsResponse
+  UPSERT_COMMENT: DtoMustardComment[]
+  DELETE_COMMENT: DtoMustardComment[]
+  QUERY_NOTIFICATIONS_FOR_NOTES: QueryNotificationsForNotesResponse
+  MARK_NOTIFICATIONS_SEEN_FOR_NOTE: null
+  GET_MY_PAGES_OVERVIEW: DtoMyPagesOverview
+  GET_MY_MENTIONS: GetMyMentionsResponse
+  MARK_MENTION_SEEN: null
+  NOTIFICATIONS_CHANGED: void
+}
+
+export type ResponseFor<T extends Message['type']> = MessageResponses[T]
+
+/**
+ * Strip Vue reactive Proxies (and any other non-cloneable wrappers) before a
+ * message crosses the extension boundary. Firefox's `structuredClone` rejects
+ * proxies; Chrome serializes silently. Doing it here means callers never have
+ * to remember (see LEARNINGS.md → Cross-Browser Extension Messaging).
+ */
+function toPlainMessage<M extends Message>(message: M): M {
+  return JSON.parse(JSON.stringify(message)) as M
+}
+
+/**
+ * Send a message to the service worker (and any other extension pages).
+ *
+ * Use this from a content script or popup to talk to the background. The
+ * browser routes `runtime.sendMessage` to extension contexts only — it can NOT
+ * target a specific web page's content script, which is why `sendTabMessage`
+ * also exists. Response type is inferred from `message.type` (no casts).
+ */
+export function sendMessage<M extends Message>(message: M): Promise<ResponseFor<M['type']>> {
+  return browser.runtime.sendMessage(toPlainMessage(message)) as Promise<ResponseFor<M['type']>>
+}
+
+/**
+ * Send a message to one specific tab's content script (background → page).
+ *
+ * The service worker has no `runtime` channel to a given page, so it must
+ * address the content script by tab id via `tabs.sendMessage` (this is the
+ * inverse direction of `sendMessage`). Used for per-tab pushes like
+ * SESSION_CHANGED or asking the active tab whether notes are visible.
+ */
+export function sendTabMessage<M extends Message>(
+  tabId: number,
+  message: M,
+): Promise<ResponseFor<M['type']>> {
+  return browser.tabs.sendMessage(tabId, toPlainMessage(message)) as Promise<ResponseFor<M['type']>>
+}
+
+/**
+ * Fire-and-forget broadcast of a message to every open tab's content script.
+ * Tabs without a listening content script (e.g. opened before the extension
+ * loaded) reject silently and are ignored.
+ */
+export async function broadcastToAllTabs<M extends Message>(message: M): Promise<void> {
+  const tabs = await browser.tabs.query({})
+  for (const tab of tabs) {
+    if (tab.id !== undefined) {
+      void sendTabMessage(tab.id, message).catch(() => {})
+    }
+  }
+}
 
 export function createOpenNoteEditorMessage(): OpenNoteEditorMessage {
   return {
@@ -351,6 +449,12 @@ export function createGetProfilesMessage(userIds: UserId[]): GetProfilesMessage 
   }
 }
 
+export function createGetMutualsMessage(): GetMutualsMessage {
+  return {
+    type: 'GET_MUTUALS',
+  }
+}
+
 export function createGetNotesVisibleMessage(): GetNotesVisibleMessage {
   return {
     type: 'GET_NOTES_VISIBLE',
@@ -411,5 +515,18 @@ export function createMarkNotificationsSeenForNoteMessage(
 export function createGetMyPagesOverviewMessage(): GetMyPagesOverviewMessage {
   return {
     type: 'GET_MY_PAGES_OVERVIEW',
+  }
+}
+
+export function createGetMyMentionsMessage(): GetMyMentionsMessage {
+  return {
+    type: 'GET_MY_MENTIONS',
+  }
+}
+
+export function createMarkMentionSeenMessage(notificationId: string): MarkMentionSeenMessage {
+  return {
+    type: 'MARK_MENTION_SEEN',
+    notificationId,
   }
 }
