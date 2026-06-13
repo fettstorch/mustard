@@ -13,7 +13,9 @@
   /* Semantic tokens */
   --mustard-text: var(--mustard-brown);
   --mustard-border: var(--mustard-brown-border);
-  --mustard-font: 'Azeret Mono', monospace;
+  /* Default font. Overridden at runtime by the user's choice (src/shared/fonts.ts).
+     Verdana ships on Windows/macOS; DejaVu Sans is the common Linux fallback. */
+  --mustard-font: Verdana, Geneva, 'DejaVu Sans', sans-serif;
 
   /* Surfaces */
   --mustard-glass: rgba(255, 255, 255, 0.3);

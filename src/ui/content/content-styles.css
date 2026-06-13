@@ -1,4 +1,5 @@
 /* Styles for content script components */
-@import url('https://fonts.googleapis.com/css2?family=Azeret+Mono:wght@300;400;500;600;700&display=swap');
+/* Web fonts are loaded on-demand from src/shared/fonts.ts when the user selects
+   one; the default (Verdana) is a system font and needs no download. */
 @import '@/styles/mustard-theme.css';
 @import '@/styles/mustard-notes.css';

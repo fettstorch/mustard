@@ -18,6 +18,13 @@ Simple learnings discovered during development that document how things actually
 - `assetsInlineLimit` only applies to production builds — in dev mode Vite serves assets as URLs which become `chrome-extension://` URLs and fail CSP the same way (applies to both WXT and CRXJS)
 - Fix: a Vite `transform` plugin that converts PNG imports from `src/assets/icons/` to `data:image/png;base64,...` strings at transform time — works in both dev and prod, no `web_accessible_resources` needed, no runtime fetch needed
 
+## Content Script Web Fonts & CSP
+
+- Web fonts referenced from content-script-injected CSS (`@font-face`/`@import`/`<link>`) are downloaded under the **host page's** CSP (`font-src`/`style-src`), not the extension's. Strict pages (e.g. GitHub) block them — and **base64-inlining the font does NOT bypass this** (confirmed: Chrome docs + w3c/webextensions issue #839). The font silently falls back to the next family in the stack.
+- **System fonts are CSP-proof**: referencing an installed font by name (`font-family: Georgia, ...`) is not a network load, so CSP never applies — system fonts render on every site. This is why Mustard's font picker offers a "System" group that always works plus a "Web" group that may fall back on strict-CSP pages.
+- Local Font Access API (`queryLocalFonts()`) to enumerate installed fonts is **not worth it**: Chromium-only (no Firefox), requires a permission prompt, and is restricted in content scripts. A curated list of cross-platform-safe system fonts is more robust.
+- All Mustard text flows through the single `--mustard-font` CSS variable; the picker overrides it (on `#mustard-host` for content scripts, on `document.documentElement` for popup/options) — see `src/shared/fonts.ts`.
+
 ## Content Script Styling
 
 - **Shadow DOM**: Don't use for Vue components - Vue injects `<style>` tags into `document.head`, not the shadow root, so styles won't apply to the template

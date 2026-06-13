@@ -15,8 +15,16 @@
  * when clicking the extension icon. This is a full-page settings interface.
  */
 
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { version } from '../../../package.json'
+import {
+  MUSTARD_FONTS,
+  MUSTARD_FONT_KEY,
+  DEFAULT_FONT_ID,
+  getFontById,
+  ensureFontStylesheet,
+  applyFontVar,
+} from '@/shared/fonts'
 
 const PUBLISH_CONFIRM_DISMISSED_KEY = 'mustard-publish-confirm-dismissed'
 const NOTES_MINIMIZED_KEY = 'mustard-notes-minimized'
@@ -29,6 +37,10 @@ const bskyProfileUrl = 'https://bsky.app/profile/mustardnotes.com'
 const showPublishWarning = ref(true)
 const minimizeNotes = ref(false)
 const showAnchorInEditor = ref(false)
+const selectedFontId = ref<string>(DEFAULT_FONT_ID)
+
+const systemFonts = computed(() => MUSTARD_FONTS.filter((f) => f.category === 'system'))
+const webFonts = computed(() => MUSTARD_FONTS.filter((f) => f.category === 'web'))
 const minimizeShortcut = ref<string>('')
 const popupShortcut = ref<string>('')
 const shortcutsUrl = ref<string>('')
@@ -40,10 +52,12 @@ onMounted(async () => {
     PUBLISH_CONFIRM_DISMISSED_KEY,
     NOTES_MINIMIZED_KEY,
     SHOW_ANCHOR_IN_EDITOR_KEY,
+    MUSTARD_FONT_KEY,
   ])
   showPublishWarning.value = !result[PUBLISH_CONFIRM_DISMISSED_KEY]
   minimizeNotes.value = !!result[NOTES_MINIMIZED_KEY]
   showAnchorInEditor.value = !!result[SHOW_ANCHOR_IN_EDITOR_KEY]
+  selectedFontId.value = getFontById(result[MUSTARD_FONT_KEY] as string | undefined).id
 
   // Read the live keybindings so they stay accurate after the user rebinds.
   // The popup command is `_execute_action` (Chrome MV3) or
@@ -88,6 +102,14 @@ function onMinimizeNotesChange() {
 
 function onShowAnchorInEditorChange() {
   browser.storage.local.set({ [SHOW_ANCHOR_IN_EDITOR_KEY]: showAnchorInEditor.value })
+}
+
+function onFontChange() {
+  const font = getFontById(selectedFontId.value)
+  browser.storage.local.set({ [MUSTARD_FONT_KEY]: font.id })
+  // Apply immediately for instant preview (also synced via storage.onChanged).
+  ensureFontStylesheet(document, font)
+  applyFontVar(document.documentElement, font)
 }
 
 function openKofi() {
@@ -154,6 +176,25 @@ function openKofi() {
           />
           <span class="pref-label">Show anchor data in editor</span>
         </label>
+        <div class="pref-row pref-row-stack">
+          <span class="pref-label">Text font</span>
+          <select v-model="selectedFontId" class="pref-select" @change="onFontChange">
+            <optgroup label="System (works on every site)">
+              <option v-for="font in systemFonts" :key="font.id" :value="font.id">
+                {{ font.label }}
+              </option>
+            </optgroup>
+            <optgroup label="Web (may not load on some sites)">
+              <option v-for="font in webFonts" :key="font.id" :value="font.id">
+                {{ font.label }}
+              </option>
+            </optgroup>
+          </select>
+          <span class="pref-hint">
+            Web fonts can be blocked by strict sites (e.g. GitHub) and fall back to a system font in
+            on-page notes. System fonts always work.
+          </span>
+        </div>
       </section>
 
       <section class="shortcuts-section">
@@ -334,6 +375,32 @@ h1 {
 
 .pref-label {
   font-size: 0.875rem;
+}
+
+.pref-row-stack {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  cursor: default;
+  width: 100%;
+}
+
+.pref-select {
+  font-family: var(--mustard-font);
+  font-size: 0.875rem;
+  color: var(--mustard-text);
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1.5px solid var(--mustard-border);
+  background: var(--mustard-glass-strong);
+  cursor: pointer;
+  min-width: 220px;
+}
+
+.pref-hint {
+  font-size: 0.75rem;
+  line-height: 1.45;
+  opacity: 0.7;
 }
 
 .shortcut-row {

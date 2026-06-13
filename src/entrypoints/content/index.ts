@@ -13,6 +13,7 @@ import type { MustardNoteAnchorData } from '@/shared/model/MustardNoteAnchorData
 import { LIMITS } from '@/shared/constants'
 import { extractMentionDids } from '@/shared/mentions'
 import { PENDING_FOCUS_KEY, type PendingFocus } from '@/shared/pending-focus'
+import { MUSTARD_FONT_KEY, getFontById, ensureFontStylesheet, applyFontVar } from '@/shared/fonts'
 import { DtoMustardNote } from '@/shared/dto/DtoMustardNote'
 import { DtoMustardComment } from '@/shared/dto/DtoMustardComment'
 import MustardContent from '@/ui/content/MustardContent.vue'
@@ -381,6 +382,9 @@ export default defineContentScript({
       if (SHOW_ANCHOR_IN_EDITOR_KEY in changes) {
         mustardState.showAnchorInEditor = !!changes[SHOW_ANCHOR_IN_EDITOR_KEY].newValue
       }
+      if (MUSTARD_FONT_KEY in changes) {
+        applySelectedFont(changes[MUSTARD_FONT_KEY].newValue as string | undefined)
+      }
     })
 
     // Query notes for the current page
@@ -431,6 +435,22 @@ export default defineContentScript({
     const mustardHost = document.createElement('div')
     mustardHost.id = 'mustard-host'
     document.body.appendChild(mustardHost)
+
+    // Apply the user's selected text font. The `--mustard-font` override is set
+    // on the host element so it cascades to all Mustard UI without touching the
+    // host page. Web fonts also need their stylesheet injected into the host
+    // page <head> — note this download is subject to the host page's CSP, so on
+    // strict-CSP sites it (silently) falls back to the generic family in the
+    // stack. System fonts need no download and always apply.
+    function applySelectedFont(id: string | undefined | null) {
+      const font = getFontById(id)
+      ensureFontStylesheet(document, font)
+      applyFontVar(mustardHost, font)
+    }
+    browser.storage.local
+      .get(MUSTARD_FONT_KEY)
+      .then((result) => applySelectedFont(result[MUSTARD_FONT_KEY] as string | undefined))
+      .catch(() => {})
 
     const app = createApp(MustardContent)
     const event = new Observable<Message>()
