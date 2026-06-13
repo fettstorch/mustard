@@ -25,6 +25,13 @@ import {
   ensureFontStylesheet,
   applyFontVar,
 } from '@/shared/fonts'
+import {
+  MUSTARD_THEMES,
+  MUSTARD_THEME_KEY,
+  DEFAULT_THEME_ID,
+  getThemeById,
+  applyTheme,
+} from '@/shared/themes'
 
 const PUBLISH_CONFIRM_DISMISSED_KEY = 'mustard-publish-confirm-dismissed'
 const NOTES_MINIMIZED_KEY = 'mustard-notes-minimized'
@@ -38,6 +45,7 @@ const showPublishWarning = ref(true)
 const minimizeNotes = ref(false)
 const showAnchorInEditor = ref(false)
 const selectedFontId = ref<string>(DEFAULT_FONT_ID)
+const selectedThemeId = ref<string>(DEFAULT_THEME_ID)
 
 const systemFonts = computed(() => MUSTARD_FONTS.filter((f) => f.category === 'system'))
 const webFonts = computed(() => MUSTARD_FONTS.filter((f) => f.category === 'web'))
@@ -53,11 +61,13 @@ onMounted(async () => {
     NOTES_MINIMIZED_KEY,
     SHOW_ANCHOR_IN_EDITOR_KEY,
     MUSTARD_FONT_KEY,
+    MUSTARD_THEME_KEY,
   ])
   showPublishWarning.value = !result[PUBLISH_CONFIRM_DISMISSED_KEY]
   minimizeNotes.value = !!result[NOTES_MINIMIZED_KEY]
   showAnchorInEditor.value = !!result[SHOW_ANCHOR_IN_EDITOR_KEY]
   selectedFontId.value = getFontById(result[MUSTARD_FONT_KEY] as string | undefined).id
+  selectedThemeId.value = getThemeById(result[MUSTARD_THEME_KEY] as string | undefined).id
 
   // Read the live keybindings so they stay accurate after the user rebinds.
   // The popup command is `_execute_action` (Chrome MV3) or
@@ -110,6 +120,13 @@ function onFontChange() {
   // Apply immediately for instant preview (also synced via storage.onChanged).
   ensureFontStylesheet(document, font)
   applyFontVar(document.documentElement, font)
+}
+
+function onThemeSelect(themeId: string) {
+  selectedThemeId.value = themeId
+  const theme = getThemeById(themeId)
+  browser.storage.local.set({ [MUSTARD_THEME_KEY]: theme.id })
+  applyTheme(document.documentElement, theme)
 }
 
 function openKofi() {
@@ -176,6 +193,25 @@ function openKofi() {
           />
           <span class="pref-label">Show anchor data in editor</span>
         </label>
+        <div class="pref-row pref-row-stack">
+          <span class="pref-label">Color theme</span>
+          <div class="theme-swatches" role="radiogroup" aria-label="Color theme">
+            <button
+              v-for="theme in MUSTARD_THEMES"
+              :key="theme.id"
+              type="button"
+              class="theme-chip"
+              :class="{ 'theme-chip-active': selectedThemeId === theme.id }"
+              :aria-checked="selectedThemeId === theme.id"
+              role="radio"
+              :title="theme.label"
+              @click="onThemeSelect(theme.id)"
+            >
+              <span class="theme-swatch" :style="{ background: theme.swatch }" />
+              <span class="theme-label">{{ theme.label }}</span>
+            </button>
+          </div>
+        </div>
         <div class="pref-row pref-row-stack">
           <span class="pref-label">Text font</span>
           <select v-model="selectedFontId" class="pref-select" @change="onFontChange">
@@ -401,6 +437,57 @@ h1 {
   font-size: 0.75rem;
   line-height: 1.45;
   opacity: 0.7;
+}
+
+.theme-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  width: 100%;
+}
+
+.theme-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 10px;
+  border: 2px solid var(--mustard-border-subtle);
+  background: var(--mustard-glass);
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    background-color 0.15s;
+  min-width: 72px;
+}
+
+.theme-chip:hover {
+  background: var(--mustard-glass-hover);
+  border-color: var(--mustard-border);
+}
+
+.theme-chip-active {
+  border-color: var(--mustard-border);
+  background: var(--mustard-glass-strong);
+  box-shadow: 0 0 0 1px var(--mustard-border);
+}
+
+.theme-swatch {
+  display: block;
+  width: 48px;
+  height: 32px;
+  border-radius: 6px;
+  border: 1.5px solid var(--mustard-border-subtle);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.theme-label {
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--mustard-text);
+  text-align: center;
+  line-height: 1.2;
 }
 
 .shortcut-row {

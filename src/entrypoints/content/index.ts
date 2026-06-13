@@ -14,6 +14,7 @@ import { LIMITS } from '@/shared/constants'
 import { extractMentionDids } from '@/shared/mentions'
 import { PENDING_FOCUS_KEY, type PendingFocus } from '@/shared/pending-focus'
 import { MUSTARD_FONT_KEY, getFontById, ensureFontStylesheet, applyFontVar } from '@/shared/fonts'
+import { MUSTARD_THEME_KEY, getThemeById, applyTheme } from '@/shared/themes'
 import { DtoMustardNote } from '@/shared/dto/DtoMustardNote'
 import { DtoMustardComment } from '@/shared/dto/DtoMustardComment'
 import MustardContent from '@/ui/content/MustardContent.vue'
@@ -385,6 +386,9 @@ export default defineContentScript({
       if (MUSTARD_FONT_KEY in changes) {
         applySelectedFont(changes[MUSTARD_FONT_KEY].newValue as string | undefined)
       }
+      if (MUSTARD_THEME_KEY in changes) {
+        applySelectedTheme(changes[MUSTARD_THEME_KEY].newValue as string | undefined)
+      }
     })
 
     // Query notes for the current page
@@ -447,9 +451,15 @@ export default defineContentScript({
       ensureFontStylesheet(document, font)
       applyFontVar(mustardHost, font)
     }
+    function applySelectedTheme(id: string | undefined | null) {
+      applyTheme(mustardHost, getThemeById(id))
+    }
     browser.storage.local
-      .get(MUSTARD_FONT_KEY)
-      .then((result) => applySelectedFont(result[MUSTARD_FONT_KEY] as string | undefined))
+      .get([MUSTARD_FONT_KEY, MUSTARD_THEME_KEY])
+      .then((result) => {
+        applySelectedFont(result[MUSTARD_FONT_KEY] as string | undefined)
+        applySelectedTheme(result[MUSTARD_THEME_KEY] as string | undefined)
+      })
       .catch(() => {})
 
     const app = createApp(MustardContent)
