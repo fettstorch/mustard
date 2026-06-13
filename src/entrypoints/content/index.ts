@@ -14,7 +14,12 @@ import { LIMITS } from '@/shared/constants'
 import { extractMentionDids } from '@/shared/mentions'
 import { PENDING_FOCUS_KEY, type PendingFocus } from '@/shared/pending-focus'
 import { MUSTARD_FONT_KEY, getFontById, ensureFontStylesheet, applyFontVar } from '@/shared/fonts'
-import { MUSTARD_THEME_KEY, getThemeById, applyTheme } from '@/shared/themes'
+import {
+  MUSTARD_THEME_KEY,
+  getThemeById,
+  applyTheme,
+  getThemeHighlightColor,
+} from '@/shared/themes'
 import { DtoMustardNote } from '@/shared/dto/DtoMustardNote'
 import { DtoMustardComment } from '@/shared/dto/DtoMustardComment'
 import MustardContent from '@/ui/content/MustardContent.vue'
@@ -296,15 +301,18 @@ export default defineContentScript({
     const HIGHLIGHT_CLASS = 'mustard-highlight'
 
     function applyHighlight() {
-      if (lastContextMenuTarget) {
-        lastContextMenuTarget.classList.add(HIGHLIGHT_CLASS)
-      }
+      if (!lastContextMenuTarget) return
+      lastContextMenuTarget.style.setProperty(
+        '--mustard-yellow-mid',
+        getThemeHighlightColor(mustardHost),
+      )
+      lastContextMenuTarget.classList.add(HIGHLIGHT_CLASS)
     }
 
     function removeHighlight() {
-      if (lastContextMenuTarget) {
-        lastContextMenuTarget.classList.remove(HIGHLIGHT_CLASS)
-      }
+      if (!lastContextMenuTarget) return
+      lastContextMenuTarget.classList.remove(HIGHLIGHT_CLASS)
+      lastContextMenuTarget.style.removeProperty('--mustard-yellow-mid')
     }
 
     // Handle messages from service worker and popup.
@@ -453,6 +461,12 @@ export default defineContentScript({
     }
     function applySelectedTheme(id: string | undefined | null) {
       applyTheme(mustardHost, getThemeById(id))
+      if (mustardState.editor.isOpen && lastContextMenuTarget) {
+        lastContextMenuTarget.style.setProperty(
+          '--mustard-yellow-mid',
+          getThemeHighlightColor(mustardHost),
+        )
+      }
     }
     browser.storage.local
       .get([MUSTARD_FONT_KEY, MUSTARD_THEME_KEY])

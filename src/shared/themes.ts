@@ -234,6 +234,16 @@ export function applyTheme(el: HTMLElement, theme: ThemeOption): void {
 }
 
 /**
+ * Resolved anchor-highlight accent from a themed root (typically `#mustard-host`).
+ * Host-page elements don't inherit that root's vars, so callers copy this onto
+ * the highlighted element as an inline `--mustard-yellow-mid` override.
+ */
+export function getThemeHighlightColor(themedRoot: HTMLElement): string {
+  const value = getComputedStyle(themedRoot).getPropertyValue('--mustard-yellow-mid').trim()
+  return value || '#ffb800'
+}
+
+/**
  * Wire up the selected theme on an extension surface (popup/options): apply the
  * stored choice now and keep it live when changed elsewhere.
  */

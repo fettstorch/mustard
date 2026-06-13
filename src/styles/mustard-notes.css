@@ -134,9 +134,11 @@
   background: var(--mustard-glass-strong);
 }
 
-/* Highlight for the element a note will be anchored to (shown while editor is open) */
+/* Highlight for the element a note will be anchored to (shown while editor is open).
+   The accent is injected per-element as --mustard-yellow-mid because host-page
+   nodes don't inherit vars from #mustard-host. */
 .mustard-highlight {
-  background: #ffb800 !important;
+  background: var(--mustard-yellow-mid, #ffb800) !important;
   transition: background 0.2s ease;
 }
 
