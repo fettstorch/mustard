@@ -323,7 +323,7 @@ export type ResponseFor<T extends Message['type']> = MessageResponses[T]
  * Strip Vue reactive Proxies (and any other non-cloneable wrappers) before a
  * message crosses the extension boundary. Firefox's `structuredClone` rejects
  * proxies; Chrome serializes silently. Doing it here means callers never have
- * to remember (see LEARNINGS.md → Cross-Browser Extension Messaging).
+ * to remember (see the `cross-browser-webext` skill → Messaging).
  */
 function toPlainMessage<M extends Message>(message: M): M {
   return JSON.parse(JSON.stringify(message)) as M

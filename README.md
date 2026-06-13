@@ -165,7 +165,7 @@ supabase start
 supabase functions serve
 ```
 
-Migrations in `supabase/migrations/` are applied automatically on `supabase start`. Run `supabase status` to verify the local anon key matches `.env.development`.
+Migrations in `supabase/migrations/` are applied automatically on `supabase start` — but **only on a fresh database**. Subsequent boots against an existing volume skip new migration files; run `supabase migration up` (preserves data) or `supabase db reset` (replays all migrations from scratch) to apply new ones. Run `supabase status` to verify the local anon key matches `.env.development`.
 
 To stop the local stack:
 
@@ -293,6 +293,6 @@ supabase/
 └── migrations/           # Database schema
 ```
 
-## Implementation Status
+## Architecture
 
-See [PROGRESS.md](./PROGRESS.md) for detailed implementation status and architecture diagrams.
+For a system map (runtime surfaces, managers, services, storage, edge functions, data flow), see the `mustard-architecture` skill in `.agents/skills/`. Auth specifics live in the `atproto-supabase-auth` skill; cross-browser/WXT specifics in `cross-browser-webext`.

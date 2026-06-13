@@ -1,0 +1,120 @@
+---
+name: cross-browser-webext
+description: >-
+  Cross-browser WebExtension knowledge for the Mustard extension built on WXT:
+  Chrome vs Firefox API differences, background/content-script messaging quirks,
+  content-script CSP constraints (icons, fonts, styling), and stable extension
+  identity. Use when editing entrypoints, wxt.config/manifest, content scripts,
+  background messaging, context menus, the icon badge, or debugging behavior that
+  works in one browser but not the other.
+---
+
+# Cross-Browser WebExtension (WXT)
+
+Hard-won quirks for building Mustard as a single codebase targeting Chrome (MV3)
+and Firefox (MV2/MV3) with WXT. Read this before touching `wxt.config.ts`,
+`src/entrypoints/**`, background messaging, or content-script injection.
+
+## WXT build framework
+
+- **Output dir** defaults to `dist/{browser}-mv{manifestVersion}/`. For clean
+  per-browser dirs use `outDirTemplate: '{{browser}}'` with `outDir: 'dist'` →
+  `./dist/chrome`, `./dist/firefox`.
+- **Entrypoints** must live in `src/entrypoints/` (respects `srcDir`):
+  background → `defineBackground()`, content scripts → `defineContentScript()`,
+  unlisted scripts → `defineUnlistedScript()`.
+- **CSS reset**: removing Tailwind also removes its Preflight reset. Add a minimal
+  reset to `main.css` (`box-sizing: border-box`, `body { margin: 0 }`,
+  `button { padding: 0 }`) or popup/options layouts break.
+- **Per-browser manifest**: use the function form
+  `manifest: ({ browser }) => ({ ... })` to branch (e.g. `key` only on chrome,
+  `browser_specific_settings` only on firefox).
+- **Manifest icons**: `.ico` files don't work as extension icons — use `.png`.
+
+## `browser` global is NOT webextension-polyfill
+
+- `@wxt-dev/browser` is just `globalThis.browser ?? globalThis.chrome`. On Chrome
+  it's the **raw callback-style** API; on Firefox it's the **Promise-style** API.
+  Cross-browser code must not rely on polyfill behavior.
+- **MV2 has no `browser.action`** (MV3 only). Fall back to `browser.browserAction`
+  at runtime via a `getActionApi()` shim — WXT does not polyfill this.
+
+## Messaging (background ↔ content/popup)
+
+- **Async response**: Chrome uses `return true + sendResponse(...)`; Firefox
+  ignores `return true` and expects the listener to **return a Promise**.
+  Chrome 99+ also supports Promise return → a single Promise-returning listener
+  works on both. **Do NOT use `sendResponse`** if you want Firefox compatibility.
+- **Vue reactive Proxies fail Firefox `structuredClone`**:
+  `runtime.sendMessage(vueReactiveObject)` throws
+  `DOMException: Proxy object could not be cloned` on Firefox (Chrome serializes
+  silently). Strip reactivity at the relay boundary with
+  `JSON.parse(JSON.stringify(message))` for plain-data messages.
+- **Always log `.catch` on `sendMessage`** — silent catches hide cross-browser
+  bugs (a `.catch(() => {})` once swallowed the Proxy error and cost real time).
+
+## Firefox context menus (MV3) lost on restart
+
+- `browser.contextMenus.create` called **only** inside `runtime.onInstalled`
+  disappears after a disable→re-enable cycle (bug
+  [1817287](https://bugzilla.mozilla.org/show_bug.cgi?id=1817287), still open).
+  `onInstalled` fires on install/update only — not startup or enable.
+- **Fix**: extract `ensureContextMenu()` that calls `contextMenus.removeAll()`
+  then `.create()`, and invoke it from `onInstalled`, `onStartup`, **and** the
+  top level of the background script (Mozilla's documented workaround).
+
+## Content-script CSP constraints
+
+Content scripts run under the **host page's** CSP, not the extension's. This bites
+in several ways:
+
+- **Icons/images**: `<img src="chrome-extension://...">` is blocked by the host
+  page's `img-src`. `chrome.runtime.getURL()` as `src` fails on strict pages.
+  `assetsInlineLimit` only helps in prod builds; dev serves assets as URLs that
+  fail CSP the same way. **Fix**: a Vite `transform` plugin (`inlineIcons`) that
+  converts PNG imports from `src/assets/icons/` to `data:image/png;base64,...`
+  at transform time — works in dev + prod, no `web_accessible_resources` or
+  runtime fetch needed.
+- **Web fonts**: fonts from content-script CSS (`@font-face`/`@import`/`<link>`)
+  download under the host page's `font-src`/`style-src`. Strict pages (GitHub)
+  block them, and **base64-inlining the font does NOT bypass this** (confirmed:
+  Chrome docs + w3c/webextensions #839) — it silently falls back. **System fonts
+  are CSP-proof** (referencing an installed font by name is not a network load).
+  Mustard's picker offers a "System" group (always works) + a "Web" group (may
+  fall back on strict pages). All text flows through one `--mustard-font` CSS var.
+- **`queryLocalFonts()` is not worth it**: Chromium-only, permission-prompted, and
+  restricted in content scripts. A curated cross-platform system-font list is more
+  robust.
+- **Styling / Shadow DOM**: don't use Shadow DOM for Vue components — Vue injects
+  `<style>` into `document.head`, not the shadow root, so styles won't apply. Use
+  `<style scoped>` for isolation; host page styles can still bleed into deeply
+  nested elements — use `:deep()` with `!important` where needed (e.g. markdown
+  heading colors).
+
+## Stable extension identity (needed for OAuth redirect URIs)
+
+- **Chrome**: unpacked ID is path-derived (or key-derived if `key` is set). Paste
+  the Web Store listing's public key (Developer Dashboard → Package → "View public
+  key") into `manifest.key` so local dev shares the production extension ID — one
+  OAuth redirect URI instead of two. You **cannot** reproduce a path-derived ID via
+  `key` (the ID is a one-way hash; without the original private key it's lost).
+- **Firefox**: temporary add-ons get a random ID per install. Pin via
+  `browser_specific_settings.gecko.id` in `name@something` format (no real domain
+  needed, e.g. `mustard@notes`). The OAuth redirect URI is then
+  `https://<sha1(addonId)>.extensions.allizom.org/<path>` — predict it by
+  SHA-1-hashing the gecko.id before deploying client metadata. AMO uses whatever
+  `gecko.id` you set, so dev and prod share one ID/redirect URI (no key dance).
+
+> For the OAuth flow that consumes these redirect URIs, see the
+> `atproto-supabase-auth` skill.
+
+## UI: smooth expand animations (content-script pills/labels)
+
+- `grid-template-columns: 0fr → 1fr` with `overflow: hidden` on the container and
+  `min-width: 0` on the inner element gives smooth **width**-expand animations —
+  same trick as `grid-template-rows` for height, just on the X axis (used by the
+  CommentToggle pill and minimized-note pills).
+- An implicit `auto` grid column sizes to its content's preferred width, so a
+  `flex: 1` child has no extra space to grow into. Switch to `minmax(0, 1fr)` so
+  the column fills its container and flex children can actually expand when the
+  surrounding layout widens.
