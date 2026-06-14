@@ -297,6 +297,10 @@ export default defineContentScript({
 
     let lastContextMenuData: MustardNoteAnchorData | null = null
     let lastContextMenuTarget: HTMLElement | null = null
+    let isAltPressed = false
+    let altBadge: HTMLElement | null = null
+    let lastMouseX = 0
+    let lastMouseY = 0
 
     const HIGHLIGHT_CLASS = 'mustard-highlight'
 
@@ -315,6 +319,77 @@ export default defineContentScript({
       lastContextMenuTarget.style.removeProperty('--mustard-yellow-mid')
     }
 
+    function createAltBadge(): HTMLElement {
+      const badge = document.createElement('div')
+      badge.id = 'mustard-alt-badge'
+      badge.textContent = 'Click to create mustard note'
+      badge.style.position = 'fixed'
+      badge.style.padding = '8px 12px'
+      badge.style.borderRadius = '6px'
+      badge.style.fontSize = '12px'
+      badge.style.fontWeight = '500'
+      badge.style.pointerEvents = 'none'
+      badge.style.zIndex = '2147483647'
+      badge.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.15)'
+      badge.style.whiteSpace = 'nowrap'
+      badge.style.transform = 'translate(10px, 10px)'
+      document.body.appendChild(badge)
+      return badge
+    }
+
+    function updateAltBadgePosition(clientX: number, clientY: number) {
+      if (!altBadge) return
+      altBadge.style.left = clientX + 'px'
+      altBadge.style.top = clientY + 'px'
+    }
+
+    function showAltBadge(clientX: number, clientY: number) {
+      if (!altBadge) {
+        altBadge = createAltBadge()
+      }
+      const bgColor =
+        getComputedStyle(mustardHost).getPropertyValue('--mustard-yellow-light').trim() || '#ffe066'
+      const textColor =
+        getComputedStyle(mustardHost).getPropertyValue('--mustard-text').trim() || '#3d2200'
+      altBadge.style.background = bgColor
+      altBadge.style.color = textColor
+      updateAltBadgePosition(clientX, clientY)
+      altBadge.style.display = 'block'
+    }
+
+    function hideAltBadge() {
+      if (altBadge) {
+        altBadge.style.display = 'none'
+      }
+    }
+
+    function captureAnchorData(event: MouseEvent): MustardNoteAnchorData {
+      const target = event.target as HTMLElement
+      const rect = target.getBoundingClientRect()
+      removeHighlight()
+      lastContextMenuTarget = target
+      return {
+        pageUrl: getCurrentPageUrl(),
+        elementSelector: generateSelector(target),
+        relativePosition: {
+          xP: ((event.clientX - rect.left) / rect.width) * 100,
+          yP: ((event.clientY - rect.top) / rect.height) * 100,
+        },
+        clickPosition: {
+          xVw: (event.clientX / window.innerWidth) * 100,
+          yPx: event.clientY + window.scrollY,
+        },
+      }
+    }
+
+    function openNoteEditor(anchor: MustardNoteAnchorData | null) {
+      if (!mustardState.areNotesVisible) {
+        mustardState.areNotesVisible = true
+      }
+      mustardState.editor.anchor = anchor
+      mustardState.editor.isOpen = true
+    }
+
     // Handle messages from service worker and popup.
     // Returning a Promise from the listener works on both Chrome (99+) and Firefox.
     browser.runtime.onMessage.addListener((message: Message) => {
@@ -327,11 +402,7 @@ export default defineContentScript({
         return Promise.resolve(mustardState.areNotesVisible)
       }
       if (message.type === 'OPEN_NOTE_EDITOR') {
-        if (!mustardState.areNotesVisible) {
-          mustardState.areNotesVisible = true
-        }
-        mustardState.editor.anchor = lastContextMenuData
-        mustardState.editor.isOpen = true
+        openNoteEditor(lastContextMenuData)
         return
       }
       if (message.type === 'SESSION_EXPIRED') {
@@ -498,6 +569,8 @@ export default defineContentScript({
       if (!browser.runtime.id) {
         app.unmount()
         mustardHost.remove()
+        altBadge?.remove()
+        altBadge = null
         showRefreshBanner()
         window.removeEventListener('mousemove', handlePotentialInvalidation)
         window.removeEventListener('keydown', handlePotentialInvalidation)
@@ -606,25 +679,64 @@ export default defineContentScript({
 
     // Capture context menu data when right-clicking
     document.addEventListener('contextmenu', (event) => {
-      const target = event.target as HTMLElement
-      const rect = target.getBoundingClientRect()
+      lastContextMenuData = captureAnchorData(event)
+    })
 
-      removeHighlight()
-      lastContextMenuTarget = target
-
-      lastContextMenuData = {
-        pageUrl: getCurrentPageUrl(),
-        elementSelector: generateSelector(target),
-        relativePosition: {
-          xP: ((event.clientX - rect.left) / rect.width) * 100,
-          yP: ((event.clientY - rect.top) / rect.height) * 100,
-        },
-        clickPosition: {
-          xVw: (event.clientX / window.innerWidth) * 100,
-          yPx: event.clientY + window.scrollY,
-        },
+    // Track mouse position globally
+    document.addEventListener('mousemove', (event) => {
+      lastMouseX = event.clientX
+      lastMouseY = event.clientY
+      if (event.altKey && !isAltPressed) {
+        isAltPressed = true
+        showAltBadge(lastMouseX, lastMouseY)
+      } else if (!event.altKey && isAltPressed) {
+        isAltPressed = false
+        hideAltBadge()
+      } else if (isAltPressed) {
+        updateAltBadgePosition(lastMouseX, lastMouseY)
       }
     })
+
+    // Handle Alt key for Alt+Click note creation
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Alt' && !isAltPressed) {
+        isAltPressed = true
+        showAltBadge(lastMouseX, lastMouseY)
+      }
+    })
+
+    document.addEventListener('keyup', (event) => {
+      if (!event.altKey && isAltPressed) {
+        isAltPressed = false
+        hideAltBadge()
+      }
+    })
+
+    // Handle window blur to reset Alt state
+    window.addEventListener('blur', () => {
+      if (isAltPressed) {
+        isAltPressed = false
+        hideAltBadge()
+      }
+    })
+
+    // Create note on Alt+Click
+    document.addEventListener(
+      'click',
+      (event) => {
+        if (!isAltPressed) return
+
+        event.preventDefault()
+        event.stopPropagation()
+
+        isAltPressed = false
+        hideAltBadge()
+
+        lastContextMenuData = captureAnchorData(event)
+        openNoteEditor(lastContextMenuData)
+      },
+      true,
+    )
   },
 })
 
