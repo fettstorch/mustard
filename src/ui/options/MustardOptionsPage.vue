@@ -36,6 +36,7 @@ import {
 const PUBLISH_CONFIRM_DISMISSED_KEY = 'mustard-publish-confirm-dismissed'
 const NOTES_MINIMIZED_KEY = 'mustard-notes-minimized'
 const SHOW_ANCHOR_IN_EDITOR_KEY = 'mustard-show-anchor-in-editor'
+const ALT_CLICK_ENABLED_KEY = 'mustard-alt-click-enabled'
 
 const logoUrl = browser.runtime.getURL('/mustard_bottle_smile_512.png')
 const helloMustardUrl = 'https://fettstorch.github.io/mustard/'
@@ -44,6 +45,7 @@ const bskyProfileUrl = 'https://bsky.app/profile/mustardnotes.com'
 const showPublishWarning = ref(true)
 const minimizeNotes = ref(false)
 const showAnchorInEditor = ref(false)
+const altClickEnabled = ref(false)
 const selectedFontId = ref<string>(DEFAULT_FONT_ID)
 const selectedThemeId = ref<string>(DEFAULT_THEME_ID)
 
@@ -60,12 +62,14 @@ onMounted(async () => {
     PUBLISH_CONFIRM_DISMISSED_KEY,
     NOTES_MINIMIZED_KEY,
     SHOW_ANCHOR_IN_EDITOR_KEY,
+    ALT_CLICK_ENABLED_KEY,
     MUSTARD_FONT_KEY,
     MUSTARD_THEME_KEY,
   ])
   showPublishWarning.value = !result[PUBLISH_CONFIRM_DISMISSED_KEY]
   minimizeNotes.value = !!result[NOTES_MINIMIZED_KEY]
   showAnchorInEditor.value = !!result[SHOW_ANCHOR_IN_EDITOR_KEY]
+  altClickEnabled.value = !!result[ALT_CLICK_ENABLED_KEY]
   selectedFontId.value = getFontById(result[MUSTARD_FONT_KEY] as string | undefined).id
   selectedThemeId.value = getThemeById(result[MUSTARD_THEME_KEY] as string | undefined).id
 
@@ -112,6 +116,10 @@ function onMinimizeNotesChange() {
 
 function onShowAnchorInEditorChange() {
   browser.storage.local.set({ [SHOW_ANCHOR_IN_EDITOR_KEY]: showAnchorInEditor.value })
+}
+
+function onAltClickEnabledChange() {
+  browser.storage.local.set({ [ALT_CLICK_ENABLED_KEY]: altClickEnabled.value })
 }
 
 function onFontChange() {
@@ -193,6 +201,22 @@ function openKofi() {
           />
           <span class="pref-label">Show anchor data in editor</span>
         </label>
+        <div class="pref-row pref-row-stack">
+          <label class="pref-row">
+            <input
+              v-model="altClickEnabled"
+              type="checkbox"
+              class="pref-checkbox"
+              @change="onAltClickEnabledChange"
+            />
+            <span class="pref-label">Create note on {{ isMacPlatform ? '⌥' : 'Alt' }}+Click</span>
+          </label>
+          <span class="pref-hint">
+            When on, holding {{ isMacPlatform ? 'Option (⌥)' : 'Alt' }} and clicking anywhere on a
+            page creates a mustard note there. Off by default so it won't interfere with sites that
+            use {{ isMacPlatform ? 'Option' : 'Alt' }}+Click.
+          </span>
+        </div>
         <div class="pref-row pref-row-stack">
           <span class="pref-label">Color theme</span>
           <div class="theme-swatches" role="radiogroup" aria-label="Color theme">

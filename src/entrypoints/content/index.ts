@@ -31,6 +31,7 @@ import { createApp, watch } from 'vue'
 
 const NOTES_MINIMIZED_KEY = 'mustard-notes-minimized'
 const SHOW_ANCHOR_IN_EDITOR_KEY = 'mustard-show-anchor-in-editor'
+const ALT_CLICK_ENABLED_KEY = 'mustard-alt-click-enabled'
 
 export default defineContentScript({
   matches: ['<all_urls>'],
@@ -298,6 +299,7 @@ export default defineContentScript({
     let lastContextMenuData: MustardNoteAnchorData | null = null
     let lastContextMenuTarget: HTMLElement | null = null
     let isAltPressed = false
+    let altClickEnabled = false
     let altBadge: HTMLElement | null = null
     let lastMouseX = 0
     let lastMouseY = 0
@@ -447,10 +449,11 @@ export default defineContentScript({
 
     // Load preferences from storage
     browser.storage.local
-      .get([NOTES_MINIMIZED_KEY, SHOW_ANCHOR_IN_EDITOR_KEY])
+      .get([NOTES_MINIMIZED_KEY, SHOW_ANCHOR_IN_EDITOR_KEY, ALT_CLICK_ENABLED_KEY])
       .then((result) => {
         mustardState.areNotesMinimized = !!result[NOTES_MINIMIZED_KEY]
         mustardState.showAnchorInEditor = !!result[SHOW_ANCHOR_IN_EDITOR_KEY]
+        altClickEnabled = !!result[ALT_CLICK_ENABLED_KEY]
       })
       .catch(() => {})
 
@@ -461,6 +464,14 @@ export default defineContentScript({
       }
       if (SHOW_ANCHOR_IN_EDITOR_KEY in changes) {
         mustardState.showAnchorInEditor = !!changes[SHOW_ANCHOR_IN_EDITOR_KEY].newValue
+      }
+      if (ALT_CLICK_ENABLED_KEY in changes) {
+        altClickEnabled = !!changes[ALT_CLICK_ENABLED_KEY].newValue
+        // Disabling mid-press shouldn't leave the badge stuck on screen.
+        if (!altClickEnabled && isAltPressed) {
+          isAltPressed = false
+          hideAltBadge()
+        }
       }
       if (MUSTARD_FONT_KEY in changes) {
         applySelectedFont(changes[MUSTARD_FONT_KEY].newValue as string | undefined)
@@ -686,6 +697,7 @@ export default defineContentScript({
     document.addEventListener('mousemove', (event) => {
       lastMouseX = event.clientX
       lastMouseY = event.clientY
+      if (!altClickEnabled) return
       if (event.altKey && !isAltPressed) {
         isAltPressed = true
         showAltBadge(lastMouseX, lastMouseY)
@@ -699,6 +711,7 @@ export default defineContentScript({
 
     // Handle Alt key for Alt+Click note creation
     document.addEventListener('keydown', (event) => {
+      if (!altClickEnabled) return
       if (event.key === 'Alt' && !isAltPressed) {
         isAltPressed = true
         showAltBadge(lastMouseX, lastMouseY)
