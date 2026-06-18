@@ -37,3 +37,4 @@ __screenshots__/
 
 # Supabase local dev (keep functions, ignore temp files)
 supabase/.temp/
+paseo.json
