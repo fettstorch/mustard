@@ -227,6 +227,11 @@ export default defineBackground(() => {
     },
 
     DELETE_NOTE: async (message) => {
+      // Defense-in-depth: an outdated client must not mutate the remote DB. Local
+      // deletes stay allowed so users can still clean up their own device.
+      if (message.authorId !== 'local' && (await isClientOutdated())) {
+        throw new Error(CLIENT_OUTDATED_ERROR)
+      }
       await mustardNotesManager.deleteNote(message.noteId, message.pageUrl, message.authorId)
 
       if (message.authorId === 'local') {
@@ -369,6 +374,8 @@ export default defineBackground(() => {
     },
 
     DELETE_COMMENT: async (message) => {
+      // Comments are remote-only, so an outdated client must never reach here.
+      if (await isClientOutdated()) throw new Error(CLIENT_OUTDATED_ERROR)
       await mustardCommentsManager.deleteComment(message.commentId)
       // The cascade may delete an unread notification row for whoever was about
       // to be notified — refresh badge + overview.
