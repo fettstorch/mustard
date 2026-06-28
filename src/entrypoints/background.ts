@@ -18,6 +18,12 @@ import { clearSupabaseJwt, storeSupabaseJwt } from '@/background/auth/SupabaseAu
 import { MustardProfileServiceBsky } from '@/background/business/service/MustardProfileServiceBsky'
 import { MustardMutualsServiceBsky } from '@/background/business/service/MustardMutualsServiceBsky'
 import { invalidateRemoteIndexCache } from '@/background/business/service/MustardNotesServiceRemote'
+import {
+  getAppStatus,
+  isClientOutdated,
+  requestClientUpdate,
+} from '@/background/business/service/AppStatusService'
+import { CLIENT_OUTDATED_ERROR, isRemoteMutationMessage } from '@/shared/remote-mutation'
 
 export default defineBackground(() => {
   const profileService = new MustardProfileServiceBsky()
@@ -291,6 +297,10 @@ export default defineBackground(() => {
       action?.openPopup?.()?.catch(() => {})
     },
 
+    GET_APP_STATUS: () => getAppStatus(),
+
+    REQUEST_UPDATE: () => requestClientUpdate(),
+
     GET_PROFILES: async (message) => {
       try {
         return await profileService.getProfiles(message.userIds)
@@ -432,8 +442,13 @@ export default defineBackground(() => {
       handler ? 'has handler' : 'no handler',
     )
     if (!handler) return
-    // The map guarantees handler matches message.type at runtime; TS can't
-    // correlate the indexed union, so we assert the call here.
-    return (handler as (m: Message) => Promise<unknown> | void)(message)
+    return (async () => {
+      if (isRemoteMutationMessage(message) && (await isClientOutdated())) {
+        throw new Error(CLIENT_OUTDATED_ERROR)
+      }
+      // The map guarantees handler matches message.type at runtime; TS can't
+      // correlate the indexed union, so we assert the call here.
+      return (handler as (m: Message) => Promise<unknown> | void)(message)
+    })()
   })
 })

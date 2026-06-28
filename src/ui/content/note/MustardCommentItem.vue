@@ -70,8 +70,12 @@ function onContentMousedown(e: MouseEvent) {
         <IconButton
           v-if="isMine"
           icon="trash"
-          title="Delete this comment"
-          :disabled="isPending"
+          :title="
+            mustardState.clientOutdated
+              ? 'Update Mustard to continue (this version is no longer supported)'
+              : 'Delete this comment'
+          "
+          :disabled="isPending || mustardState.clientOutdated"
           class="mustard-comment-delete"
           @click="emit('pressed-delete', comment)"
           @mousedown.stop

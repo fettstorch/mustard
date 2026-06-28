@@ -104,7 +104,9 @@ function handleSave() {
 }
 
 function handlePublish() {
-  if (isOverLimit.value) return
+  // Outdated clients can't write to the remote DB. Block here so the editor
+  // isn't optimistically closed (which would discard the user's draft).
+  if (isOverLimit.value || mustardState.clientOutdated) return
   emit('pressed-publish', { content: getEditorContent() })
 }
 </script>
@@ -125,8 +127,12 @@ function handlePublish() {
       <IconButton icon="save" title="Save this note locally" @click="handleSave" />
       <IconButton
         icon="publish"
-        title="Publish this note (do not publish sensitive data)"
-        :disabled="isOverLimit"
+        :title="
+          mustardState.clientOutdated
+            ? 'Update Mustard to publish (this version is no longer supported)'
+            : 'Publish this note (do not publish sensitive data)'
+        "
+        :disabled="isOverLimit || mustardState.clientOutdated"
         @click="handlePublish"
       />
       <IconButton icon="x" title="Close editor" @click="emit('pressed-x')" />

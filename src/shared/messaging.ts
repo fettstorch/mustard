@@ -158,6 +158,30 @@ export type OpenPopupMessage = Satisfies<
   }
 >
 
+// Any surface → service worker: is this client still supported by the backend?
+// Drives the "please update" guard (read-only mode below the server's minimum).
+export type GetAppStatusMessage = Satisfies<
+  BaseMessage,
+  {
+    type: 'GET_APP_STATUS'
+  }
+>
+
+type AppStatusResponse = {
+  currentVersion: string
+  minVersion: string
+  outdated: boolean
+}
+
+// Any surface → service worker: best-effort "update now". On Chrome this triggers
+// a store update check + reload-on-download; elsewhere it opens the store listing.
+export type RequestUpdateMessage = Satisfies<
+  BaseMessage,
+  {
+    type: 'REQUEST_UPDATE'
+  }
+>
+
 // Content script → service worker: query all comments for a batch of remote note ids.
 // Response: Record<noteId, DtoMustardComment[]> (oldest → newest within each list).
 export type QueryCommentsMessage = Satisfies<
@@ -273,6 +297,8 @@ export type Message =
   | SessionChangedMessage
   | SessionExpiredMessage
   | OpenPopupMessage
+  | GetAppStatusMessage
+  | RequestUpdateMessage
   | QueryCommentsMessage
   | UpsertCommentMessage
   | DeleteCommentMessage
@@ -306,6 +332,8 @@ type MessageResponses = {
   SESSION_CHANGED: void
   SESSION_EXPIRED: void
   OPEN_POPUP: void
+  GET_APP_STATUS: AppStatusResponse
+  REQUEST_UPDATE: void
   QUERY_COMMENTS: QueryCommentsResponse
   UPSERT_COMMENT: DtoMustardComment[]
   DELETE_COMMENT: DtoMustardComment[]
@@ -465,6 +493,18 @@ export function createSetNotesVisibleMessage(visible: boolean): SetNotesVisibleM
   return {
     type: 'SET_NOTES_VISIBLE',
     visible,
+  }
+}
+
+export function createGetAppStatusMessage(): GetAppStatusMessage {
+  return {
+    type: 'GET_APP_STATUS',
+  }
+}
+
+export function createRequestUpdateMessage(): RequestUpdateMessage {
+  return {
+    type: 'REQUEST_UPDATE',
   }
 }
 

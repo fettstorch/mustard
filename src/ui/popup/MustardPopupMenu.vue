@@ -12,6 +12,8 @@ import {
   createGetProfilesMessage,
   createGetNotesVisibleMessage,
   createSetNotesVisibleMessage,
+  createGetAppStatusMessage,
+  createRequestUpdateMessage,
   sendMessage,
   sendTabMessage,
   type AtprotoSessionResponse,
@@ -25,11 +27,20 @@ const NOTES_MINIMIZED_KEY = 'mustard-notes-minimized'
 
 const session = ref<AtprotoSessionResponse>(null)
 const profile = ref<UserProfile | null>(null)
+const isOutdated = ref(false)
 const areNotesVisible = ref(true)
 const areNotesMinimized = ref(false)
 const activeTabId = ref<number | null>(null)
 
 onMounted(async () => {
+  // Client-version guard: surface an update notice when the backend has moved
+  // past this build. Fail-open — any error leaves the popup fully usable.
+  sendMessage(createGetAppStatusMessage())
+    .then((status) => {
+      isOutdated.value = !!status?.outdated
+    })
+    .catch(() => {})
+
   // Get session via service worker (auth state lives there)
   const existingSession = await sendMessage(createGetAtprotoSessionMessage())
   if (existingSession) {
@@ -51,6 +62,12 @@ onMounted(async () => {
     }
   }
 })
+
+function onUpdateClick() {
+  // Background decides what's possible: Chrome triggers a store update check +
+  // reload; elsewhere it opens the store listing (or no-ops if not configured).
+  sendMessage(createRequestUpdateMessage()).catch(() => {})
+}
 
 async function toggleNotesVisibility() {
   if (!activeTabId.value) return
@@ -113,6 +130,17 @@ const logoUrl = browser.runtime.getURL('/mustard_bottle_smile_512.png')
       </button>
     </div>
 
+    <!-- Update-required guard: shown when this build is below the backend's
+         minimum supported version. -->
+    <div v-if="isOutdated" class="update-banner">
+      <strong>Update required</strong>
+      <span>
+        This version of Mustard is no longer supported. Update it to keep using it. You might also
+        need to re-login here afterwards.
+      </span>
+      <button class="update-button" @click="onUpdateClick">Update now</button>
+    </div>
+
     <!-- Notes visibility toggle -->
     <div v-if="activeTabId" class="mustard-toggle-row">
       <span class="mustard-label">Show notes</span>
@@ -139,7 +167,7 @@ const logoUrl = browser.runtime.getURL('/mustard_bottle_smile_512.png')
 
     <!-- Logged in -->
     <div v-if="session" class="session-container">
-      <MentionsSection />
+      <MentionsSection :is-outdated="isOutdated" />
       <MyPagesSection />
       <div class="profile-row">
         <img
@@ -222,6 +250,40 @@ body::-webkit-scrollbar {
 
 .mustard-label {
   font-size: 0.875rem;
+}
+
+.update-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.625rem 0.75rem;
+  margin-bottom: 0.75rem;
+  border-radius: 8px;
+  border: 2px solid var(--mustard-border);
+  background: var(--mustard-glass);
+  font-size: 0.8125rem;
+  line-height: 1.35;
+}
+
+.update-banner strong {
+  font-size: 0.875rem;
+}
+
+.update-button {
+  align-self: flex-start;
+  margin-top: 0.25rem;
+  padding: 0.375rem 0.75rem;
+  border-radius: 6px;
+  border: 2px solid var(--mustard-border);
+  background: var(--mustard-glass);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.update-button:hover {
+  background: var(--mustard-glass-hover);
 }
 
 .mustard-icon-btn {

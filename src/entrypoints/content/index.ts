@@ -6,9 +6,12 @@ import {
   createQueryCommentsMessage,
   createQueryNotificationsForNotesMessage,
   createMarkNotificationsSeenForNoteMessage,
+  createGetAppStatusMessage,
+  createRequestUpdateMessage,
   sendMessage,
   type Message,
 } from '@/shared/messaging'
+import { isRemoteMutationMessage } from '@/shared/remote-mutation'
 import type { MustardNoteAnchorData } from '@/shared/model/MustardNoteAnchorData'
 import { LIMITS } from '@/shared/constants'
 import { extractMentionDids } from '@/shared/mentions'
@@ -47,6 +50,12 @@ export default defineContentScript({
 
     // Reactive state shared with Vue app
     const mustardState = createMustardState()
+
+    // Client-version guard: when the backend declares a higher minimum version
+    // than this build, the extension is too old to write safely. The flag lives
+    // on mustardState so the Vue editors can disable publish/comment controls
+    // (preventing optimistic teardown + draft loss); the event chokepoint below
+    // is the defense-in-depth backstop, and reads are left alone (best-effort).
 
     function clearPendingNoteIds() {
       Object.keys(mustardState.pendingNoteIds).forEach(
@@ -244,7 +253,7 @@ export default defineContentScript({
         // Reading the thread acknowledges its unread comment notifications.
         // Routed through the same event the manual toggle uses, so the optimistic
         // clear + sendMessage stay in one canonical place.
-        if (mustardState.unreadByNoteId[id]) {
+        if (mustardState.unreadByNoteId[id] && !mustardState.clientOutdated) {
           event.emit(createMarkNotificationsSeenForNoteMessage(id))
         }
       }
@@ -435,6 +444,18 @@ export default defineContentScript({
       }
     })
 
+    // Client-version guard: if the backend has moved past this build, flag the
+    // client as outdated and surface the update banner. Fail-open: any error
+    // leaves the client usable.
+    sendMessage(createGetAppStatusMessage())
+      .then((status) => {
+        if (status?.outdated) {
+          mustardState.clientOutdated = true
+          showUpdateRequiredBanner()
+        }
+      })
+      .catch(() => {})
+
     // Fetch current session
     sendMessage(createGetAtprotoSessionMessage())
       .then((response) => {
@@ -508,6 +529,28 @@ export default defineContentScript({
       banner.onclick = () => {
         banner.remove()
         sendMessage({ type: 'OPEN_POPUP' }).catch(() => {})
+      }
+      document.body.appendChild(banner)
+    }
+
+    function showUpdateRequiredBanner() {
+      if (document.getElementById('mustard-update-required-banner')) return
+      const banner = document.createElement('div')
+      banner.id = 'mustard-update-required-banner'
+      banner.style.cssText =
+        'position:fixed;top:0;left:50%;transform:translateX(-50%);background:#ffb800;color:#3d2200;' +
+        'padding:8px 20px;border-radius:0 0 10px 10px;font-family:monospace;font-size:13px;font-weight:600;' +
+        'z-index:2147483647;box-shadow:0 2px 8px rgba(0,0,0,0.25);cursor:pointer;display:flex;align-items:center;gap:8px'
+      const icon = document.createElement('img')
+      icon.src = mustardIconUrl
+      icon.style.cssText = 'width:24px;height:24px;flex-shrink:0'
+      const text = document.createElement('span')
+      text.textContent =
+        'Big changes! Mustard needs an update to keep working — click here to update, or do it from your browser’s extensions page. You might also need to re-login from the Mustard menu afterwards.'
+      banner.appendChild(icon)
+      banner.appendChild(text)
+      banner.onclick = () => {
+        sendMessage(createRequestUpdateMessage()).catch(() => {})
       }
       document.body.appendChild(banner)
     }
@@ -594,6 +637,15 @@ export default defineContentScript({
     // worker. `sendMessage` strips Vue reactive Proxies before sending (Firefox's
     // structuredClone rejects them) and types the response by message type.
     event.subscribe((message) => {
+      // Guard: block remote mutations from an outdated client (local notes are
+      // fine — they never touch the backend). Clear any optimistic pending state
+      // the UI set before emitting, and (re)show the update banner.
+      if (mustardState.clientOutdated && isRemoteMutationMessage(message)) {
+        clearPendingNoteIds()
+        showUpdateRequiredBanner()
+        return
+      }
+
       if (message.type === 'UPSERT_NOTE') {
         const isLocalOperation = message.target === 'local'
         sendMessage(message)

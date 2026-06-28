@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, nextTick } from 'vue'
+import { computed, onMounted, ref, nextTick, inject } from 'vue'
 import { useEditor, EditorContent } from '@tiptap/vue-3'
 import AuthorAvatar from './AuthorAvatar.vue'
 import { createEditorExtensions } from '../note-editor/editor-extensions'
 import { useMentionMutuals } from '../note-editor/use-mention-mutuals'
+import type { MustardState } from '../mustard-state'
 import type { UserProfile } from '@/shared/model/UserProfile'
 import { LIMITS } from '@/shared/constants'
 
@@ -15,6 +16,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'submit', data: { content: string }): void
 }>()
+
+const mustardState = inject<MustardState>('mustardState')!
 
 const { mutuals } = useMentionMutuals()
 
@@ -33,7 +36,11 @@ function refreshLength() {
 
 const isOverLimit = computed(() => length.value > LIMITS.COMMENT_CONTENT_MAX_LENGTH)
 const characterCountText = computed(() => `${length.value}/${LIMITS.COMMENT_CONTENT_MAX_LENGTH}`)
-const canSubmit = computed(() => !props.pending && length.value > 0 && !isOverLimit.value)
+// Outdated clients can't write remotely; keep Send disabled so submit() never
+// runs (it clears the editor) and the user's comment draft is preserved.
+const canSubmit = computed(
+  () => !props.pending && length.value > 0 && !isOverLimit.value && !mustardState.clientOutdated,
+)
 
 onMounted(() => {
   editor.value?.on('update', refreshLength)
@@ -78,6 +85,11 @@ defineExpose({
         type="button"
         class="mustard-notes-btn-primary mustard-comment-send"
         :disabled="!canSubmit"
+        :title="
+          mustardState.clientOutdated
+            ? 'Update Mustard to comment (this version is no longer supported)'
+            : undefined
+        "
         @click="submit"
         @mousedown.stop
       >
