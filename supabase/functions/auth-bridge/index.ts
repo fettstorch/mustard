@@ -106,7 +106,17 @@ async function linkIdentity(
 
   // The account this identity should attach to, if the caller is already logged
   // in and is connecting a second provider. null = a plain login / sign-up.
-  const linkToUserId = currentJwt ? await verifyJwtSub(currentJwt) : null
+  //
+  // Distinguish "no JWT" (sign-up) from "JWT provided but unverifiable" (e.g.
+  // secret rotation or a stale legacy token): the latter is a LINK attempt that
+  // we must fail rather than silently fork into a brand-new account.
+  let linkToUserId: string | null = null
+  if (currentJwt) {
+    linkToUserId = await verifyJwtSub(currentJwt)
+    if (!linkToUserId) {
+      throw new HttpError('Invalid currentJwt — cannot link identity. Please re-login.', 403)
+    }
+  }
 
   // Is this (provider, providerAccountId) already claimed by some Mustard user?
   const { data: existing } = await supabase
