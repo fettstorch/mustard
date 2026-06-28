@@ -13,7 +13,7 @@ type AppStatus = {
   outdated: boolean
 }
 
-const CACHE_TTL_MS = 30 * 60 // * 1000
+const CACHE_TTL_MS = 30 * 60 * 1000
 let cached: { minVersion: string; at: number } | null = null
 
 function currentVersion(): string {
