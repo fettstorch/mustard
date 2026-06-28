@@ -18,6 +18,14 @@ import { clearSupabaseJwt, storeSupabaseJwt } from '@/background/auth/SupabaseAu
 import { MustardProfileServiceBsky } from '@/background/business/service/MustardProfileServiceBsky'
 import { MustardMutualsServiceBsky } from '@/background/business/service/MustardMutualsServiceBsky'
 import { invalidateRemoteIndexCache } from '@/background/business/service/MustardNotesServiceRemote'
+import {
+  getAppStatus,
+  isClientOutdated,
+  requestClientUpdate,
+} from '@/background/business/service/AppStatusService'
+
+/** Thrown by remote-mutation handlers when the client is too old to write. */
+const CLIENT_OUTDATED_ERROR = 'CLIENT_OUTDATED'
 
 export default defineBackground(() => {
   const profileService = new MustardProfileServiceBsky()
@@ -173,6 +181,11 @@ export default defineBackground(() => {
       if (target === 'local') {
         authorId = 'local'
       } else {
+        // Defense-in-depth: an outdated client must not write to the remote DB
+        // (its ids/format would be incompatible). The UI also gates this, but a
+        // direct write would otherwise create orphaned rows. Throw so the caller
+        // doesn't treat an empty array as "no notes" and wipe its state.
+        if (await isClientOutdated()) throw new Error(CLIENT_OUTDATED_ERROR)
         if (!session) {
           console.error('Cannot publish note - user not logged in')
           return []
@@ -230,6 +243,7 @@ export default defineBackground(() => {
     },
 
     SET_REPOST: async (message) => {
+      if (await isClientOutdated()) throw new Error(CLIENT_OUTDATED_ERROR)
       const session = await getSession()
       if (!session) {
         console.error('Cannot repost - user not logged in')
@@ -291,6 +305,10 @@ export default defineBackground(() => {
       action?.openPopup?.()?.catch(() => {})
     },
 
+    GET_APP_STATUS: () => getAppStatus(),
+
+    REQUEST_UPDATE: () => requestClientUpdate(),
+
     GET_PROFILES: async (message) => {
       try {
         return await profileService.getProfiles(message.userIds)
@@ -326,6 +344,7 @@ export default defineBackground(() => {
     },
 
     UPSERT_COMMENT: async (message) => {
+      if (await isClientOutdated()) throw new Error(CLIENT_OUTDATED_ERROR)
       const session = await getSession()
       if (!session) {
         throw new Error('Cannot create comment - user not logged in')
