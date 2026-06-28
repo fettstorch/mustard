@@ -130,6 +130,7 @@ const showRepostButton = computed(
 const repostRotation = ref(0)
 
 function onRepostClick() {
+  if (isRepostDisabled.value) return
   repostRotation.value += 360
   emit('pressed-repost', props.note, !isRepostedByMe.value)
 }
@@ -145,8 +146,17 @@ const isOverLimit = computed(() => {
 })
 
 const isPublishDisabled = computed(() => {
-  return isPending.value || isOverLimit.value
+  return isPending.value || isOverLimit.value || mustardState.clientOutdated
 })
+
+/** Remote mutations are blocked while outdated; local note delete is still allowed. */
+const isDeleteDisabled = computed(() => {
+  return isPending.value || (isRemoteNote.value && mustardState.clientOutdated)
+})
+
+const isRepostDisabled = computed(() => mustardState.clientOutdated)
+
+const updateRequiredTitle = 'Update Mustard to continue (this version is no longer supported)'
 
 const characterCountText = computed(() => {
   return `${props.note.content.length}/${LIMITS.CONTENT_MAX_LENGTH}`
@@ -259,15 +269,23 @@ watch(unreadCount, (count) => {
             <IconButton
               v-if="isLocalNote"
               icon="publish"
-              title="Publish this note (do not publish sensitive data)"
+              :title="
+                mustardState.clientOutdated
+                  ? updateRequiredTitle
+                  : 'Publish this note (do not publish sensitive data)'
+              "
               :disabled="isPublishDisabled"
               @click="emit('pressed-publish', note)"
               @mousedown.stop
             />
             <IconButton
               icon="trash"
-              title="Delete this note"
-              :disabled="isPending"
+              :title="
+                isRemoteNote && mustardState.clientOutdated
+                  ? updateRequiredTitle
+                  : 'Delete this note'
+              "
+              :disabled="isDeleteDisabled"
               @click="emit('pressed-delete', note)"
               @mousedown.stop
             />
@@ -280,8 +298,13 @@ watch(unreadCount, (count) => {
             <IconButton
               icon="repost"
               :class="{ 'is-reposted': isRepostedByMe }"
+              :disabled="isRepostDisabled"
               :title="
-                isRepostedByMe ? 'Remove your repost' : 'Repost so your followers can see this'
+                mustardState.clientOutdated
+                  ? updateRequiredTitle
+                  : isRepostedByMe
+                    ? 'Remove your repost'
+                    : 'Repost so your followers can see this'
               "
               @click="onRepostClick"
               @mousedown.stop

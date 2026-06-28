@@ -21,6 +21,8 @@ export type MustardState = {
   areNotesMinimized: boolean
   /** Whether anchor data is shown in the note editor (global preference, persisted in chrome.storage.local) */
   showAnchorInEditor: boolean
+  /** True when this build is below the backend's minimum: remote writes are blocked, so the UI disables publish/comment controls. */
+  clientOutdated: boolean
 
   // --- Comments ---
   /** noteId -> comments sorted oldest → newest. Missing means "not fetched yet". */
@@ -52,6 +54,7 @@ export function createMustardState(): MustardState {
     areNotesVisible: true,
     areNotesMinimized: false,
     showAnchorInEditor: false,
+    clientOutdated: false,
 
     comments: {},
     commentsLoadState: {},

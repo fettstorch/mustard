@@ -51,11 +51,10 @@ export default defineContentScript({
     const mustardState = createMustardState()
 
     // Client-version guard: when the backend declares a higher minimum version
-    // than this build, the extension is too old to write safely. We surface a
-    // banner and block remote mutations at the event chokepoint below. Reads are
-    // left alone (best-effort) — the goal is to stop confusing failures and
-    // incompatible writes, and tell the user to update.
-    let clientOutdated = false
+    // than this build, the extension is too old to write safely. The flag lives
+    // on mustardState so the Vue editors can disable publish/comment controls
+    // (preventing optimistic teardown + draft loss); the event chokepoint below
+    // is the defense-in-depth backstop, and reads are left alone (best-effort).
 
     function clearPendingNoteIds() {
       Object.keys(mustardState.pendingNoteIds).forEach(
@@ -450,7 +449,7 @@ export default defineContentScript({
     sendMessage(createGetAppStatusMessage())
       .then((status) => {
         if (status?.outdated) {
-          clientOutdated = true
+          mustardState.clientOutdated = true
           showUpdateRequiredBanner()
         }
       })
@@ -646,7 +645,7 @@ export default defineContentScript({
         message.type === 'SET_REPOST' ||
         message.type === 'UPSERT_COMMENT' ||
         message.type === 'DELETE_COMMENT'
-      if (clientOutdated && isRemoteMutation) {
+      if (mustardState.clientOutdated && isRemoteMutation) {
         clearPendingNoteIds()
         showUpdateRequiredBanner()
         return
