@@ -73,14 +73,21 @@ async function mintSupabaseJwt(userId: string): Promise<{ jwt: string; expiresAt
 }
 
 // Verify a Supabase JWT we minted and return its `sub` (the Mustard userId),
-// or null if the signature/format is invalid. Tolerates large clock drift so
-// an "expired" JWT can still prove identity for refresh/link/disconnect.
+// or null if the signature/format is invalid OR the token is expired.
+//
+// This authorizes live account-management actions (link, disconnect, delete,
+// list, resolve), so it requires an UNEXPIRED token — only a small skew margin
+// is allowed. An expired token is valid *proof of identity* for the refresh
+// flow, but that path has its own lenient verifier (see handleRefresh); it must
+// never authorize privileged mutations long after `exp`. The client refreshes
+// proactively (~60s before exp), so legitimate callers always send a live JWT.
+const ACCOUNT_ACTION_CLOCK_TOLERANCE_SEC = 60
 async function verifyJwtSub(jwt: string): Promise<string | null> {
   const jwtSecret = Deno.env.get('JWT_SIGNING_SECRET')
   if (!jwtSecret) throw new Error('JWT_SIGNING_SECRET not configured')
   try {
     const { payload } = await jose.jwtVerify(jwt, new TextEncoder().encode(jwtSecret), {
-      clockTolerance: 365 * 24 * 60 * 60,
+      clockTolerance: ACCOUNT_ACTION_CLOCK_TOLERANCE_SEC,
     })
     return typeof payload.sub === 'string' ? payload.sub : null
   } catch {
@@ -858,7 +865,10 @@ async function handleRefresh(body: { userId?: string; expired_jwt: string }): Pr
   const jwtSecret = Deno.env.get('JWT_SIGNING_SECRET')
   if (!jwtSecret) throw new Error('JWT_SIGNING_SECRET not configured')
 
-  // Verify expired JWT signature (allow up to 1 year of clock drift)
+  // Refresh treats the JWT as PROOF OF IDENTITY, not authorization: an expired
+  // token is the normal case here ("mine died, mint me a new one"). This is the
+  // ONLY path allowed to accept an expired JWT — hence the large tolerance. All
+  // privileged mutations go through verifyJwtSub, which requires it unexpired.
   try {
     const { payload } = await jose.jwtVerify(
       expired_jwt, new TextEncoder().encode(jwtSecret),
