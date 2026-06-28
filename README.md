@@ -17,16 +17,24 @@ The name "mustard" comes from the German saying _"seinen Senf dazu geben"_ (to a
 - **Creation workflow**: Right-click on any element → "Add Mustard" → Note editor opens
 - **Two save modes**:
   - **Save locally**: Stored in browser only (no login required)
-  - **Publish**: Stored on server, visible to followers (requires Bluesky login)
+  - **Publish**: Stored on server, visible to followers (requires login — Bluesky or GitHub)
 - Users can delete their own notes
-- **Comments**: Any Bluesky-logged-in user can leave flat (non-nested) comments on published notes; comments are publicly readable; note authors are notified of new comments via an extension-icon badge and a "My Mustard Notes" popup section; unread indicators clear when the comment thread is expanded
+- **Comments**: Any logged-in user can leave flat (non-nested) comments on published notes; comments are publicly readable; note authors are notified of new comments via an extension-icon badge and a "My Mustard Notes" popup section; unread indicators clear when the comment thread is expanded
 
-#### Social Graph & Following
+#### Accounts & Social Graph
 
-- Uses **Bluesky's social graph** - users you follow on Bluesky can see your published mustard
-- When visiting a page where a followed user has added mustard, those notes appear at the anchored locations
-- Multiple follows' notes can appear on the same page simultaneously
-- **Authentication**: AT Protocol OAuth via Bluesky
+- **Multi-provider accounts**: a Mustard account is a stable, opaque UUID that can
+  link **multiple provider identities** (Bluesky/AT Protocol and GitHub). Link or
+  unlink providers from the options page; unlinking the last identity deletes the
+  account and all its content.
+- Uses each linked provider's **follow graph** — people you follow on Bluesky
+  *or* GitHub can see your published mustard (per-provider follow resolution
+  degrades independently, so one dead token never hides everything).
+- **Mentions** (`@`): only people who are Mustard users are mentionable — Bluesky
+  mutuals and GitHub follows who have signed up.
+- When visiting a page where a followed user has added mustard, those notes appear
+  at the anchored locations; multiple follows' notes can appear simultaneously.
+- **Authentication**: OAuth via Bluesky (AT Protocol) and GitHub.
 
 #### Page Identification & Note Positioning
 
@@ -98,20 +106,30 @@ flowchart LR
 
 ### Backend (Supabase)
 
-- **PostgreSQL Database**: Stores all published notes with RLS policies
+- **PostgreSQL Database**: `users` + `identities` (the UUID account model),
+  published `notes`/`comments`/`notifications`, and `oauth_*` auth state — all
+  protected by RLS policies
 - **Edge Functions**:
-  - `auth-bridge`: Mints Supabase JWTs from AT Protocol DIDs
-  - `get-index`: Fetches user's Bluesky follows and returns notes index
-- **Authentication**: Custom JWT strategy using AT Protocol DIDs as user IDs
+  - `auth-bridge`: multi-provider BFF OAuth (Bluesky + GitHub), mints Supabase
+    JWTs and links/unlinks provider identities to a Mustard account UUID
+  - `get-index-v2`: strict per-user JWT (verified with `jose`), resolves the
+    viewer's Bluesky **and** GitHub follows to Mustard userIds and returns their
+    notes index
+  - `get-index`: legacy anon-key version, kept until the version guard retires
+    old clients
+- **Authentication**: custom JWT strategy where the subject is an **opaque
+  account UUID** (`users.id`); provider-specific ids live only in `identities`
 
 ### Data Flow
 
-1. User logs in via Bluesky OAuth → Extension receives DID
-2. Extension calls `auth-bridge` → Receives Supabase JWT
-3. User navigates to page → Extension calls `get-index` with DID
-4. `get-index` fetches user's Bluesky follows, queries DB for notes from those users
-5. Extension fetches specific notes for current page URL
-6. Notes injected into page at anchored positions
+1. User logs in via Bluesky or GitHub OAuth → `auth-bridge` upserts an identity,
+   resolves it to a Mustard account UUID, and mints a Supabase JWT (`sub = UUID`)
+2. User navigates to page → Extension calls `get-index-v2` with the UUID + JWT
+3. `get-index-v2` looks up the user's linked identities, fetches their Bluesky +
+   GitHub follows, maps those follows back to Mustard userIds via `identities`,
+   and queries the DB for notes from those users
+4. Extension fetches specific notes for the current page URL
+5. Notes injected into page at anchored positions
 
 ## Technical Stack
 
@@ -119,7 +137,7 @@ flowchart LR
 - **TypeScript** - Type safety
 - **WXT** - Cross-browser extension framework (Vite-based, replaces `@crxjs/vite-plugin`)
 - **Supabase** - PostgreSQL database + Edge Functions
-- **AT Protocol** - Bluesky authentication and social graph
+- **AT Protocol (Bluesky)** + **GitHub** - multi-provider authentication and social graph
 
 ## Development
 
@@ -155,7 +173,13 @@ npm install
 
 To run the full backend locally (PostgreSQL + Edge Functions):
 
-`supabase/functions/.env` is committed and contains the local JWT signing secret (the fixed well-known default for all local Supabase instances — not sensitive). `supabase functions serve` reads it automatically. It has no effect on deployed functions.
+`supabase functions serve` reads `supabase/functions/.env` automatically (it has no effect on deployed functions). That file is **gitignored** because it holds real GitHub OAuth client secrets — copy the committed template and fill in the GitHub values:
+
+```sh
+cp supabase/functions/.env.example supabase/functions/.env
+```
+
+The template ships with the fixed well-known local `JWT_SIGNING_SECRET` (the default for every local Supabase instance — not sensitive); only the GitHub fields need real values, and only if you're testing GitHub connect locally.
 
 ```sh
 # Start Docker first, then:
@@ -236,7 +260,16 @@ supabase link --project-ref YOUR_PROJECT_REF
 
 # Deploy Edge Functions
 supabase functions deploy auth-bridge
-supabase functions deploy get-index
+supabase functions deploy get-index-v2
+supabase functions deploy get-index   # legacy, until old clients are retired
+```
+
+`auth-bridge` also needs the GitHub OAuth secrets set in the cloud (one app per
+browser, due to the single redirect URI per OAuth app):
+
+```sh
+supabase secrets set GITHUB_CLIENT_ID=... GITHUB_CLIENT_SECRET=... \
+  GITHUB_CLIENT_ID_FIREFOX=... GITHUB_CLIENT_SECRET_FIREFOX=...
 ```
 
 ### Set Edge Function Secrets
@@ -272,7 +305,7 @@ src/
 │   ├── popup/            # Extension popup HTML + Vue mount
 │   └── options/          # Options page HTML + Vue mount
 ├── background/           # Business logic (imported by background entrypoint)
-│   ├── auth/             # AtprotoAuth, SupabaseAuth
+│   ├── auth/             # AtprotoAuth, GithubAuth, SupabaseAuth, AuthBridge
 │   └── business/         # MustardNotesManager, services
 ├── shared/               # Shared types, DTOs, models
 │   ├── dto/
@@ -288,9 +321,10 @@ wxt.config.ts             # WXT config (manifest, Vite plugins, output dir)
 
 supabase/
 ├── functions/
-│   ├── auth-bridge/      # JWT minting from AT Protocol DIDs
-│   └── get-index/        # Fetches follows + notes index
-└── migrations/           # Database schema
+│   ├── auth-bridge/      # Multi-provider OAuth (Bluesky + GitHub) + JWT minting
+│   ├── get-index-v2/     # Strict per-user JWT; multi-provider follow index
+│   └── get-index/        # Legacy anon-key follows + notes index
+└── migrations/           # Database schema (users/identities, oauth_*, app_config, …)
 ```
 
 ## Architecture
