@@ -211,7 +211,7 @@ function onToggleComments() {
 
   if (newExpanded) {
     // Mark notifications seen when the user actually sees the thread.
-    if (mustardState.unreadByNoteId[id]) {
+    if (mustardState.unreadByNoteId[id] && !mustardState.clientOutdated) {
       event.emit(createMarkNotificationsSeenForNoteMessage(id))
     }
 
@@ -232,7 +232,7 @@ function requestLogin() {
 // If the thread is expanded and an unread count comes in after the fact,
 // auto-mark-seen (e.g. NOTIFICATIONS_CHANGED arrived while expanded).
 watch(unreadCount, (count) => {
-  if (count > 0 && isExpanded.value && noteId.value) {
+  if (count > 0 && isExpanded.value && noteId.value && !mustardState.clientOutdated) {
     event.emit(createMarkNotificationsSeenForNoteMessage(noteId.value))
   }
 })

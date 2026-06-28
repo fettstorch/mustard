@@ -17,6 +17,11 @@ import { useNotificationsChanged } from './use-notifications-changed'
 import { openPageFocused } from './open-page-focused'
 import { displayUrl } from './display-url'
 
+const props = defineProps<{
+  /** When true, skip remote mark-seen writes (client is below min version). */
+  isOutdated?: boolean
+}>()
+
 const mentions = ref<DtoMustardMention[]>([])
 
 async function refresh() {
@@ -39,9 +44,11 @@ function actorLabel(m: DtoMustardMention): string {
 }
 
 async function openMention(m: DtoMustardMention) {
-  // Optimistically remove from the list and mark seen.
-  mentions.value = mentions.value.filter((x) => x.id !== m.id)
-  sendMessage(createMarkMentionSeenMessage(m.id)).catch(() => {})
+  if (!props.isOutdated) {
+    // Optimistically remove from the list and mark seen.
+    mentions.value = mentions.value.filter((x) => x.id !== m.id)
+    sendMessage(createMarkMentionSeenMessage(m.id)).catch(() => {})
+  }
   await openPageFocused(m.pageUrl, m.noteId)
 }
 </script>

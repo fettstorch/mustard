@@ -23,9 +23,7 @@ import {
   isClientOutdated,
   requestClientUpdate,
 } from '@/background/business/service/AppStatusService'
-
-/** Thrown by remote-mutation handlers when the client is too old to write. */
-const CLIENT_OUTDATED_ERROR = 'CLIENT_OUTDATED'
+import { CLIENT_OUTDATED_ERROR, isRemoteMutationMessage } from '@/shared/remote-mutation'
 
 export default defineBackground(() => {
   const profileService = new MustardProfileServiceBsky()
@@ -181,11 +179,6 @@ export default defineBackground(() => {
       if (target === 'local') {
         authorId = 'local'
       } else {
-        // Defense-in-depth: an outdated client must not write to the remote DB
-        // (its ids/format would be incompatible). The UI also gates this, but a
-        // direct write would otherwise create orphaned rows. Throw so the caller
-        // doesn't treat an empty array as "no notes" and wipe its state.
-        if (await isClientOutdated()) throw new Error(CLIENT_OUTDATED_ERROR)
         if (!session) {
           console.error('Cannot publish note - user not logged in')
           return []
@@ -227,11 +220,6 @@ export default defineBackground(() => {
     },
 
     DELETE_NOTE: async (message) => {
-      // Defense-in-depth: an outdated client must not mutate the remote DB. Local
-      // deletes stay allowed so users can still clean up their own device.
-      if (message.authorId !== 'local' && (await isClientOutdated())) {
-        throw new Error(CLIENT_OUTDATED_ERROR)
-      }
       await mustardNotesManager.deleteNote(message.noteId, message.pageUrl, message.authorId)
 
       if (message.authorId === 'local') {
@@ -248,7 +236,6 @@ export default defineBackground(() => {
     },
 
     SET_REPOST: async (message) => {
-      if (await isClientOutdated()) throw new Error(CLIENT_OUTDATED_ERROR)
       const session = await getSession()
       if (!session) {
         console.error('Cannot repost - user not logged in')
@@ -349,7 +336,6 @@ export default defineBackground(() => {
     },
 
     UPSERT_COMMENT: async (message) => {
-      if (await isClientOutdated()) throw new Error(CLIENT_OUTDATED_ERROR)
       const session = await getSession()
       if (!session) {
         throw new Error('Cannot create comment - user not logged in')
@@ -374,8 +360,6 @@ export default defineBackground(() => {
     },
 
     DELETE_COMMENT: async (message) => {
-      // Comments are remote-only, so an outdated client must never reach here.
-      if (await isClientOutdated()) throw new Error(CLIENT_OUTDATED_ERROR)
       await mustardCommentsManager.deleteComment(message.commentId)
       // The cascade may delete an unread notification row for whoever was about
       // to be notified — refresh badge + overview.
@@ -458,8 +442,13 @@ export default defineBackground(() => {
       handler ? 'has handler' : 'no handler',
     )
     if (!handler) return
-    // The map guarantees handler matches message.type at runtime; TS can't
-    // correlate the indexed union, so we assert the call here.
-    return (handler as (m: Message) => Promise<unknown> | void)(message)
+    return (async () => {
+      if (isRemoteMutationMessage(message) && (await isClientOutdated())) {
+        throw new Error(CLIENT_OUTDATED_ERROR)
+      }
+      // The map guarantees handler matches message.type at runtime; TS can't
+      // correlate the indexed union, so we assert the call here.
+      return (handler as (m: Message) => Promise<unknown> | void)(message)
+    })()
   })
 })

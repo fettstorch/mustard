@@ -167,7 +167,7 @@ const logoUrl = browser.runtime.getURL('/mustard_bottle_smile_512.png')
 
     <!-- Logged in -->
     <div v-if="session" class="session-container">
-      <MentionsSection />
+      <MentionsSection :is-outdated="isOutdated" />
       <MyPagesSection />
       <div class="profile-row">
         <img

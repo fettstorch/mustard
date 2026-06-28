@@ -11,6 +11,7 @@ import {
   sendMessage,
   type Message,
 } from '@/shared/messaging'
+import { isRemoteMutationMessage } from '@/shared/remote-mutation'
 import type { MustardNoteAnchorData } from '@/shared/model/MustardNoteAnchorData'
 import { LIMITS } from '@/shared/constants'
 import { extractMentionDids } from '@/shared/mentions'
@@ -252,7 +253,7 @@ export default defineContentScript({
         // Reading the thread acknowledges its unread comment notifications.
         // Routed through the same event the manual toggle uses, so the optimistic
         // clear + sendMessage stay in one canonical place.
-        if (mustardState.unreadByNoteId[id]) {
+        if (mustardState.unreadByNoteId[id] && !mustardState.clientOutdated) {
           event.emit(createMarkNotificationsSeenForNoteMessage(id))
         }
       }
@@ -639,13 +640,7 @@ export default defineContentScript({
       // Guard: block remote mutations from an outdated client (local notes are
       // fine — they never touch the backend). Clear any optimistic pending state
       // the UI set before emitting, and (re)show the update banner.
-      const isRemoteMutation =
-        (message.type === 'UPSERT_NOTE' && message.target === 'remote') ||
-        (message.type === 'DELETE_NOTE' && message.authorId !== 'local') ||
-        message.type === 'SET_REPOST' ||
-        message.type === 'UPSERT_COMMENT' ||
-        message.type === 'DELETE_COMMENT'
-      if (mustardState.clientOutdated && isRemoteMutation) {
+      if (mustardState.clientOutdated && isRemoteMutationMessage(message)) {
         clearPendingNoteIds()
         showUpdateRequiredBanner()
         return
