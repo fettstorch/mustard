@@ -23,6 +23,19 @@ export async function getSupabaseJwt(): Promise<string | null> {
   const session = await getSession()
   if (!session) return null
 
+  // A session predating the multi-provider migration stores an atproto DID as
+  // its userId. That migration deleted every server-side OAuth session (no
+  // refresh token / DPoP keys survive), so there is nothing to refresh against
+  // and AT Protocol re-auth is interactive-only. Wipe the stale local
+  // credentials and surface SESSION_EXPIRED so the user re-logs in once.
+  if (session.userId.startsWith('did:')) {
+    console.warn('[SupabaseAuth] Legacy DID session detected — clearing, user must re-login')
+    await clearSupabaseJwt()
+    await clearStoredSession()
+    await broadcastSessionCleared()
+    return null
+  }
+
   const cached = await getCachedJwt()
   if (cached && cached.userId === session.userId && !isExpiringSoon(cached.expiresAt)) {
     return cached.jwt
@@ -100,10 +113,11 @@ async function getCachedJwt(): Promise<CachedJwt | null> {
   const result = await browser.storage.local.get(STORAGE_KEY)
   const raw = result[STORAGE_KEY] as (CachedJwt & { did?: string }) | undefined
   if (!raw) return null
-  // Normalize cache entries stored before the multi-provider migration (had `did` not `userId`)
-  if (!raw.userId && raw.did) {
-    return { jwt: raw.jwt, userId: raw.did, expiresAt: raw.expiresAt }
-  }
+  // Cache entries stored before the multi-provider migration keyed the JWT by
+  // atproto DID. After the server moved to UUID subjects the DID-subject token
+  // is unusable (it would write under the wrong identity), so treat such legacy
+  // entries as absent — the caller then forces a one-time re-login.
+  if (!raw.userId || raw.userId.startsWith('did:')) return null
   return raw as CachedJwt
 }
 

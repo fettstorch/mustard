@@ -83,6 +83,46 @@ export default defineBackground(() => {
     return session
   }
 
+  /**
+   * Resolve opaque Mustard user UUIDs to display profiles: an atproto identity
+   * becomes a rich Bluesky profile, a github-only account a github profile, and
+   * anything unresolved stays null. Shared by GET_PROFILES (authors/reposters)
+   * and mention-actor enrichment so both paths handle post-UUID-migration ids.
+   */
+  async function resolveProfilesByUserId(
+    jwt: string | null,
+    userIds: string[],
+  ): Promise<Record<string, UserProfile | null>> {
+    const profiles: Record<string, UserProfile | null> = {}
+    for (const id of userIds) profiles[id] = null
+    if (userIds.length === 0) return profiles
+
+    const idMap = jwt
+      ? await resolveIdentities(jwt, userIds).catch((err) => {
+          console.warn('resolveProfilesByUserId: resolveIdentities failed:', err)
+          return new Map<string, LinkedIdentity[]>()
+        })
+      : new Map<string, LinkedIdentity[]>()
+
+    // atproto preferred (resolvable Bluesky profile); otherwise build from github login.
+    const didByKey = new Map<string, string>()
+    for (const id of userIds) {
+      const linked = idMap.get(id)
+      const atproto = linked?.find((l) => l.provider === 'atproto')
+      const github = linked?.find((l) => l.provider === 'github')
+      if (atproto) didByKey.set(id, atproto.providerAccountId)
+      else if (github) profiles[id] = buildGithubProfile(id, github.handle)
+    }
+
+    const dids = [...new Set(didByKey.values())]
+    const bskyByDid = dids.length ? await profileService.getProfiles(dids) : {}
+    for (const [key, did] of didByKey) {
+      const p = bskyByDid[did]
+      if (p) profiles[key] = { ...p, id: key }
+    }
+    return profiles
+  }
+
   /** Broadcast that the unread-notifications state changed. Popup re-queries; content scripts can refresh in-page dots. */
   async function broadcastNotificationsChanged() {
     await broadcastToAllTabs({ type: 'NOTIFICATIONS_CHANGED' })
@@ -423,34 +463,18 @@ export default defineBackground(() => {
     GET_PROFILES: async (message) => {
       try {
         const { userIds, mentions } = message
-        const profiles: Record<string, UserProfile | null> = {}
-        for (const id of userIds) profiles[id] = null
-        for (const m of mentions) profiles[m.accountId] = null
-
         const jwt = await getSupabaseJwt()
 
+        // Authors/reposters: opaque UUIDs → linked identities → profiles.
+        const profiles = await resolveProfilesByUserId(jwt, userIds)
+        for (const m of mentions) profiles[m.accountId] ??= null
+
         // DIDs to resolve in one Bluesky batch, keyed back under the id the
-        // caller asked for (a UUID for authors, the DID itself for atproto mentions).
+        // caller asked for (the DID itself for atproto mentions).
         const didByKey = new Map<string, string>()
         // GitHub account ids still needing a login lookup (atproto mentions resolve
         // via Bluesky; github ones via the identities table).
         const githubAccountIds: string[] = []
-
-        // Authors/reposters: opaque UUIDs → linked identities (service-role only).
-        const idMap = jwt
-          ? await resolveIdentities(jwt, userIds).catch((err) => {
-              console.warn('GET_PROFILES: resolveIdentities failed:', err)
-              return new Map<string, LinkedIdentity[]>()
-            })
-          : new Map<string, LinkedIdentity[]>()
-        for (const id of userIds) {
-          const linked = idMap.get(id)
-          const atproto = linked?.find((l) => l.provider === 'atproto')
-          const github = linked?.find((l) => l.provider === 'github')
-          // atproto preferred for rich profiles; otherwise build from the github login.
-          if (atproto) didByKey.set(id, atproto.providerAccountId)
-          else if (github) profiles[id] = buildGithubProfile(id, github.handle)
-        }
 
         // Mentions: provider is explicit, so dispatch directly (no shape sniffing).
         for (const m of mentions) {
@@ -605,7 +629,10 @@ export default defineBackground(() => {
       try {
         const session = await getSession()
         if (!session) return []
-        return await mustardNotificationsManager.getMyMentions()
+        const jwt = await getSupabaseJwt()
+        return await mustardNotificationsManager.getMyMentions((ids) =>
+          resolveProfilesByUserId(jwt, ids),
+        )
       } catch (err) {
         console.error('GET_MY_MENTIONS failed:', err)
         return []

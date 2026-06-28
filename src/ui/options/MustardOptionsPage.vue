@@ -191,10 +191,16 @@ async function connectGithub() {
   busyProvider.value = 'github'
   accountError.value = null
   try {
-    // Pass the current JWT so auth-bridge links the GitHub identity to the
-    // already-logged-in Mustard account rather than creating a new one.
+    // These controls only appear for a logged-in account, so this is always a
+    // LINK. Without the current JWT the auth-bridge would create a brand-new
+    // account (or switch) instead of attaching to this one — abort and ask the
+    // user to re-login rather than silently forking their identity.
     const jwt = await getSupabaseJwt()
-    const result = await sendMessage(createGithubLoginMessage(jwt ?? undefined))
+    if (!jwt) {
+      accountError.value = 'Your session has expired. Please log out and back in, then try again.'
+      return
+    }
+    const result = await sendMessage(createGithubLoginMessage(jwt))
     if (!result) accountError.value = 'GitHub connection failed or was cancelled'
     else await refreshSession()
   } catch (e) {
@@ -210,8 +216,14 @@ async function connectBluesky() {
   busyProvider.value = 'atproto'
   accountError.value = null
   try {
+    // Always a LINK (shown only when logged in); abort without the current JWT
+    // so we never fork the account. See connectGithub for the rationale.
     const jwt = await getSupabaseJwt()
-    const result = await sendMessage(createAtprotoLoginMessage(handle, jwt ?? undefined))
+    if (!jwt) {
+      accountError.value = 'Your session has expired. Please log out and back in, then try again.'
+      return
+    }
+    const result = await sendMessage(createAtprotoLoginMessage(handle, jwt))
     if (!result) {
       accountError.value = 'Bluesky connection failed or was cancelled'
     } else {
