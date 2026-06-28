@@ -803,6 +803,54 @@ interface OAuthSessionRow {
   dpop_pub_jwk: jose.JWK | null
 }
 
+type AtprotoRefreshResult = { ok: true } | { ok: false; status: number; error: string }
+
+/**
+ * Refresh an atproto session's upstream access token in place. Returns a typed
+ * result (not a Response) so the caller can decide whether a failure is fatal
+ * (atproto is the account's only linked provider) or recoverable (fall back to
+ * another linked session and still mint the Mustard JWT).
+ */
+async function refreshAtprotoToken(
+  supabase: ReturnType<typeof getSupabase>,
+  session: OAuthSessionRow,
+): Promise<AtprotoRefreshResult> {
+  if (!session.refresh_token) return { ok: false, status: 400, error: 'No refresh token available' }
+  if (!session.token_endpoint || !session.dpop_jwk || !session.dpop_pub_jwk) {
+    return { ok: false, status: 400, error: 'Incomplete atproto session' }
+  }
+
+  const { status, body: tokenResp } = await authServerPost(
+    session.token_endpoint,
+    { grant_type: 'refresh_token', refresh_token: session.refresh_token, client_id: ATPROTO_CLIENT_ID },
+    session.dpop_jwk, session.dpop_pub_jwk,
+  )
+  if (!tokenResp.access_token) {
+    console.error('[auth-bridge] Token refresh failed:', status, tokenResp)
+    return {
+      ok: false,
+      status: 502,
+      error: `Token refresh failed: ${tokenResp.error_description || tokenResp.error || 'unknown'}`,
+    }
+  }
+  if (tokenResp.sub && tokenResp.sub !== session.provider_account_id) {
+    return { ok: false, status: 502, error: 'DID mismatch after refresh' }
+  }
+
+  const tokenExpiresAt = tokenResp.expires_in
+    ? new Date(Date.now() + (tokenResp.expires_in as number) * 1000).toISOString()
+    : null
+
+  await supabase.from('oauth_session').update({
+    access_token: tokenResp.access_token,
+    refresh_token: (tokenResp.refresh_token as string) || session.refresh_token,
+    token_expires_at: tokenExpiresAt,
+    updated_at: new Date().toISOString(),
+  }).eq('provider', 'atproto').eq('provider_account_id', session.provider_account_id)
+
+  return { ok: true }
+}
+
 async function handleRefresh(body: { userId?: string; expired_jwt: string }): Promise<Response> {
   const { userId, expired_jwt } = body
   if (!userId || !expired_jwt) return errorResponse('userId and expired_jwt are required', 400)
@@ -824,59 +872,37 @@ async function handleRefresh(body: { userId?: string; expired_jwt: string }): Pr
   console.log(`[auth-bridge] refresh: ${userId}`)
   const supabase = getSupabase()
 
-  // A user may have several linked sessions (atproto + github). Fetch them all
-  // and prefer the atproto one — it's the session whose access token actually
-  // expires and needs refreshing. (maybeSingle() would error on >1 row.)
+  // A user may have several linked sessions (atproto + github). The Mustard JWT
+  // only encodes the userId, so minting it never requires a live upstream token.
+  // We refresh atproto best-effort to keep follow-fetching working, but a dead
+  // atproto session must NOT lock out an account that still has another working
+  // provider (e.g. github, whose classic OAuth token doesn't expire).
   const { data: sessions } = await supabase
     .from('oauth_session')
     .select('*')
     .eq('user_id', userId)
 
   const rows = (sessions ?? []) as OAuthSessionRow[]
-  const session = rows.find((s) => s.provider === 'atproto') ?? rows[0] ?? null
+  if (rows.length === 0) return errorResponse('No session found', 404)
 
-  if (!session) return errorResponse('No session found', 404)
-
-  const provider = session.provider
-
-  if (provider === 'atproto') {
-    if (!session.refresh_token) return errorResponse('No refresh token available', 400)
-    if (!session.token_endpoint || !session.dpop_jwk || !session.dpop_pub_jwk) {
-      return errorResponse('Incomplete atproto session', 400)
-    }
-
-    const { status, body: tokenResp } = await authServerPost(
-      session.token_endpoint,
-      { grant_type: 'refresh_token', refresh_token: session.refresh_token, client_id: ATPROTO_CLIENT_ID },
-      session.dpop_jwk, session.dpop_pub_jwk,
-    )
-    if (!tokenResp.access_token) {
-      console.error('[auth-bridge] Token refresh failed:', status, tokenResp)
+  const atprotoSession = rows.find((s) => s.provider === 'atproto') ?? null
+  if (atprotoSession) {
+    const refreshed = await refreshAtprotoToken(supabase, atprotoSession)
+    if (!refreshed.ok) {
+      // Drop the dead atproto session so it stops being retried.
       await supabase.from('oauth_session').delete()
-        .eq('provider', 'atproto').eq('provider_account_id', session.provider_account_id)
-      return errorResponse(`Token refresh failed: ${tokenResp.error_description || tokenResp.error || 'unknown'}`, 502)
+        .eq('provider', 'atproto').eq('provider_account_id', atprotoSession.provider_account_id)
+      // Only fatal when atproto was the sole linked provider; otherwise fall
+      // through and mint the JWT from the remaining identity.
+      const hasFallback = rows.some((s) => s.provider !== 'atproto')
+      if (!hasFallback) return errorResponse(refreshed.error, refreshed.status)
+      console.warn(
+        `[auth-bridge] refresh: atproto session dead for ${userId}; falling back to another linked provider`,
+      )
     }
-    if (tokenResp.sub && tokenResp.sub !== session.provider_account_id) {
-      return errorResponse('DID mismatch after refresh', 502)
-    }
-
-    const tokenExpiresAt = tokenResp.expires_in
-      ? new Date(Date.now() + (tokenResp.expires_in as number) * 1000).toISOString()
-      : null
-
-    await supabase.from('oauth_session').update({
-      access_token: tokenResp.access_token,
-      refresh_token: (tokenResp.refresh_token as string) || session.refresh_token,
-      token_expires_at: tokenExpiresAt,
-      updated_at: new Date().toISOString(),
-    }).eq('provider', 'atproto').eq('provider_account_id', session.provider_account_id)
-  } else if (provider === 'github') {
-    // GitHub OAuth tokens don't expire by default; reuse the existing token.
-    // If a refresh_token is present (fine-grained PAT), we could refresh here —
-    // deferred until needed.
-  } else {
-    return errorResponse(`Unsupported provider for refresh: ${provider}`, 400)
   }
+  // github (and any future no-expiry provider) needs no upstream refresh — its
+  // token is reused as-is, so we go straight to minting the Mustard JWT.
 
   const { jwt, expiresAt } = await mintSupabaseJwt(userId)
   console.log(`[auth-bridge] refresh: success for ${userId}`)
