@@ -4,7 +4,7 @@ import { useEditor, EditorContent } from '@tiptap/vue-3'
 import IconButton from '../IconButton.vue'
 import MustardNoteHeader from '../MustardNoteHeader.vue'
 import { createEditorExtensions } from './editor-extensions'
-import { useMentionMutuals } from './use-mention-mutuals'
+import { useMentionCandidates } from './use-mention-candidates'
 import type { MustardNoteAnchorData } from '@/shared/model/MustardNoteAnchorData'
 import type { MustardState } from '../mustard-state'
 import { LIMITS } from '@/shared/constants'
@@ -22,14 +22,14 @@ const emit = defineEmits<{
 const mustardState = inject<MustardState>('mustardState')!
 const editorContainerRef = useTemplateRef<HTMLDivElement>('editorContainer')
 
-// Mutuals power the @-mention autocomplete; the getter is read lazily by the
+// Candidates power the @-mention autocomplete; the getter is read lazily by the
 // mention suggestion on each keystroke.
-const { mutuals } = useMentionMutuals()
+const { candidates } = useMentionCandidates()
 
 const editor = useEditor({
   extensions: createEditorExtensions({
     placeholder: 'Write your note... Or add a gif via /wow, mention with @',
-    getMutuals: () => mutuals.value,
+    getCandidates: () => candidates.value,
   }),
   autofocus: true,
   onBlur({ event }) {

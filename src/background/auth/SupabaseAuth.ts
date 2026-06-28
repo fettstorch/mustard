@@ -11,7 +11,7 @@ const AUTH_BRIDGE_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/auth-
 
 interface CachedJwt {
   jwt: string
-  did: string
+  userId: string // stable Mustard user id (was `did` before multi-provider migration)
   expiresAt: number
 }
 
@@ -20,11 +20,11 @@ interface CachedJwt {
  * Returns null if user is not logged in or refresh fails (user must re-login).
  */
 export async function getSupabaseJwt(): Promise<string | null> {
-  const atprotoSession = await getSession()
-  if (!atprotoSession) return null
+  const session = await getSession()
+  if (!session) return null
 
   const cached = await getCachedJwt()
-  if (cached && cached.did === atprotoSession.did && !isExpiringSoon(cached.expiresAt)) {
+  if (cached && cached.userId === session.userId && !isExpiringSoon(cached.expiresAt)) {
     return cached.jwt
   }
 
@@ -39,7 +39,7 @@ export async function getSupabaseJwt(): Promise<string | null> {
         },
         body: JSON.stringify({
           action: 'refresh',
-          did: atprotoSession.did,
+          userId: session.userId,
           expired_jwt: cached.jwt,
         }),
       })
@@ -63,7 +63,7 @@ export async function getSupabaseJwt(): Promise<string | null> {
       }
 
       const data: { jwt: string; expiresAt: number } = await response.json()
-      await storeSupabaseJwt(data.jwt, data.expiresAt, atprotoSession.did)
+      await storeSupabaseJwt(data.jwt, data.expiresAt, session.userId)
       return data.jwt
     } catch (error) {
       console.error('[SupabaseAuth] Refresh error:', error)
@@ -77,9 +77,13 @@ export async function getSupabaseJwt(): Promise<string | null> {
 /**
  * Store a Supabase JWT in the cache. Called by the login flow after auth-bridge callback.
  */
-export async function storeSupabaseJwt(jwt: string, expiresAt: number, did: string): Promise<void> {
+export async function storeSupabaseJwt(
+  jwt: string,
+  expiresAt: number,
+  userId: string,
+): Promise<void> {
   await browser.storage.local.set({
-    [STORAGE_KEY]: { jwt, did, expiresAt } satisfies CachedJwt,
+    [STORAGE_KEY]: { jwt, userId, expiresAt } satisfies CachedJwt,
   })
 }
 
@@ -94,7 +98,13 @@ export async function clearSupabaseJwt(): Promise<void> {
 
 async function getCachedJwt(): Promise<CachedJwt | null> {
   const result = await browser.storage.local.get(STORAGE_KEY)
-  return (result[STORAGE_KEY] as CachedJwt | undefined) ?? null
+  const raw = result[STORAGE_KEY] as (CachedJwt & { did?: string }) | undefined
+  if (!raw) return null
+  // Normalize cache entries stored before the multi-provider migration (had `did` not `userId`)
+  if (!raw.userId && raw.did) {
+    return { jwt: raw.jwt, userId: raw.did, expiresAt: raw.expiresAt }
+  }
+  return raw as CachedJwt
 }
 
 function isExpiringSoon(expiresAt: number): boolean {
@@ -104,6 +114,6 @@ function isExpiringSoon(expiresAt: number): boolean {
 
 /** Notify all tabs that the session has been cleared so content scripts can update. */
 async function broadcastSessionCleared(): Promise<void> {
-  await broadcastToAllTabs({ type: 'SESSION_CHANGED', did: null })
+  await broadcastToAllTabs({ type: 'SESSION_CHANGED', userId: null })
   await broadcastToAllTabs({ type: 'SESSION_EXPIRED' })
 }

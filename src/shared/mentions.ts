@@ -1,59 +1,100 @@
 /**
  * Mention encoding helpers shared by the editor (serialize), the renderer
- * (resolve to current handle), and the persistence layer (extract DIDs).
+ * (resolve to current handle), and the persistence layer (extract IDs).
  *
- * Mentions are stored DID-canonically inside note/comment markdown content as a
- * sentinel `@[did:plc:xxx]`. Handles are mutable, so nothing handle-related is
- * persisted — the current handle is resolved at render time. The link target
- * also uses the DID, which Bluesky accepts in `/profile/` URLs and which is
- * stable across handle changes.
+ * ## Identity space — IMPORTANT
+ *
+ * Mentions are addressed by **provider account id**, NOT by the Mustard UUID:
+ *   - atproto → DID (e.g. did:plc:xxx)
+ *   - github  → numeric account id
+ *
+ * This is deliberate: the mentioned person may not (yet) be a Mustard user, so
+ * there is no UUID to reference. The DB notification triggers and get-index-v2
+ * resolve these provider account ids → Mustard recipient UUIDs via the
+ * `identities` table at read/notify time.
+ *
+ * ## Sentinel format
+ *
+ *   @[p:atproto:did:plc:xxx]  — provider + provider account id (DID)
+ *   @[p:github:12345]         — provider + provider account id (numeric, NOT a UUID)
+ *
+ * A legacy bare-DID form `@[did:plc:xxx]` used to exist; migration 012 rewrote
+ * all stored content to the unified form above, so only one format remains.
+ *
+ * ## What is persisted
+ *
+ * The `mentions TEXT[]` column stores these provider account ids.
  */
 
-export const BSKY_PROFILE_URL_PREFIX = 'https://bsky.app/profile/'
+import type { UserProfileType } from './model/UserProfile'
 
-/** Builds a Bluesky profile URL for a DID (or handle). */
-export function bskyProfileUrl(didOrHandle: string): string {
-  return `${BSKY_PROFILE_URL_PREFIX}${didOrHandle}`
-}
+// ─── Sentinel helpers ─────────────────────────────────────────────────────────
 
 /**
- * Builds a fresh global regex matching the stored mention sentinel `@[did:...]`
- * (the DID is captured in group 1; DIDs never contain `]`, so the class is safe).
+ * Returns a regex matching the `@[p:provider:accountId]` sentinel.
+ * Capturing groups:
+ *   Group 1: provider
+ *   Group 2: accountId
  *
- * Returned per-call rather than exported as a shared `const` so the global
- * `lastIndex` can never leak across callers (`.matchAll`/`.replace` are safe,
- * but a shared `/g` regex is a footgun the moment someone calls `.test`/`.exec`).
+ * Returned per-call to avoid shared global regex lastIndex state.
  */
 export function makeMentionSentinelRegex(): RegExp {
-  return /@\[(did:[^\]\s]+)\]/g
+  return /@\[p:([^:\]]+):([^\]\s]+)\]/g
+}
+
+// ─── Extraction & derivation ──────────────────────────────────────────────────
+
+/**
+ * A mention target: the network it points at plus the provider account id on
+ * that network (DID for atproto, numeric id for github). This is the canonical
+ * in-memory shape — the provider is always known, so downstream consumers
+ * (profile resolution) never have to re-derive it from the id's string shape.
+ */
+export type MentionTarget = {
+  provider: UserProfileType
+  accountId: string
 }
 
 /**
- * Extracts the unique DIDs mentioned in a piece of markdown content (from the
- * `@[did:...]` sentinels), preserving first-seen order.
+ * Extracts the unique mention targets from content, preserving first-seen order.
  */
-export function extractMentionDids(content: string): string[] {
+export function extractMentions(content: string): MentionTarget[] {
   const seen = new Set<string>()
+  const targets: MentionTarget[] = []
   for (const match of content.matchAll(makeMentionSentinelRegex())) {
-    const did = match[1]
-    if (did) seen.add(did)
+    if (seen.has(match[0])) continue
+    seen.add(match[0])
+
+    const provider: UserProfileType = match[1] === 'github' ? 'github' : 'atproto'
+    targets.push({ provider, accountId: match[2]! })
   }
-  return [...seen]
+  return targets
 }
 
 /**
- * The mention DIDs to persist for a note/comment: every mentioned DID in the
- * content minus the author (you never notify yourself). Content is the single
- * source of truth — this is derived at the write boundary, not threaded through
- * the app.
+ * The unique provider account ids mentioned in a piece of content. These are the
+ * values persisted in `mentions TEXT[]` (the provider is recoverable from the
+ * sentinel, and the DB resolves them via `identities`, so only the id is stored).
  */
-export function deriveMentions(content: string, authorId: string): string[] {
-  return extractMentionDids(content).filter((did) => did !== authorId)
+function extractMentionAccountIds(content: string): string[] {
+  return [...new Set(extractMentions(content).map((m) => m.accountId))]
 }
 
-/** Short, human-ish fallback label for a DID whose handle isn't resolved yet. */
-export function shortDid(did: string): string {
-  // did:plc:abcd... → plc:abcd… (kept compact; only a transient placeholder)
-  const withoutScheme = did.replace(/^did:/, '')
+/**
+ * The mention ids to persist for a note/comment: unique mention targets (provider
+ * account ids) from the content. Content is the single source of truth — this is
+ * derived at the write boundary. Self-notification is prevented by the DB trigger
+ * (it compares the resolved recipient UUID against the author UUID), so no
+ * author filtering is needed (and isn't possible here — author is a UUID, mention
+ * ids are provider account ids).
+ */
+export function deriveMentions(content: string): string[] {
+  return extractMentionAccountIds(content)
+}
+
+/** Short, human-ish fallback label for a provider account id whose handle isn't resolved yet. */
+export function shortAccountId(accountId: string): string {
+  // did:plc:abcd... → plc:abcd… | numeric/other → first 12 chars
+  const withoutScheme = accountId.replace(/^did:/, '')
   return withoutScheme.length > 14 ? `${withoutScheme.slice(0, 12)}…` : withoutScheme
 }

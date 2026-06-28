@@ -3,7 +3,7 @@ import { computed, onMounted, ref, nextTick, inject } from 'vue'
 import { useEditor, EditorContent } from '@tiptap/vue-3'
 import AuthorAvatar from './AuthorAvatar.vue'
 import { createEditorExtensions } from '../note-editor/editor-extensions'
-import { useMentionMutuals } from '../note-editor/use-mention-mutuals'
+import { useMentionCandidates } from '../note-editor/use-mention-candidates'
 import type { MustardState } from '../mustard-state'
 import type { UserProfile } from '@/shared/model/UserProfile'
 import { LIMITS } from '@/shared/constants'
@@ -19,12 +19,12 @@ const emit = defineEmits<{
 
 const mustardState = inject<MustardState>('mustardState')!
 
-const { mutuals } = useMentionMutuals()
+const { candidates } = useMentionCandidates()
 
 const editor = useEditor({
   extensions: createEditorExtensions({
     placeholder: 'Add a comment... gif via /wow, mention with @',
-    getMutuals: () => mutuals.value,
+    getCandidates: () => candidates.value,
   }),
 })
 

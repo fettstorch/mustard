@@ -28,6 +28,13 @@ export default defineConfig({
   outDir: 'dist',
   outDirTemplate: '{{browser}}',
 
+  // Don't auto-launch a browser instance in dev. WXT's Firefox runner tries to
+  // start Firefox and attach to its remote-debug port; when that connection is
+  // refused it crashes the whole dev server. We load the built extension
+  // manually (about:debugging → Load Temporary Add-on → dist/firefox/manifest.json)
+  // and reload it after rebuilds, which keeps the dev server alive.
+  webExt: { disabled: true },
+
   manifest: ({ browser }) => ({
     name: 'Mustard',
     ...(browser === 'chrome' ? { key: CHROME_KEY } : {}),

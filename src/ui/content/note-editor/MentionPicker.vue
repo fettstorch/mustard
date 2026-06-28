@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import type { BskyProfile } from '@/shared/model/BskyProfile'
+import type { MentionCandidate } from '@/shared/model/MentionCandidate'
 
 const props = defineProps<{
-  items: BskyProfile[]
+  items: MentionCandidate[]
   query: string
   clientRect: (() => DOMRect | null) | null | undefined
-  onSelect: (profile: BskyProfile) => void
+  onSelect: (candidate: MentionCandidate) => void
 }>()
 
 const selectedIndex = ref(0)
@@ -72,17 +72,17 @@ defineExpose({ onKeyDown })
   >
     <div v-if="!items.length" class="mention-empty">
       <span class="mention-empty-title">
-        {{ query ? `No mutual matches “${query}”` : 'No mutuals to mention' }}
+        {{ query ? `No matches “${query}”` : 'No one to mention' }}
       </span>
       <span class="mention-empty-hint">
-        You can only mention mutuals — people you follow who also follow you.
+        You can mention Bluesky mutuals and GitHub follows who use Mustard.
       </span>
     </div>
     <template v-else>
       <div ref="listRef" class="mention-list">
         <button
           v-for="(item, index) in items"
-          :key="item.id"
+          :key="`${item.provider}:${item.accountId}`"
           type="button"
           class="mention-row"
           :class="{ 'mention-row-selected': index === selectedIndex }"
@@ -106,7 +106,7 @@ defineExpose({ onKeyDown })
           </span>
         </button>
       </div>
-      <div class="mention-footer">Mutuals only</div>
+      <div class="mention-footer">Bluesky mutuals & GitHub follows</div>
     </template>
   </div>
 </template>

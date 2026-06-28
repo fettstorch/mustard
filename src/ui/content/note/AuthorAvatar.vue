@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { UserProfile } from '@/shared/model/UserProfile'
+import { providerProfileUrl } from '@/shared/providers'
 
 const props = defineProps<{
   profile: UserProfile | null
@@ -8,7 +9,7 @@ const props = defineProps<{
 
 const profileUrl = computed(() => {
   if (!props.profile?.handle) return null
-  return `https://bsky.app/profile/${props.profile.handle}`
+  return providerProfileUrl(props.profile.type, props.profile.handle)
 })
 </script>
 

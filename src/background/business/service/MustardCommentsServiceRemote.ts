@@ -66,7 +66,7 @@ export class MustardCommentsServiceRemote implements MustardCommentsService {
       content: comment.content,
       // Mentions are derived from content at this write boundary (content is the
       // source of truth); the column exists only for the notification trigger.
-      mentions: deriveMentions(comment.content, comment.authorId),
+      mentions: deriveMentions(comment.content),
       updated_at: comment.updatedAt.toISOString(),
     }
 

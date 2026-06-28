@@ -5,6 +5,7 @@ import type { MustardState } from '../mustard-state'
 import AuthorAvatar from './AuthorAvatar.vue'
 import IconButton from '../IconButton.vue'
 import { renderContent } from './render-content'
+import { providerProfileUrl } from '@/shared/providers'
 
 const props = defineProps<{
   comment: MustardComment
@@ -19,14 +20,18 @@ const mustardState = inject<MustardState>('mustardState')!
 const profile = computed(() => mustardState.profiles[props.comment.authorId] ?? null)
 
 const isMine = computed(() => {
-  const me = mustardState.currentUserDid
+  const me = mustardState.currentUserId
   return me !== null && props.comment.authorId === me
 })
 
 const isPending = computed(() => !!mustardState.pendingCommentIds[props.comment.id])
 
 const renderedContent = computed(() =>
-  renderContent(props.comment.content, (did) => mustardState.profiles[did]?.handle),
+  renderContent(props.comment.content, (userId) => {
+    const p = mustardState.profiles[userId]
+    if (!p?.handle) return undefined
+    return { handle: p.handle, url: providerProfileUrl(p.type, p.handle) }
+  }),
 )
 
 const handle = computed(() => profile.value?.handle ?? null)

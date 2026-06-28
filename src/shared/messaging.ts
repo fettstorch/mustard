@@ -3,8 +3,10 @@ import type { DtoMustardComment } from './dto/DtoMustardComment'
 import type { DtoMyPagesOverview } from './dto/DtoMyPagesOverview'
 import type { DtoMustardMention } from './dto/DtoMustardMention'
 import type { Satisfies } from './Satisfies'
-import type { UserProfile, UserId } from './model/UserProfile'
+import type { UserProfile, UserId, LinkedIdentity } from './model/UserProfile'
+import type { MentionTarget } from './mentions'
 import type { BskyProfile } from './model/BskyProfile'
+import type { MentionCandidate } from './model/MentionCandidate'
 
 type BaseMessage = {
   type: string
@@ -69,6 +71,20 @@ export type AtprotoLoginMessage = Satisfies<
   {
     type: 'ATPROTO_LOGIN'
     handle: string
+    // When present, link this Bluesky identity to the already-logged-in account
+    // ("Connect Bluesky" from Options) instead of creating a separate one.
+    currentJwt?: string
+  }
+>
+
+// GitHub OAuth login — handled by service worker for the same reason as ATProto.
+// `currentJwt` is optional: when present, the GitHub identity is linked to the
+// already-logged-in Mustard account instead of creating a new one.
+export type GithubLoginMessage = Satisfies<
+  BaseMessage,
+  {
+    type: 'GITHUB_LOGIN'
+    currentJwt?: string
   }
 >
 
@@ -83,16 +99,31 @@ export type AtprotoLogoutMessage = Satisfies<
   BaseMessage,
   {
     type: 'ATPROTO_LOGOUT'
-    did: string
+    userId: string
   }
 >
 
-// Message to get profiles for multiple users (batch fetch)
+// Options page → service worker: unlink one provider from the current account.
+// Removing the last identity deletes the account entirely (see auth-bridge).
+export type DisconnectProviderMessage = Satisfies<
+  BaseMessage,
+  {
+    type: 'DISCONNECT_PROVIDER'
+    provider: string
+  }
+>
+
+// Batch profile fetch. Two explicitly-separated id spaces so the resolver never
+// has to guess an id's kind from its string shape:
+//   - userIds: opaque Mustard UUIDs (note/comment authors, reposters, self).
+//   - mentions: provider-tagged account ids from @-mention sentinels.
+// The response keys profiles by the same id you asked for (UUID or accountId).
 export type GetProfilesMessage = Satisfies<
   BaseMessage,
   {
     type: 'GET_PROFILES'
     userIds: UserId[]
+    mentions: MentionTarget[]
   }
 >
 
@@ -108,9 +139,26 @@ export type GetMutualsMessage = Satisfies<
 
 type GetMutualsResponse = BskyProfile[]
 
-// Response types for AT Protocol auth messages
+// Content script → service worker: the github accounts the caller follows who
+// are also Mustard users. Combined with mutuals to power @-mention autocomplete.
+// Response: GithubMentionCandidate[].
+export type GetGithubMentionCandidatesMessage = Satisfies<
+  BaseMessage,
+  {
+    type: 'GET_GITHUB_MENTION_CANDIDATES'
+  }
+>
+
+type GetGithubMentionCandidatesResponse = MentionCandidate[]
+
+// Response types for AT Protocol auth messages.
+// userId is the stable Mustard account id (opaque UUID).
+// did is the linked atproto DID (if any), for atproto-specific operations.
 export type AtprotoSessionResponse = {
-  did: string
+  userId: string
+  did?: string
+  provider?: string
+  identities?: LinkedIdentity[]
 } | null
 
 // Response type for GET_PROFILES - map of userId to profile (null if not found)
@@ -138,7 +186,7 @@ export type SessionChangedMessage = Satisfies<
   BaseMessage,
   {
     type: 'SESSION_CHANGED'
-    did: string | null // null means logged out
+    userId: string | null // null means logged out
   }
 >
 
@@ -288,10 +336,13 @@ export type Message =
   | DeleteNoteMessage
   | SetRepostMessage
   | AtprotoLoginMessage
+  | GithubLoginMessage
   | GetAtprotoSessionMessage
   | AtprotoLogoutMessage
+  | DisconnectProviderMessage
   | GetProfilesMessage
   | GetMutualsMessage
+  | GetGithubMentionCandidatesMessage
   | GetNotesVisibleMessage
   | SetNotesVisibleMessage
   | SessionChangedMessage
@@ -322,11 +373,14 @@ type MessageResponses = {
   QUERY_NOTES: DtoMustardNote[]
   DELETE_NOTE: DtoMustardNote[]
   SET_REPOST: DtoMustardNote[]
-  ATPROTO_LOGIN: { did: string } | null
+  ATPROTO_LOGIN: { userId: string; did?: string } | null
+  GITHUB_LOGIN: { userId: string } | null
   GET_ATPROTO_SESSION: AtprotoSessionResponse
   ATPROTO_LOGOUT: null
+  DISCONNECT_PROVIDER: { accountDeleted: boolean } | null
   GET_PROFILES: GetProfilesResponse
   GET_MUTUALS: GetMutualsResponse
+  GET_GITHUB_MENTION_CANDIDATES: GetGithubMentionCandidatesResponse
   GET_NOTES_VISIBLE: boolean
   SET_NOTES_VISIBLE: boolean
   SESSION_CHANGED: void
@@ -450,10 +504,21 @@ export function createSetRepostMessage(
   }
 }
 
-export function createAtprotoLoginMessage(handle: string): AtprotoLoginMessage {
+export function createAtprotoLoginMessage(
+  handle: string,
+  currentJwt?: string,
+): AtprotoLoginMessage {
   return {
     type: 'ATPROTO_LOGIN',
     handle,
+    ...(currentJwt !== undefined ? { currentJwt } : {}),
+  }
+}
+
+export function createGithubLoginMessage(currentJwt?: string): GithubLoginMessage {
+  return {
+    type: 'GITHUB_LOGIN',
+    ...(currentJwt !== undefined ? { currentJwt } : {}),
   }
 }
 
@@ -463,23 +528,40 @@ export function createGetAtprotoSessionMessage(): GetAtprotoSessionMessage {
   }
 }
 
-export function createAtprotoLogoutMessage(did: string): AtprotoLogoutMessage {
+export function createAtprotoLogoutMessage(userId: string): AtprotoLogoutMessage {
   return {
     type: 'ATPROTO_LOGOUT',
-    did,
+    userId,
   }
 }
 
-export function createGetProfilesMessage(userIds: UserId[]): GetProfilesMessage {
+export function createDisconnectProviderMessage(provider: string): DisconnectProviderMessage {
+  return {
+    type: 'DISCONNECT_PROVIDER',
+    provider,
+  }
+}
+
+export function createGetProfilesMessage(
+  userIds: UserId[],
+  mentions: MentionTarget[] = [],
+): GetProfilesMessage {
   return {
     type: 'GET_PROFILES',
     userIds,
+    mentions,
   }
 }
 
 export function createGetMutualsMessage(): GetMutualsMessage {
   return {
     type: 'GET_MUTUALS',
+  }
+}
+
+export function createGetGithubMentionCandidatesMessage(): GetGithubMentionCandidatesMessage {
+  return {
+    type: 'GET_GITHUB_MENTION_CANDIDATES',
   }
 }
 

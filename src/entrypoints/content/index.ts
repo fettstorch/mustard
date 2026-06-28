@@ -14,7 +14,7 @@ import {
 import { isRemoteMutationMessage } from '@/shared/remote-mutation'
 import type { MustardNoteAnchorData } from '@/shared/model/MustardNoteAnchorData'
 import { LIMITS } from '@/shared/constants'
-import { extractMentionDids } from '@/shared/mentions'
+import { extractMentions, type MentionTarget } from '@/shared/mentions'
 import { PENDING_FOCUS_KEY, type PendingFocus } from '@/shared/pending-focus'
 import { MUSTARD_FONT_KEY, getFontById, ensureFontStylesheet, applyFontVar } from '@/shared/fonts'
 import {
@@ -63,14 +63,27 @@ export default defineContentScript({
       )
     }
 
-    /** Fetches profiles for a set of user IDs that aren't already cached */
-    function fetchProfiles(userIds: string[]) {
-      const uniqueIds = [
-        ...new Set(userIds.filter((id) => id !== 'local' && !(id in mustardState.profiles))),
+    /**
+     * Fetches uncached profiles. `userIds` are opaque Mustard UUIDs (authors,
+     * reposters, self); `mentions` are provider-tagged account ids from mention
+     * sentinels. Both are deduped against the profile cache (keyed by the id we
+     * look up by — UUID for users, accountId for mentions).
+     */
+    function fetchProfiles(opts: { userIds?: string[]; mentions?: MentionTarget[] }) {
+      const userIds = [
+        ...new Set(
+          (opts.userIds ?? []).filter((id) => id !== 'local' && !(id in mustardState.profiles)),
+        ),
       ]
-      if (uniqueIds.length === 0) return
+      const seenMentions = new Set<string>()
+      const mentions = (opts.mentions ?? []).filter((m) => {
+        if (m.accountId in mustardState.profiles || seenMentions.has(m.accountId)) return false
+        seenMentions.add(m.accountId)
+        return true
+      })
+      if (userIds.length === 0 && mentions.length === 0) return
 
-      sendMessage(createGetProfilesMessage(uniqueIds))
+      sendMessage(createGetProfilesMessage(userIds, mentions))
         .then((response) => {
           console.debug('mustard [content-script] received profiles:', response)
           Object.assign(mustardState.profiles, response ?? {})
@@ -80,12 +93,11 @@ export default defineContentScript({
 
     /** Fetches profiles for remote note authors + reposters + mentioned users that aren't already cached */
     function fetchProfilesForNotes(notes: MustardNote[]) {
-      const ids = notes
+      const userIds = notes
         .filter((n) => n.authorId !== 'local')
         .flatMap((n) => [n.authorId, ...n.reposterIds])
-      // Mentioned DIDs (from `@[did]` sentinels) so mentions resolve to handles.
-      const mentionIds = notes.flatMap((n) => extractMentionDids(n.content))
-      fetchProfiles([...ids, ...mentionIds])
+      const mentions = notes.flatMap((n) => extractMentions(n.content))
+      fetchProfiles({ userIds, mentions })
     }
 
     function collectRemoteNoteIds(notes: MustardNote[]): string[] {
@@ -112,19 +124,19 @@ export default defineContentScript({
       sendMessage(createQueryCommentsMessage(remoteNoteIds))
         .then((response) => {
           console.debug('mustard [content-script] received comments:', response)
-          const allAuthorIds: string[] = []
+          const authorIds: string[] = []
+          const mentions: MentionTarget[] = []
           for (const noteId of remoteNoteIds) {
             const dtos = (response ?? {})[noteId] ?? []
             const comments: MustardComment[] = dtos.map(DtoMustardComment.fromDto)
             mustardState.comments[noteId] = comments
             mustardState.commentsLoadState[noteId] = 'loaded'
             for (const c of comments) {
-              allAuthorIds.push(c.authorId)
-              // Mentioned DIDs in the comment so @-mentions resolve to handles.
-              allAuthorIds.push(...extractMentionDids(c.content))
+              authorIds.push(c.authorId)
+              mentions.push(...extractMentions(c.content))
             }
           }
-          if (allAuthorIds.length > 0) fetchProfiles(allAuthorIds)
+          fetchProfiles({ userIds: authorIds, mentions })
         })
         .catch((err) => {
           console.error('mustard [content-script] QUERY_COMMENTS failed:', err)
@@ -138,7 +150,7 @@ export default defineContentScript({
     function fetchUnreadForNotes(notes: MustardNote[]) {
       const remoteNoteIds = collectRemoteNoteIds(notes)
 
-      if (remoteNoteIds.length === 0 || !mustardState.currentUserDid) {
+      if (remoteNoteIds.length === 0 || !mustardState.currentUserId) {
         mustardState.unreadByNoteId = {}
         return
       }
@@ -421,10 +433,10 @@ export default defineContentScript({
         return
       }
       if (message.type === 'SESSION_CHANGED') {
-        mustardState.currentUserDid = message.did
-        if (message.did) {
+        mustardState.currentUserId = message.userId
+        if (message.userId) {
           document.getElementById('mustard-session-expired-banner')?.remove()
-          fetchProfiles([message.did])
+          fetchProfiles({ userIds: [message.userId] })
         }
         // Session change can change which notes are visible (follows differ),
         // so clear per-note client state to avoid stale dots / comments.
@@ -460,10 +472,10 @@ export default defineContentScript({
     sendMessage(createGetAtprotoSessionMessage())
       .then((response) => {
         console.debug('mustard [content-script] session:', response)
-        mustardState.currentUserDid = response?.did ?? null
+        mustardState.currentUserId = response?.userId ?? null
         // Eagerly resolve the current user's profile so the comment editor can
         // render their avatar next to the input (and any other UI that wants it).
-        if (response?.did) fetchProfiles([response.did])
+        if (response?.userId) fetchProfiles({ userIds: [response.userId] })
         fetchUnreadForNotes(mustardState.notes)
       })
       .catch(() => {})
@@ -701,10 +713,10 @@ export default defineContentScript({
             const comments = (dtos ?? []).map(DtoMustardComment.fromDto)
             mustardState.comments[message.noteId] = comments
             mustardState.commentsLoadState[message.noteId] = 'loaded'
-            fetchProfiles([
-              ...comments.map((c) => c.authorId),
-              ...comments.flatMap((c) => extractMentionDids(c.content)),
-            ])
+            fetchProfiles({
+              userIds: comments.map((c) => c.authorId),
+              mentions: comments.flatMap((c) => extractMentions(c.content)),
+            })
           })
           .catch((err) => {
             console.error('mustard [content-script] UPSERT_COMMENT failed:', err)

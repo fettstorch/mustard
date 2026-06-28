@@ -114,7 +114,7 @@ async function getCachedIndexPayload(userId?: string): Promise<IndexCachePayload
         'Content-Type': 'application/json',
         Authorization: `Bearer ${jwt}`,
       },
-      body: JSON.stringify({ did: userId }),
+      body: JSON.stringify({ userId }),
     })
 
     if (!response.ok) {
@@ -235,7 +235,7 @@ class MustardNotesServiceRemote implements MustardNotesService {
       content: note.content,
       // Mentions are derived from content at this write boundary (content is the
       // source of truth); the column exists only for the notification trigger.
-      mentions: deriveMentions(note.content, note.authorId),
+      mentions: deriveMentions(note.content),
       element_selector: note.anchorData.elementSelector,
       relative_position_x: note.anchorData.relativePosition.xP,
       relative_position_y: note.anchorData.relativePosition.yP,

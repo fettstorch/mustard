@@ -1,13 +1,39 @@
 import * as jose from 'https://deno.land/x/jose@v5.2.0/index.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 
-// Mustard official account — always included so every user sees official notes
+// Mustard official account — always included so every user sees official notes.
+// This is the official account's atproto DID. User_ids are opaque UUIDs now, so
+// at request time we resolve this DID → its Mustard userId via `identities`.
 const MUSTARD_OFFICIAL_DID = 'did:plc:sxwohckesqi25evf7jxfshdz'
+
+const BATCH_SIZE = 200
+const MAX_FOLLOWS = 5000
+
+// ─── Types ───────────────────────────────────────────────────────────────────
+
+type Supabase = ReturnType<typeof createClient>
+
+interface IdentityRow {
+  provider: string
+  provider_account_id: string
+}
+
+// A person on some provider, by their external account id (DID / github id).
+interface ProviderAccount {
+  provider: string
+  providerAccountId: string
+}
+
+interface NoteRow {
+  id: string
+  author_id: string
+  page_url: string
+  updated_at: string
+}
 
 interface FollowRecord {
   did: string
   handle: string
-  // ... other fields we don't need
 }
 
 interface FollowsResponse {
@@ -15,303 +41,381 @@ interface FollowsResponse {
   cursor?: string
 }
 
-Deno.serve(async (req) => {
-  // Handle CORS preflight
-  if (req.method === 'OPTIONS') {
-    return new Response(null, {
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-      },
+// Thrown by helpers to short-circuit with a specific HTTP status; mapped to a
+// response by the top-level handler. Anything else becomes a 500.
+class HttpError extends Error {
+  constructor(
+    public status: number,
+    message: string,
+  ) {
+    super(message)
+  }
+}
+
+// ─── HTTP helpers ──────────────────────────────────────────────────────────────
+
+const CORS_PREFLIGHT_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+}
+
+function json(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+  })
+}
+
+// ─── Auth ───────────────────────────────────────────────────────────────────
+
+/** Verify the Bearer JWT and that its subject matches the requested userId. */
+async function verifyRequest(req: Request, userId: string): Promise<void> {
+  const [scheme, token] = (req.headers.get('Authorization') ?? '').split(' ')
+  if (scheme !== 'Bearer' || !token) throw new HttpError(401, 'Unauthorized')
+
+  const jwtSecret = Deno.env.get('JWT_SIGNING_SECRET')
+  if (!jwtSecret) throw new Error('JWT_SIGNING_SECRET not configured')
+
+  let sub: string | undefined
+  try {
+    const { payload } = await jose.jwtVerify(token, new TextEncoder().encode(jwtSecret))
+    sub = typeof payload.sub === 'string' ? payload.sub : undefined
+  } catch {
+    throw new HttpError(401, 'Unauthorized')
+  }
+  if (sub !== userId) throw new HttpError(403, 'userId does not match authenticated user')
+}
+
+// ─── Provider follow fetchers ─────────────────────────────────────────────────
+//
+// Each fetcher returns ProviderAccount pairs — the canonical external identity
+// for each person the user follows on that provider.
+
+/** Fetch all accounts the user follows on Bluesky (paginated, capped). */
+async function fetchAtprotoFollows(did: string): Promise<ProviderAccount[]> {
+  const result: ProviderAccount[] = []
+  let cursor: string | undefined
+
+  do {
+    const params = new URLSearchParams({ actor: did, limit: '100' })
+    if (cursor) params.set('cursor', cursor)
+
+    const resp = await fetch(`https://public.api.bsky.app/xrpc/app.bsky.graph.getFollows?${params}`)
+    if (!resp.ok) throw new Error(`Failed to fetch Bluesky follows: ${resp.statusText}`)
+
+    const data: FollowsResponse = await resp.json()
+    for (const f of data.follows) {
+      result.push({ provider: 'atproto', providerAccountId: f.did })
+    }
+    cursor = data.cursor
+  } while (cursor && result.length < MAX_FOLLOWS)
+
+  return result
+}
+
+/** Fetch all accounts the user follows on GitHub (paginated, capped). */
+async function fetchGithubFollows(accessToken: string): Promise<ProviderAccount[]> {
+  const result: ProviderAccount[] = []
+  let page = 1
+
+  while (result.length < MAX_FOLLOWS) {
+    const resp = await fetch(`https://api.github.com/user/following?per_page=100&page=${page}`, {
+      headers: { Authorization: `Bearer ${accessToken}`, 'User-Agent': 'Mustard' },
     })
+    if (!resp.ok) throw new Error(`Failed to fetch GitHub follows: ${resp.statusText}`)
+
+    const data: Array<{ id: number; login: string }> = await resp.json()
+    if (data.length === 0) break
+
+    for (const u of data) {
+      result.push({ provider: 'github', providerAccountId: String(u.id) })
+    }
+
+    // GitHub uses Link header pagination; if fewer results than per_page, we're done.
+    if (data.length < 100) break
+    page++
   }
 
+  return result
+}
+
+/** Fetch the accounts a single linked identity follows on its provider. */
+async function fetchFollowsForIdentity(
+  identity: IdentityRow,
+  supabase: Supabase,
+): Promise<ProviderAccount[]> {
+  if (identity.provider === 'atproto') {
+    return fetchAtprotoFollows(identity.provider_account_id)
+  }
+  if (identity.provider === 'github') {
+    // GitHub follows require the user's authenticated access token.
+    const { data: sessionRow } = await supabase
+      .from('oauth_session')
+      .select('access_token')
+      .eq('provider', 'github')
+      .eq('provider_account_id', identity.provider_account_id)
+      .maybeSingle()
+    const accessToken = sessionRow?.access_token as string | undefined
+    return accessToken ? fetchGithubFollows(accessToken) : []
+  }
+  // Unknown provider — nothing to fetch (add more providers above as supported).
+  return []
+}
+
+// ─── Identity → userId resolution ─────────────────────────────────────────────
+
+/**
+ * Maps ProviderAccount pairs to Mustard userIds via the `identities` table.
+ * Pairs with no Mustard account yet are silently dropped (those people haven't
+ * signed up for Mustard). PostgREST has no good multi-column IN, so we query
+ * per-provider and union client-side (most users have only 1-2 providers).
+ */
+async function resolveFollowsToUserIds(
+  follows: ProviderAccount[],
+  supabase: Supabase,
+): Promise<string[]> {
+  if (follows.length === 0) return []
+
+  const userIds = new Set<string>()
+
+  for (let i = 0; i < follows.length; i += BATCH_SIZE) {
+    const batch = follows.slice(i, i + BATCH_SIZE)
+
+    const byProvider = new Map<string, string[]>()
+    for (const f of batch) {
+      const ids = byProvider.get(f.provider) ?? []
+      ids.push(f.providerAccountId)
+      byProvider.set(f.provider, ids)
+    }
+
+    for (const [provider, accountIds] of byProvider) {
+      const { data, error } = await supabase
+        .from('identities')
+        .select('user_id')
+        .eq('provider', provider)
+        .in('provider_account_id', accountIds)
+
+      if (error) throw new Error(`identities lookup failed: ${error.message}`)
+      for (const row of (data ?? []) as { user_id: string }[]) userIds.add(row.user_id)
+    }
+  }
+
+  return [...userIds]
+}
+
+/** Resolve the official Mustard account's userId (skipped if not signed up). */
+async function resolveOfficialUserId(supabase: Supabase): Promise<string | undefined> {
+  const { data } = await supabase
+    .from('identities')
+    .select('user_id')
+    .eq('provider', 'atproto')
+    .eq('provider_account_id', MUSTARD_OFFICIAL_DID)
+    .maybeSingle()
+  return (data as { user_id: string } | null)?.user_id
+}
+
+// ─── Note / visibility queries ─────────────────────────────────────────────────
+
+/** All notes authored by any of `authorIds`. */
+async function fetchNotesByAuthors(supabase: Supabase, authorIds: string[]): Promise<NoteRow[]> {
+  const notes: NoteRow[] = []
+  for (let i = 0; i < authorIds.length; i += BATCH_SIZE) {
+    const batch = authorIds.slice(i, i + BATCH_SIZE)
+    const { data, error } = await supabase
+      .from('notes')
+      .select('id, author_id, page_url, updated_at')
+      .in('author_id', batch)
+    if (error) throw new Error(`Supabase query failed: ${error.message}`)
+    notes.push(...((data ?? []) as NoteRow[]))
+  }
+  return notes
+}
+
+/** Note ids that any of `reposterIds` has reposted. */
+async function fetchRepostedNoteIds(supabase: Supabase, reposterIds: string[]): Promise<Set<string>> {
+  const set = new Set<string>()
+  for (let i = 0; i < reposterIds.length; i += BATCH_SIZE) {
+    const batch = reposterIds.slice(i, i + BATCH_SIZE)
+    const { data, error } = await supabase.from('reposts').select('note_id').in('reposter_id', batch)
+    if (error) throw new Error(`Reposts visibility query failed: ${error.message}`)
+    for (const row of (data ?? []) as { note_id: string }[]) set.add(row.note_id)
+  }
+  return set
+}
+
+/**
+ * Note ids that mention the viewer. mentions[] stores provider account ids
+ * (DIDs / github ids), so we test array-overlap (`&&`) against the viewer's own
+ * account ids — not their userId.
+ */
+async function fetchMentionedNoteIds(
+  supabase: Supabase,
+  viewerAccountIds: string[],
+): Promise<Set<string>> {
+  const set = new Set<string>()
+  if (viewerAccountIds.length === 0) return set
+
+  const noteRes = await supabase.from('notes').select('id').overlaps('mentions', viewerAccountIds)
+  if (noteRes.error) throw new Error(`Note-mention visibility query failed: ${noteRes.error.message}`)
+  for (const row of (noteRes.data ?? []) as { id: string }[]) set.add(row.id)
+
+  const commentRes = await supabase
+    .from('comments')
+    .select('note_id')
+    .overlaps('mentions', viewerAccountIds)
+  if (commentRes.error) {
+    throw new Error(`Comment-mention visibility query failed: ${commentRes.error.message}`)
+  }
+  for (const row of (commentRes.data ?? []) as { note_id: string }[]) set.add(row.note_id)
+
+  return set
+}
+
+/** Map of noteId → unique reposter ids, for the given visible note ids. */
+async function fetchRepostersByNoteId(
+  supabase: Supabase,
+  visibleNoteIds: string[],
+): Promise<Record<string, string[]>> {
+  const repostersByNoteId: Record<string, string[]> = {}
+  for (let i = 0; i < visibleNoteIds.length; i += BATCH_SIZE) {
+    const batch = visibleNoteIds.slice(i, i + BATCH_SIZE)
+    const { data, error } = await supabase
+      .from('reposts')
+      .select('note_id, reposter_id')
+      .in('note_id', batch)
+    if (error) throw new Error(`Reposters query failed: ${error.message}`)
+    for (const row of (data ?? []) as { note_id: string; reposter_id: string }[]) {
+      const list = (repostersByNoteId[row.note_id] ??= [])
+      if (!list.includes(row.reposter_id)) list.push(row.reposter_id)
+    }
+  }
+  return repostersByNoteId
+}
+
+/** Count of the viewer's unread notifications, keyed by the page their note is on. */
+async function fetchUnreadByPage(
+  supabase: Supabase,
+  userId: string,
+  myNotePageById: Map<string, string>,
+): Promise<Record<string, number>> {
+  const myUnreadByPage: Record<string, number> = {}
+  if (myNotePageById.size === 0) return myUnreadByPage
+
+  const { data, error } = await supabase
+    .from('notifications')
+    .select('note_id')
+    .eq('recipient_id', userId)
+  if (error) throw new Error(`Failed to query notifications: ${error.message}`)
+
+  for (const row of (data ?? []) as { note_id: string }[]) {
+    const pageUrl = myNotePageById.get(row.note_id)
+    if (!pageUrl) continue
+    myUnreadByPage[pageUrl] = (myUnreadByPage[pageUrl] ?? 0) + 1
+  }
+  return myUnreadByPage
+}
+
+// ─── Main handler ─────────────────────────────────────────────────────────────
+
+Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: CORS_PREFLIGHT_HEADERS })
+  }
   if (req.method !== 'POST') {
-    return new Response(JSON.stringify({ error: 'Method not allowed' }), {
-      status: 405,
-      headers: { 'Content-Type': 'application/json' },
-    })
+    return json({ error: 'Method not allowed' }, 405)
   }
 
   try {
-    const { did } = await req.json()
+    const body = await req.json()
+    const userId: string = body.userId
+    if (!userId || typeof userId !== 'string') throw new HttpError(400, 'userId is required')
 
-    if (!did || typeof did !== 'string') {
-      return new Response(JSON.stringify({ error: 'Invalid request: did is required' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-      })
-    }
+    await verifyRequest(req, userId)
 
-    const authHeader = req.headers.get('Authorization') ?? ''
-    const [scheme, token] = authHeader.split(' ')
-    if (scheme !== 'Bearer' || !token) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-        status: 401,
-        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-      })
-    }
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+    )
 
-    const jwtSecret = Deno.env.get('JWT_SIGNING_SECRET')
-    if (!jwtSecret) throw new Error('JWT_SIGNING_SECRET not configured')
+    // ── Step 1: this user's linked provider identities ────────────────────────
+    const { data: identitiesData, error: identitiesError } = await supabase
+      .from('identities')
+      .select('provider, provider_account_id')
+      .eq('user_id', userId)
+    if (identitiesError) throw new Error(`Failed to fetch identities: ${identitiesError.message}`)
+    const userIdentities: IdentityRow[] = (identitiesData ?? []) as IdentityRow[]
 
-    let authenticatedDid: string | undefined
-    try {
-      const { payload } = await jose.jwtVerify(token, new TextEncoder().encode(jwtSecret))
-      authenticatedDid = typeof payload.sub === 'string' ? payload.sub : undefined
-    } catch {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-        status: 401,
-        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-      })
-    }
+    // The viewer's own provider account ids — used for mention visibility.
+    const viewerAccountIds = userIdentities.map((i) => i.provider_account_id)
 
-    if (authenticatedDid !== did) {
-      return new Response(JSON.stringify({ error: 'DID does not match authenticated user' }), {
-        status: 403,
-        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-      })
-    }
+    // ── Step 2: fetch follows from every provider in parallel ─────────────────
+    // Degrade gracefully per-provider: a dead/revoked token (e.g. github 401)
+    // must not reject the whole index and blank out every note — including the
+    // viewer's own and their other providers' follows. A failed provider just
+    // contributes no follows.
+    const followLists = await Promise.all(
+      userIdentities.map((identity) =>
+        fetchFollowsForIdentity(identity, supabase).catch((err) => {
+          console.warn(
+            `[get-index-v2] follows fetch failed for ${identity.provider}:${identity.provider_account_id}:`,
+            err,
+          )
+          return [] as ProviderAccount[]
+        }),
+      ),
+    )
+    const allFollows = followLists.flat()
 
-    // Fetch the user's follows from Bluesky (paginated, capped at 5000)
-    const MAX_FOLLOWS = 5000
-    const followedDids: string[] = []
-    let cursor: string | undefined
+    // ── Step 3: resolve followed accounts → Mustard userIds ───────────────────
+    const followedUserIds = await resolveFollowsToUserIds(allFollows, supabase)
+    const officialUserId = await resolveOfficialUserId(supabase)
 
-    do {
-      const params = new URLSearchParams({ actor: did, limit: '100' })
-      if (cursor) params.set('cursor', cursor)
+    const allUserIds = [userId, ...followedUserIds, ...(officialUserId ? [officialUserId] : [])]
 
-      const followsResponse = await fetch(
-        `https://public.api.bsky.app/xrpc/app.bsky.graph.getFollows?${params}`,
-      )
+    // ── Step 4: notes by visible authors → page index + own-note bookkeeping ──
+    const notes = await fetchNotesByAuthors(supabase, allUserIds)
 
-      if (!followsResponse.ok) {
-        throw new Error(`Failed to fetch follows: ${followsResponse.statusText}`)
-      }
-
-      const followsData: FollowsResponse = await followsResponse.json()
-      followedDids.push(...followsData.follows.map((f) => f.did))
-      cursor = followsData.cursor
-    } while (cursor && followedDids.length < MAX_FOLLOWS)
-
-    // Include the user's own DID + the official Mustard account
-    const allDids = [did, ...followedDids, MUSTARD_OFFICIAL_DID]
-
-    // Query Supabase for notes from these authors
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
-
-    if (!supabaseUrl || !supabaseServiceKey) {
-      throw new Error('Supabase environment variables not configured')
-    }
-
-    const supabase = createClient(supabaseUrl, supabaseServiceKey)
-
-    // Query in batches of 200 to avoid PostgREST URI length limits.
-    // We also pull `updated_at` so we can compute the requesting user's own
-    // latestNoteAtByPage map (and `id` so the notification join doesn't have
-    // to re-fetch notes).
-    const BATCH_SIZE = 200
-    const notes: { id: string; author_id: string; page_url: string; updated_at: string }[] = []
-
-    for (let i = 0; i < allDids.length; i += BATCH_SIZE) {
-      const batch = allDids.slice(i, i + BATCH_SIZE)
-      const { data, error } = await supabase
-        .from('notes')
-        .select('id, author_id, page_url, updated_at')
-        .in('author_id', batch)
-
-      if (error) {
-        throw new Error(`Supabase query failed: ${error.message}`)
-      }
-
-      notes.push(...(data || []))
-    }
-
-    // Build index: Map<UserId, PageUrl[]>
     const index: Record<string, string[]> = {}
-    // For the requesting user only: pageUrl → max(updated_at) across my notes
     const latestNoteAtByPage: Record<string, number> = {}
-    // For the requesting user only: noteId → pageUrl (used to bucket unread
-    // notification counts by page below).
     const myNotePageById = new Map<string, string>()
 
     for (const note of notes) {
-      if (!index[note.author_id]) {
-        index[note.author_id] = []
-      }
-      if (!index[note.author_id].includes(note.page_url)) {
-        index[note.author_id].push(note.page_url)
-      }
+      const pages = (index[note.author_id] ??= [])
+      if (!pages.includes(note.page_url)) pages.push(note.page_url)
 
-      if (note.author_id === did) {
+      if (note.author_id === userId) {
         const ts = new Date(note.updated_at).getTime()
         const existing = latestNoteAtByPage[note.page_url]
-        if (existing === undefined || ts > existing) {
-          latestNoteAtByPage[note.page_url] = ts
-        }
+        if (existing === undefined || ts > existing) latestNoteAtByPage[note.page_url] = ts
         myNotePageById.set(note.id, note.page_url)
       }
     }
 
-    // Reposts have TWO independent roles, deliberately decoupled below:
-    //
-    //   1. VISIBILITY (scoped to my network): a note becomes visible to me only
-    //      when I — or someone I follow — reposted it. This MUST stay scoped so I
-    //      never inherit a stranger's OTHER notes (a repost is a per-note grant,
-    //      not a follow). We layer it alongside the author index (NOT merged into
-    //      it): merging the original author would over-fetch ALL of that author's
-    //      notes on the page, leaking notes that weren't reposted.
-    //
-    //   2. SOCIAL PROOF (global): once a note is visible to me, the avatar stack
-    //      should show EVERY reposter — including reposters I don't follow — so the
-    //      "reposted by …" signal reflects reality. This widens only the displayed
-    //      avatars, never the index/visibility.
+    // ── Step 5-6: reposted + mentioned note ids ───────────────────────────────
+    const repostedNoteIdSet = await fetchRepostedNoteIds(supabase, allUserIds)
+    const mentionedNoteIdSet = await fetchMentionedNoteIds(supabase, viewerAccountIds)
 
-    // --- Role 1: which notes become visible to me via an in-network repost ---
-    // The client fetches these reposted notes by id, so we only need note ids here.
-    const repostedNoteIdSet = new Set<string>()
-
-    for (let i = 0; i < allDids.length; i += BATCH_SIZE) {
-      const batch = allDids.slice(i, i + BATCH_SIZE)
-      const { data, error } = await supabase
-        .from('reposts')
-        .select('note_id')
-        .in('reposter_id', batch)
-
-      if (error) {
-        throw new Error(`Reposts visibility query failed: ${error.message}`)
-      }
-
-      for (const row of (data ?? []) as { note_id: string }[]) {
-        repostedNoteIdSet.add(row.note_id)
-      }
-    }
-
-    const repostedNoteIds = [...repostedNoteIdSet]
-
-    // --- Mention visibility (per-note grant, exactly like a repost) ---
-    // A note becomes visible to me when I'm @-mentioned in it, OR in any of its
-    // comments — even if I don't follow the author. This matters most for COMMENT
-    // mentions: the commenter may be my mutual while the note's author is a
-    // stranger to me, so without this grant the mention notification would point
-    // at a note I can't see. Returned as ids the client fetches by id (never
-    // merged into the author index, so it can't leak the author's OTHER notes).
-    const mentionedNoteIdSet = new Set<string>()
-
-    {
-      const { data, error } = await supabase
-        .from('notes')
-        .select('id')
-        .contains('mentions', [did])
-      if (error) {
-        throw new Error(`Note-mention visibility query failed: ${error.message}`)
-      }
-      for (const row of (data ?? []) as { id: string }[]) {
-        mentionedNoteIdSet.add(row.id)
-      }
-    }
-
-    {
-      const { data, error } = await supabase
-        .from('comments')
-        .select('note_id')
-        .contains('mentions', [did])
-      if (error) {
-        throw new Error(`Comment-mention visibility query failed: ${error.message}`)
-      }
-      for (const row of (data ?? []) as { note_id: string }[]) {
-        mentionedNoteIdSet.add(row.note_id)
-      }
-    }
-
-    const mentionedNoteIds = [...mentionedNoteIdSet]
-
-    // --- Role 2: the FULL reposter list for every note I can actually see ---
-    // Visible notes = author-channel notes (mine + my follows', already fetched
-    // above) ∪ notes I gained access to via an in-network repost. We then look up
-    // ALL reposters of those notes (no reposter_id filter), so a stranger who
-    // reposted a note I can see still shows up in the avatar stack — without ever
-    // widening my index.
+    // ── Step 7: full reposter list for every visible note ─────────────────────
     const visibleNoteIdSet = new Set<string>(repostedNoteIdSet)
     for (const note of notes) visibleNoteIdSet.add(note.id)
     for (const id of mentionedNoteIdSet) visibleNoteIdSet.add(id)
-    const visibleNoteIds = [...visibleNoteIdSet]
+    const repostersByNoteId = await fetchRepostersByNoteId(supabase, [...visibleNoteIdSet])
 
-    const repostersByNoteId: Record<string, string[]> = {}
+    // ── Step 8: unread notifications per page ─────────────────────────────────
+    const myUnreadByPage = await fetchUnreadByPage(supabase, userId, myNotePageById)
 
-    for (let i = 0; i < visibleNoteIds.length; i += BATCH_SIZE) {
-      const batch = visibleNoteIds.slice(i, i + BATCH_SIZE)
-      const { data, error } = await supabase
-        .from('reposts')
-        .select('note_id, reposter_id')
-        .in('note_id', batch)
-
-      if (error) {
-        throw new Error(`Reposters query failed: ${error.message}`)
-      }
-
-      for (const row of (data ?? []) as { note_id: string; reposter_id: string }[]) {
-        const list = (repostersByNoteId[row.note_id] ??= [])
-        if (!list.includes(row.reposter_id)) {
-          list.push(row.reposter_id)
-        }
-      }
-    }
-
-    // Build per-page unread map for the requesting user.
-    // notifications.recipient_id = did → only this user's notifications.
-    const myUnreadByPage: Record<string, number> = {}
-
-    if (myNotePageById.size > 0) {
-      const { data: notifData, error: notifError } = await supabase
-        .from('notifications')
-        .select('note_id')
-        .eq('recipient_id', did)
-
-      if (notifError) {
-        throw new Error(`Failed to query notifications: ${notifError.message}`)
-      }
-
-      for (const row of (notifData ?? []) as { note_id: string }[]) {
-        const pageUrl = myNotePageById.get(row.note_id)
-        if (!pageUrl) continue
-        myUnreadByPage[pageUrl] = (myUnreadByPage[pageUrl] ?? 0) + 1
-      }
-    }
-
-    return new Response(
-      JSON.stringify({
-        index,
-        myUnreadByPage,
-        latestNoteAtByPage,
-        repostedNoteIds,
-        mentionedNoteIds,
-        repostersByNoteId,
-      }),
-      {
-        status: 200,
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-        },
-      },
-    )
+    return json({
+      index,
+      myUnreadByPage,
+      latestNoteAtByPage,
+      repostedNoteIds: [...repostedNoteIdSet],
+      mentionedNoteIds: [...mentionedNoteIdSet],
+      repostersByNoteId,
+    })
   } catch (error) {
-    console.error('Error in get-index:', error)
-    return new Response(
-      JSON.stringify({
-        error: error instanceof Error ? error.message : 'Internal server error',
-      }),
-      {
-        status: 500,
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-        },
-      },
-    )
+    if (error instanceof HttpError) return json({ error: error.message }, error.status)
+    console.error('Error in get-index-v2:', error)
+    return json({ error: error instanceof Error ? error.message : 'Internal server error' }, 500)
   }
 })
