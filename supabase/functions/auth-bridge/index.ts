@@ -732,11 +732,14 @@ async function handleGithubCallback(body: {
   const { clientId, clientSecret } = githubCreds(loginState.redirect_uri as string)
   if (!clientId || !clientSecret) return errorResponse('GitHub credentials not configured for this browser', 500)
 
-  // Exchange code for access token
+  // Exchange code for access token. GitHub's documented contract is
+  // x-www-form-urlencoded request params; the Accept header only selects the
+  // RESPONSE format (we ask for JSON). See:
+  // https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps
   const tokenResp = await fetch('https://github.com/login/oauth/access_token', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-    body: JSON.stringify({
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
+    body: new URLSearchParams({
       client_id: clientId,
       client_secret: clientSecret,
       code,
