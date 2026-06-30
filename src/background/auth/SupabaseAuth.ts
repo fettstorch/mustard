@@ -2,7 +2,7 @@
 // First JWT comes from the login flow (auth-bridge callback).
 // Subsequent JWTs are obtained via auth-bridge refresh using the expired JWT as proof.
 
-import { getSession, clearStoredSession } from './AtprotoAuth'
+import { getSession, clearStoredSession } from './SessionStore'
 import { broadcastToAllTabs } from '@/shared/messaging'
 
 const STORAGE_KEY = 'supabase_jwt'
@@ -20,21 +20,11 @@ interface CachedJwt {
  * Returns null if user is not logged in or refresh fails (user must re-login).
  */
 export async function getSupabaseJwt(): Promise<string | null> {
+  // A session here always carries a UUID userId: pre-migration DID sessions live
+  // under the old storage key (never read, purged at startup), so they surface as
+  // "no session" and force a fresh login.
   const session = await getSession()
   if (!session) return null
-
-  // A session predating the multi-provider migration stores an atproto DID as
-  // its userId. That migration deleted every server-side OAuth session (no
-  // refresh token / DPoP keys survive), so there is nothing to refresh against
-  // and AT Protocol re-auth is interactive-only. Wipe the stale local
-  // credentials and surface SESSION_EXPIRED so the user re-logs in once.
-  if (session.userId.startsWith('did:')) {
-    console.warn('[SupabaseAuth] Legacy DID session detected — clearing, user must re-login')
-    await clearSupabaseJwt()
-    await clearStoredSession()
-    await broadcastSessionCleared()
-    return null
-  }
 
   const cached = await getCachedJwt()
   if (cached && cached.userId === session.userId && !isExpiringSoon(cached.expiresAt)) {

@@ -13,14 +13,14 @@ import { mustardCommentsManager } from '@/background/business/MustardCommentsMan
 import { mustardNotificationsManager } from '@/background/business/MustardNotificationsManager'
 import { DtoMustardNote } from '@/shared/dto/DtoMustardNote'
 import { DtoMustardComment } from '@/shared/dto/DtoMustardComment'
+import { login, atprotoDid } from '@/background/auth/AtprotoAuth'
 import {
-  login,
   getSession,
   logout,
   storeSession,
   primaryIdentity,
-  atprotoDid,
-} from '@/background/auth/AtprotoAuth'
+  purgeLegacySessionStorage,
+} from '@/background/auth/SessionStore'
 import { loginWithGithub } from '@/background/auth/GithubAuth'
 import {
   listIdentities,
@@ -58,6 +58,9 @@ export default defineBackground(() => {
   const mutualsService = new MustardMutualsServiceBsky()
 
   console.log('Mustard background service worker loaded')
+
+  // One-time cleanup of pre-multi-provider session storage (see SessionStore).
+  void purgeLegacySessionStorage()
 
   /** Broadcast session change to all tabs so content scripts can update their state */
   async function broadcastSessionChanged(userId: string | null) {
