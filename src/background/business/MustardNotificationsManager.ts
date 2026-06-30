@@ -1,5 +1,5 @@
 import type { DtoMyPagesOverview } from '@/shared/dto/DtoMyPagesOverview'
-import type { DtoMustardMention } from '@/shared/dto/DtoMustardMention'
+import type { DtoMustardMention, DtoMustardNotification } from '@/shared/dto/DtoMustardMention'
 import type { UserProfile } from '@/shared/model/UserProfile'
 import { MustardNotificationsServiceRemote } from './service/MustardNotificationsServiceRemote'
 import { mustardNotesServiceRemote } from './service/MustardNotesServiceRemote'
@@ -72,6 +72,37 @@ export const mustardNotificationsManager = {
   /** Acknowledge a single mention by its notification id. */
   async markMentionSeen(notificationId: string): Promise<void> {
     await notificationsService.markMentionSeen(notificationId)
+  },
+
+  /**
+   * All of the current user's unread notifications (mentions AND comments on
+   * their notes), newest first, with each actor resolved to a profile. Used by
+   * the background to fire native browser notifications. Same actor-resolution
+   * contract as {@link getMyMentions}.
+   */
+  async getUnreadNotifications(
+    resolveProfiles: (userIds: string[]) => Promise<Record<string, UserProfile | null>>,
+  ): Promise<DtoMustardNotification[]> {
+    const raw = await notificationsService.getUnreadNotifications()
+    const actorIds = [...new Set(raw.map((n) => n.actorId))]
+    const profiles = actorIds.length > 0 ? await resolveProfiles(actorIds) : {}
+
+    return raw.map((n) => {
+      const profile = profiles[n.actorId] ?? null
+      return {
+        id: n.id,
+        noteId: n.noteId,
+        pageUrl: n.pageUrl,
+        actorId: n.actorId,
+        actorHandle: profile?.handle ?? null,
+        actorDisplayName: profile?.displayName ?? null,
+        actorAvatarUrl: profile?.avatarUrl ?? null,
+        source: n.source,
+        snippet: n.snippet,
+        createdAt: n.createdAt,
+        type: n.type,
+      } satisfies DtoMustardNotification
+    })
   },
 
   /**

@@ -1,4 +1,8 @@
-import type { MustardNotificationsService, RawMention } from './MustardNotificationsService'
+import type {
+  MustardNotificationsService,
+  RawMention,
+  RawNotification,
+} from './MustardNotificationsService'
 import { supabase } from '@/background/supabase-client'
 import { makeMentionSentinelRegex } from '@/shared/mentions'
 
@@ -17,6 +21,25 @@ interface DbMentionRow {
   created_at: string
   notes: { page_url: string; content: string } | null
   comments: { content: string } | null
+}
+
+interface DbNotificationFullRow extends DbMentionRow {
+  type: 'mention' | 'comment'
+}
+
+/** Map a joined notifications row to the shared raw shape (snippet from note or comment). */
+function toRawMention(row: DbMentionRow): RawMention {
+  const isComment = row.comment_id != null
+  const rawContent = isComment ? (row.comments?.content ?? '') : (row.notes?.content ?? '')
+  return {
+    id: row.id,
+    noteId: row.note_id,
+    pageUrl: row.notes?.page_url ?? '',
+    actorId: row.actor_id,
+    source: isComment ? 'comment' : 'note',
+    snippet: toSnippet(rawContent),
+    createdAt: new Date(row.created_at).getTime(),
+  }
 }
 
 /**
@@ -109,21 +132,28 @@ export class MustardNotificationsServiceRemote implements MustardNotificationsSe
       throw new Error(`Failed to query mentions: ${error.message}`)
     }
 
+    return (data ?? []).filter((row) => row.notes != null).map(toRawMention)
+  }
+
+  async getUnreadNotifications(): Promise<RawNotification[]> {
+    // Like getMyMentions, but across BOTH types (no `type` filter) so native
+    // browser notifications cover mentions and comments-on-your-note alike.
+    // RLS still scopes to recipient_id = auth.jwt().sub.
+    const { data, error } = await supabase
+      .from('notifications')
+      .select(
+        'id, type, note_id, comment_id, actor_id, created_at, notes(page_url, content), comments(content)',
+      )
+      .order('created_at', { ascending: false })
+      .overrideTypes<DbNotificationFullRow[], { merge: false }>()
+
+    if (error) {
+      throw new Error(`Failed to query notifications: ${error.message}`)
+    }
+
     return (data ?? [])
       .filter((row) => row.notes != null)
-      .map((row) => {
-        const isComment = row.comment_id != null
-        const rawContent = isComment ? (row.comments?.content ?? '') : (row.notes?.content ?? '')
-        return {
-          id: row.id,
-          noteId: row.note_id,
-          pageUrl: row.notes?.page_url ?? '',
-          actorId: row.actor_id,
-          source: isComment ? 'comment' : 'note',
-          snippet: toSnippet(rawContent),
-          createdAt: new Date(row.created_at).getTime(),
-        } satisfies RawMention
-      })
+      .map((row) => ({ ...toRawMention(row), type: row.type }) satisfies RawNotification)
   }
 
   async markMentionSeen(notificationId: string): Promise<void> {

@@ -25,3 +25,13 @@ export type DtoMustardMention = {
   /** Unix ms timestamp. */
   createdAt: number
 }
+
+/**
+ * An unread notification of any kind, enriched with the actor profile — the
+ * superset of {@link DtoMustardMention} used to drive native browser
+ * notifications. `type` distinguishes a mention from a comment-on-your-note so
+ * the toast can title itself ("… mentioned you" vs "… commented on your note").
+ */
+export type DtoMustardNotification = DtoMustardMention & {
+  type: 'mention' | 'comment'
+}

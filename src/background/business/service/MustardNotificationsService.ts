@@ -16,6 +16,16 @@ export interface RawMention {
 }
 
 /**
+ * An unread notification of any kind (a mention OR a comment on your note),
+ * before actor-profile enrichment. The `type` distinguishes the two so a native
+ * browser notification can title itself appropriately. `source` still records
+ * whether the snippet came from a note or a comment.
+ */
+export interface RawNotification extends RawMention {
+  type: 'mention' | 'comment'
+}
+
+/**
  * Service for "unread comment notifications" on the current user's notes.
  *
  * The notifications table only stores unread rows — there is no "read" column.
@@ -45,6 +55,13 @@ export interface MustardNotificationsService {
    * newest first. RLS scopes to the recipient.
    */
   getMyMentions(): Promise<RawMention[]>
+
+  /**
+   * ALL of the current user's unread notifications — both mentions and comments
+   * on their notes — newest first. RLS scopes to the recipient. Drives native
+   * browser notifications, which mirror every event the in-app system tracks.
+   */
+  getUnreadNotifications(): Promise<RawNotification[]>
 
   /** Delete a single notification row by id (acknowledge one mention). */
   markMentionSeen(notificationId: string): Promise<void>
