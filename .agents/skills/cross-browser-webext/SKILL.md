@@ -108,6 +108,34 @@ in several ways:
 > For the OAuth flow that consumes these redirect URIs, see the
 > `atproto-supabase-auth` skill.
 
+## Build-time browser detection (not runtime sniffing)
+
+- WXT exposes `import.meta.env.FIREFOX` / `import.meta.env.CHROME` as **build-time
+  constants** (tree-shakeable per target). Use these to branch browser-specific
+  behavior — don't sniff at runtime via `getBrowserInfo`/UA. Each `dist/{browser}`
+  bundle then contains only its own branch.
+
+## Client update / "update now" (version guard)
+
+There is **no cross-browser "force update"** — stores auto-update extensions on
+their own schedule. `AppStatusService.requestClientUpdate()` only shrinks the
+window, and the two browsers differ sharply:
+
+- **Chrome**: `chrome.runtime.requestUpdateCheck()` asks the Web Store for a
+  newer version; if `status === 'update_available'`, `runtime.reload()` applies
+  it. Register the `runtime.onUpdateAvailable` → `reload()` listener **only after
+  the user opts in**, or an unrelated background update can reload the extension
+  under the user. Falls back to opening the store listing if throttled/none
+  pending.
+- **Firefox**: no `requestUpdateCheck`, can't open `about:addons`
+  programmatically — the only lever is opening the AMO listing in a tab.
+- The store URLs are constants in `AppStatusService` (Chrome detail-by-id URL
+  redirects to the current listing; AMO uses the slug). Selection is via
+  `import.meta.env.FIREFOX`.
+- The guard itself (min-version check, read-only gating of remote writes) is in
+  the `mustard-architecture` skill; this section is just the browser-update
+  mechanics.
+
 ## UI: smooth expand animations (content-script pills/labels)
 
 - `grid-template-columns: 0fr → 1fr` with `overflow: hidden` on the container and

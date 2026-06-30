@@ -1,11 +1,10 @@
 import type { DtoMyPagesOverview } from '@/shared/dto/DtoMyPagesOverview'
 import type { DtoMustardMention } from '@/shared/dto/DtoMustardMention'
+import type { UserProfile } from '@/shared/model/UserProfile'
 import { MustardNotificationsServiceRemote } from './service/MustardNotificationsServiceRemote'
-import { MustardProfileServiceBsky } from './service/MustardProfileServiceBsky'
 import { mustardNotesServiceRemote } from './service/MustardNotesServiceRemote'
 
 const notificationsService = new MustardNotificationsServiceRemote()
-const profileService = new MustardProfileServiceBsky()
 const notesService = mustardNotesServiceRemote
 
 /**
@@ -41,11 +40,17 @@ export const mustardNotificationsManager = {
    * The current user's unread @-mentions (note + comment), newest first, with
    * each actor (the person who mentioned you) resolved to a profile so the popup
    * can render avatar + handle without an extra round-trip.
+   *
+   * Actor ids are opaque Mustard UUIDs (post multi-provider migration), so
+   * resolution goes through the caller-supplied resolver (identities → atproto
+   * Bluesky / github) rather than a direct DID-based Bluesky lookup.
    */
-  async getMyMentions(): Promise<DtoMustardMention[]> {
+  async getMyMentions(
+    resolveProfiles: (userIds: string[]) => Promise<Record<string, UserProfile | null>>,
+  ): Promise<DtoMustardMention[]> {
     const raw = await notificationsService.getMyMentions()
     const actorIds = [...new Set(raw.map((m) => m.actorId))]
-    const profiles = actorIds.length > 0 ? await profileService.getProfiles(actorIds) : {}
+    const profiles = actorIds.length > 0 ? await resolveProfiles(actorIds) : {}
 
     return raw.map((m) => {
       const profile = profiles[m.actorId] ?? null

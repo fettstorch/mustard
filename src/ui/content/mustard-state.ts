@@ -5,7 +5,7 @@ import type { MustardComment } from '@/shared/model/MustardComment'
 import type { UserProfile } from '@/shared/model/UserProfile'
 
 export type MustardState = {
-  currentUserDid: string | null
+  currentUserId: string | null
   editor: {
     isOpen: boolean
     anchor: MustardNoteAnchorData | null
@@ -43,7 +43,7 @@ export type MustardState = {
 
 export function createMustardState(): MustardState {
   return reactive({
-    currentUserDid: null,
+    currentUserId: null,
     editor: {
       isOpen: false,
       anchor: null,

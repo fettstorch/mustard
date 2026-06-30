@@ -226,7 +226,7 @@ function publishToRemote(
   anchorData: MustardNoteType['anchorData'],
   localNoteIdToDelete?: string,
 ) {
-  if (!mustardState.currentUserDid) {
+  if (!mustardState.currentUserId) {
     // User not logged in - prompt them to login
     alert('Please log in via the extension popup to publish notes')
     return

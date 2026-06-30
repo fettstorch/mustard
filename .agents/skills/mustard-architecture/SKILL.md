@@ -54,9 +54,10 @@ flowchart TB
     subgraph Storage["Storage & External"]
         direction LR
         ChromeStorage[("browser.storage.local")]
-        EdgeFns["Edge Functions<br/>auth-bridge • get-index (legacy) •<br/>get-index-v2 (strict JWT)"]
-        DB[("Postgres<br/>notes • comments •<br/>notifications • oauth_*")]
+        EdgeFns["Edge Functions<br/>auth-bridge (multi-provider) •<br/>get-index-v2 (strict JWT) • get-index (legacy)"]
+        DB[("Postgres<br/>users • identities •<br/>notes • comments • notifications •<br/>oauth_* • app_config")]
         BSkyAPI["bsky.social API"]
+        GHAPI["GitHub REST API"]
     end
 
     Click --> Popup
@@ -85,6 +86,7 @@ flowchart TB
     CommentsSvc -->|"supabase-js"| DB
     NotifsSvc -->|"supabase-js"| DB
     EdgeFns --> DB
+    EdgeFns -->|"follows / mentions"| GHAPI
     ProfileService -->|"getProfiles"| BSkyAPI
 
     DB -.->|"AFTER INSERT ON comments<br/>(SECURITY DEFINER trigger<br/>writes notifications)"| DB
@@ -107,9 +109,11 @@ flowchart TB
   `atproto-supabase-auth` skill.
 - **Shared** (`src/shared/`): `messaging.ts` (type-safe messages), `dto/`
   (serialization across the SW↔CS boundary), `model/` (domain types).
-- **Edge functions** (`supabase/functions/`): `auth-bridge` (BFF OAuth + JWT
-  mint), `get-index` (legacy anon-key), `get-index-v2` (strict per-user JWT
-  verified with `jose`, enforces `payload.sub === did`).
+- **Edge functions** (`supabase/functions/`): `auth-bridge` (multi-provider BFF
+  OAuth + JWT mint + identity linking — see `atproto-supabase-auth`),
+  `get-index-v2` (strict per-user JWT verified with `jose`, enforces
+  `payload.sub === userId` where userId is the account UUID), `get-index`
+  (legacy anon-key, kept for old clients until the version guard retires them).
 
 ## Conventions worth knowing
 
@@ -127,3 +131,21 @@ flowchart TB
 - **Notifications**: presence-of-row = unread (no `read` column); a
   `SECURITY DEFINER` trigger on `comments` INSERT writes them and skips
   self-comments.
+- **Identity = opaque UUID, not provider id**: authors/reposters/mention actors
+  are `users.id` UUIDs. To render them, `GET_PROFILES` and mention enrichment go
+  through `resolveProfilesByUserId` (UUID → `identities` → atproto Bluesky
+  profile, else a github profile from the login). Never feed a UUID straight to
+  the DID-based Bluesky lookup.
+- **Multi-provider follow graph**: `get-index-v2` resolves the viewer's atproto
+  follows **and** github follows to Mustard userIds. Each provider's follow fetch
+  degrades independently — a dead github token returns `[]` instead of failing
+  the whole index (so notes from other providers still load).
+- **Multi-provider mentions** (Option A): only people who are Mustard users are
+  mentionable. atproto candidates come from mutuals; github candidates are your
+  github follows who signed up (`github-mention-candidates`). Mentions store a
+  `provider_account_id`; rendering resolves them via the identities table.
+- **Client version guard**: `app_config.min_client_version` is read (cached,
+  fail-open) by `AppStatusService`; `isRemoteMutationMessage` gates remote writes
+  in the background dispatcher and the content-script chokepoint so an outdated
+  client goes read-only and prompts to update. See `cross-browser-webext` for the
+  update/auto-update mechanics.

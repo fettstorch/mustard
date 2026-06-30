@@ -19,7 +19,7 @@ import {
   type AtprotoSessionResponse,
 } from '@/shared/messaging'
 import type { UserProfile } from '@/shared/model/UserProfile'
-import BlueskyLogin from './auth/BlueskyLogin.vue'
+import ProviderLogin from './auth/ProviderLogin.vue'
 import MyPagesSection from './MyPagesSection.vue'
 import MentionsSection from './MentionsSection.vue'
 
@@ -91,8 +91,8 @@ watch(
   session,
   async (newSession) => {
     if (newSession) {
-      const profiles = await sendMessage(createGetProfilesMessage([newSession.did]))
-      profile.value = profiles[newSession.did] ?? null
+      const profiles = await sendMessage(createGetProfilesMessage([newSession.userId]))
+      profile.value = profiles[newSession.userId] ?? null
     } else {
       profile.value = null
     }
@@ -106,7 +106,7 @@ function onLoginSuccess(newSession: NonNullable<AtprotoSessionResponse>) {
 
 async function handleLogout() {
   if (!session.value) return
-  await sendMessage(createAtprotoLogoutMessage(session.value.did))
+  await sendMessage(createAtprotoLogoutMessage(session.value.userId))
   session.value = null
 }
 
@@ -190,7 +190,7 @@ const logoUrl = browser.runtime.getURL('/mustard_bottle_smile_512.png')
     </div>
 
     <!-- Not logged in -->
-    <BlueskyLogin v-else @success="onLoginSuccess" />
+    <ProviderLogin v-else @success="onLoginSuccess" />
   </div>
 </template>
 

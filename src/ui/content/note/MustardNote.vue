@@ -10,6 +10,7 @@ import RepostAvatarStack from './RepostAvatarStack.vue'
 import CommentToggle from './CommentToggle.vue'
 import MustardCommentThread from './MustardCommentThread.vue'
 import { renderContent } from './render-content'
+import { providerProfileUrl } from '@/shared/providers'
 import { LIMITS } from '@/shared/constants'
 import {
   createMarkNotificationsSeenForNoteMessage,
@@ -77,9 +78,9 @@ const mustardState = inject<MustardState>('mustardState')!
 
 const isMyOwnNote = computed(() => {
   const authorId = props.note.authorId
-  const currentUserDid = mustardState.currentUserDid
+  const currentUserId = mustardState.currentUserId
   // Note is mine if: it's a local note OR it was created by my logged-in account
-  return authorId === 'local' || (currentUserDid !== null && authorId === currentUserDid)
+  return authorId === 'local' || (currentUserId !== null && authorId === currentUserId)
 })
 
 const isLocalNote = computed(() => {
@@ -115,7 +116,7 @@ const hasReposters = computed(() => props.note.reposterIds.length > 0)
 
 /** True when the current user has reposted this note. */
 const isRepostedByMe = computed(() => {
-  const did = mustardState.currentUserDid
+  const did = mustardState.currentUserId
   return did !== null && props.note.reposterIds.includes(did)
 })
 
@@ -136,9 +137,13 @@ function onRepostClick() {
 }
 
 const renderedContent = computed(() => {
-  // Resolve mentioned DIDs to their current handle from the profile cache.
+  // Resolve mentioned userIds to their current handle + provider profile URL.
   // Re-renders automatically as profiles arrive (reactive read).
-  return renderContent(props.note.content, (did) => mustardState.profiles[did]?.handle)
+  return renderContent(props.note.content, (userId) => {
+    const p = mustardState.profiles[userId]
+    if (!p?.handle) return undefined
+    return { handle: p.handle, url: providerProfileUrl(p.type, p.handle) }
+  })
 })
 
 const isOverLimit = computed(() => {
@@ -198,7 +203,7 @@ const isExpanded = computed(() => {
   return !!mustardState.expandedCommentNoteIds[noteId.value]
 })
 
-const isLoggedIn = computed(() => mustardState.currentUserDid !== null)
+const isLoggedIn = computed(() => mustardState.currentUserId !== null)
 
 /** Show the toggle only on remote notes (local notes can't have remote comments). */
 const showCommentToggle = computed(() => isRemoteNote.value && !!noteId.value)

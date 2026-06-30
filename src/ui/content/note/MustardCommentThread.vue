@@ -30,10 +30,10 @@ const comments = computed<MustardComment[]>(() => {
   return props.note.id ? (mustardState.comments[props.note.id] ?? []) : []
 })
 
-const isLoggedIn = computed(() => mustardState.currentUserDid !== null)
+const isLoggedIn = computed(() => mustardState.currentUserId !== null)
 
 const myProfile = computed(() => {
-  const me = mustardState.currentUserDid
+  const me = mustardState.currentUserId
   return me ? (mustardState.profiles[me] ?? null) : null
 })
 

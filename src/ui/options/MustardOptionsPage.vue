@@ -32,6 +32,15 @@ import {
   getThemeById,
   applyTheme,
 } from '@/shared/themes'
+import {
+  sendMessage,
+  createGetAtprotoSessionMessage,
+  createGithubLoginMessage,
+  createAtprotoLoginMessage,
+  createDisconnectProviderMessage,
+} from '@/shared/messaging'
+import { getSupabaseJwt } from '@/background/auth/SupabaseAuth'
+import type { LinkedIdentity, UserProfileType } from '@/shared/model/UserProfile'
 
 const PUBLISH_CONFIRM_DISMISSED_KEY = 'mustard-publish-confirm-dismissed'
 const NOTES_MINIMIZED_KEY = 'mustard-notes-minimized'
@@ -48,6 +57,33 @@ const showAnchorInEditor = ref(false)
 const altClickEnabled = ref(false)
 const selectedFontId = ref<string>(DEFAULT_FONT_ID)
 const selectedThemeId = ref<string>(DEFAULT_THEME_ID)
+
+// Connected accounts state. The session message carries more (did/provider for
+// legacy single-identity callers), but this page renders purely off the unified
+// identity list, so it only declares what it actually reads.
+type SessionInfo = {
+  userId: string
+  identities?: LinkedIdentity[]
+}
+const currentSession = ref<SessionInfo | null>(null)
+const busyProvider = ref<string | null>(null) // provider with an in-flight connect/disconnect
+const accountError = ref<string | null>(null)
+const blueskyHandle = ref('') // input for "Connect Bluesky"
+const showBlueskyConnect = ref(false)
+
+// The providers Mustard can link, in display order.
+const SUPPORTED_PROVIDERS: { id: UserProfileType; label: string }[] = [
+  { id: 'atproto', label: 'Bluesky' },
+  { id: 'github', label: 'GitHub' },
+]
+
+const linkedByProvider = computed<Record<string, LinkedIdentity | undefined>>(() => {
+  const map: Record<string, LinkedIdentity> = {}
+  for (const id of currentSession.value?.identities ?? []) map[id.provider] = id
+  return map
+})
+
+const linkedCount = computed(() => currentSession.value?.identities?.length ?? 0)
 
 const systemFonts = computed(() => MUSTARD_FONTS.filter((f) => f.category === 'system'))
 const webFonts = computed(() => MUSTARD_FONTS.filter((f) => f.category === 'web'))
@@ -86,6 +122,8 @@ onMounted(async () => {
   } catch {
     // commands API unavailable — leave shortcuts empty.
   }
+
+  await refreshSession()
 
   // Chromium exposes chrome://extensions/shortcuts and allows extensions to
   // open it via tabs.create. Firefox blocks extensions from opening `about:`
@@ -140,6 +178,89 @@ function onThemeSelect(themeId: string) {
 function openKofi() {
   window.open('https://ko-fi.com/fettstorch', '_blank')
 }
+
+async function refreshSession() {
+  try {
+    currentSession.value = (await sendMessage(createGetAtprotoSessionMessage())) ?? null
+  } catch {
+    // ignore — leave the previous value
+  }
+}
+
+async function connectGithub() {
+  busyProvider.value = 'github'
+  accountError.value = null
+  try {
+    // These controls only appear for a logged-in account, so this is always a
+    // LINK. Without the current JWT the auth-bridge would create a brand-new
+    // account (or switch) instead of attaching to this one — abort and ask the
+    // user to re-login rather than silently forking their identity.
+    const jwt = await getSupabaseJwt()
+    if (!jwt) {
+      accountError.value = 'Your session has expired. Please log out and back in, then try again.'
+      return
+    }
+    const result = await sendMessage(createGithubLoginMessage(jwt))
+    if (!result) accountError.value = 'GitHub connection failed or was cancelled'
+    else await refreshSession()
+  } catch (e) {
+    accountError.value = e instanceof Error ? e.message : 'Connection failed'
+  } finally {
+    busyProvider.value = null
+  }
+}
+
+async function connectBluesky() {
+  const handle = blueskyHandle.value.trim().replace(/^@/, '')
+  if (!handle) return
+  busyProvider.value = 'atproto'
+  accountError.value = null
+  try {
+    // Always a LINK (shown only when logged in); abort without the current JWT
+    // so we never fork the account. See connectGithub for the rationale.
+    const jwt = await getSupabaseJwt()
+    if (!jwt) {
+      accountError.value = 'Your session has expired. Please log out and back in, then try again.'
+      return
+    }
+    const result = await sendMessage(createAtprotoLoginMessage(handle, jwt))
+    if (!result) {
+      accountError.value = 'Bluesky connection failed or was cancelled'
+    } else {
+      showBlueskyConnect.value = false
+      blueskyHandle.value = ''
+      await refreshSession()
+    }
+  } catch (e) {
+    accountError.value = e instanceof Error ? e.message : 'Connection failed'
+  } finally {
+    busyProvider.value = null
+  }
+}
+
+async function disconnect(provider: string, label: string) {
+  // Removing the last identity deletes the whole account + all its content.
+  const isLast = linkedCount.value <= 1
+  const message = isLast
+    ? `Disconnecting ${label} is your last connected account. This will permanently delete your Mustard account and ALL your notes, comments and reposts. Continue?`
+    : `Disconnect ${label} from your Mustard account?`
+  if (!confirm(message)) return
+
+  busyProvider.value = provider
+  accountError.value = null
+  try {
+    const result = await sendMessage(createDisconnectProviderMessage(provider))
+    if (!result) {
+      accountError.value = 'Disconnect failed'
+      return
+    }
+    await refreshSession()
+  } catch (e) {
+    accountError.value = e instanceof Error ? e.message : 'Disconnect failed'
+  } finally {
+    busyProvider.value = null
+  }
+}
 </script>
 
 <template>
@@ -170,6 +291,88 @@ function openKofi() {
           </svg>
           Buy me a coffee on Ko-fi
         </button>
+      </section>
+
+      <section class="prefs-section">
+        <h2 class="section-title">Connected Accounts</h2>
+        <div v-if="!currentSession" class="pref-row">
+          <span class="pref-label" style="opacity: 0.6">Not logged in</span>
+        </div>
+        <template v-else>
+          <div v-for="p in SUPPORTED_PROVIDERS" :key="p.id" class="account-block">
+            <div class="account-row">
+              <span class="pref-label">
+                {{ p.label }}
+                <span v-if="linkedByProvider[p.id]?.handle" class="account-hint">
+                  {{ linkedByProvider[p.id]?.handle }}
+                </span>
+              </span>
+
+              <span v-if="linkedByProvider[p.id]" class="account-actions">
+                <span class="account-badge connected">Connected</span>
+                <button
+                  class="disconnect-btn"
+                  :disabled="busyProvider === p.id"
+                  @click="disconnect(p.id, p.label)"
+                >
+                  {{ busyProvider === p.id ? '…' : 'Disconnect' }}
+                </button>
+              </span>
+
+              <button
+                v-else-if="p.id === 'github'"
+                class="mustard-notes-btn-primary connect-btn"
+                :disabled="busyProvider === 'github'"
+                @click="connectGithub"
+              >
+                {{ busyProvider === 'github' ? 'Connecting…' : 'Connect GitHub' }}
+              </button>
+
+              <button
+                v-else-if="p.id === 'atproto' && !showBlueskyConnect"
+                class="mustard-notes-btn-primary connect-btn"
+                @click="showBlueskyConnect = true"
+              >
+                Connect Bluesky
+              </button>
+            </div>
+
+            <!-- Bluesky needs a handle, so the connect control is an inline form. -->
+            <form
+              v-if="p.id === 'atproto' && !linkedByProvider[p.id] && showBlueskyConnect"
+              class="bsky-connect-form"
+              @submit.prevent="connectBluesky"
+            >
+              <input
+                v-model="blueskyHandle"
+                type="text"
+                class="bsky-handle-input"
+                placeholder="you.bsky.social"
+                :disabled="busyProvider === 'atproto'"
+              />
+              <button
+                type="submit"
+                class="mustard-notes-btn-primary connect-btn"
+                :disabled="busyProvider === 'atproto' || !blueskyHandle.trim()"
+              >
+                {{ busyProvider === 'atproto' ? 'Connecting…' : 'Connect' }}
+              </button>
+              <button
+                type="button"
+                class="disconnect-btn"
+                @click="((showBlueskyConnect = false), (blueskyHandle = ''))"
+              >
+                Cancel
+              </button>
+            </form>
+          </div>
+
+          <p v-if="accountError" class="connect-error">{{ accountError }}</p>
+          <p class="pref-hint">
+            Connect multiple services to one Mustard account — notes from people you follow on any
+            connected service show up together. Disconnecting your last account deletes it.
+          </p>
+        </template>
       </section>
 
       <section class="prefs-section">
@@ -416,6 +619,107 @@ h1 {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.account-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.account-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+}
+
+.account-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.account-badge {
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.2rem 0.5rem;
+  border-radius: 99px;
+  letter-spacing: 0.02em;
+}
+
+.disconnect-btn {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  font-family: var(--mustard-font);
+  color: #b91c1c;
+  background: transparent;
+  border: 1.5px solid currentColor;
+  border-radius: 8px;
+  padding: 0.2rem 0.6rem;
+  cursor: pointer;
+  transition:
+    background-color 0.15s,
+    opacity 0.15s;
+}
+
+.disconnect-btn:hover:not(:disabled) {
+  background: rgba(185, 28, 28, 0.08);
+}
+
+.disconnect-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.bsky-connect-form {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.bsky-handle-input {
+  flex: 1;
+  min-width: 160px;
+  font-family: var(--mustard-font);
+  font-size: 0.875rem;
+  color: var(--mustard-text);
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1.5px solid var(--mustard-border);
+  background: var(--mustard-glass-strong);
+}
+
+.account-badge.connected {
+  background: var(--mustard-accent-muted, rgba(234, 179, 8, 0.15));
+  color: var(--mustard-accent, #ca8a04);
+}
+
+.account-hint {
+  font-size: 0.7rem;
+  opacity: 0.55;
+  margin-left: 0.4rem;
+  font-family: monospace;
+}
+
+.connect-btn {
+  padding: 0.25rem 0.75rem;
+  font-size: 0.8125rem;
+}
+
+.connect-error {
+  font-size: 0.8125rem;
+  color: #b91c1c;
+  font-weight: 500;
+}
+
+.pref-hint {
+  font-size: 0.8rem;
+  opacity: 0.6;
+  line-height: 1.4;
 }
 
 .pref-row {

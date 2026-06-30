@@ -6,7 +6,7 @@ import type { Extensions } from '@tiptap/core'
 import { ImageUrlAutoConvert } from './image-url-auto-convert'
 import { GiphySlash } from './giphy-slash'
 import { createMentionExtension } from './mention-node'
-import type { BskyProfile } from '@/shared/model/BskyProfile'
+import type { MentionCandidate } from '@/shared/model/MentionCandidate'
 
 /**
  * Shared TipTap extension bundle used by BOTH the note editor and the comment
@@ -14,11 +14,11 @@ import type { BskyProfile } from '@/shared/model/BskyProfile'
  * previews, image-URL auto-convert, markdown serialization).
  *
  * @param placeholder the editor's empty-state placeholder text.
- * @param getMutuals  lazily reads the current user's mutuals for @-mentions.
+ * @param getCandidates lazily reads the current user's mention candidates.
  */
 export function createEditorExtensions(opts: {
   placeholder: string
-  getMutuals: () => BskyProfile[]
+  getCandidates: () => MentionCandidate[]
 }): Extensions {
   return [
     StarterKit.configure({}),
@@ -36,6 +36,6 @@ export function createEditorExtensions(opts: {
     Markdown,
     ImageUrlAutoConvert,
     GiphySlash,
-    createMentionExtension(opts.getMutuals),
+    createMentionExtension(opts.getCandidates),
   ]
 }

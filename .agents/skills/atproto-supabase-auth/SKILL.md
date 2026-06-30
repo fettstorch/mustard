@@ -1,18 +1,46 @@
 ---
 name: atproto-supabase-auth
 description: >-
-  AT Protocol (Bluesky) OAuth and Supabase auth architecture for the Mustard
-  extension. Covers the BFF auth-bridge pattern, opaque-token constraints,
-  DPoP/PKCE/PAR, identity verification, Supabase JWT minting + refresh + logout
-  semantics. Use when working on login/logout, the auth-bridge edge function,
-  SupabaseAuth, JWT handling, OAuth redirect flows, or session broadcasting.
+  Multi-provider OAuth (Bluesky/AT Protocol + GitHub) and Supabase auth
+  architecture for the Mustard extension. Covers the BFF auth-bridge pattern,
+  the UUID account model + identities table, account linking/unlinking,
+  opaque-token constraints, DPoP/PKCE/PAR, identity verification, Supabase JWT
+  minting + refresh + logout, and legacy DID migration. Use when working on
+  login/logout, account linking, the auth-bridge edge function, SupabaseAuth,
+  JWT handling, OAuth redirect flows, or session broadcasting.
 ---
 
-# AT Protocol OAuth + Supabase Auth (BFF)
+# Multi-Provider OAuth + Supabase Auth (BFF)
 
-Mustard authenticates users via Bluesky (AT Protocol) OAuth and mints Supabase
-JWTs server-side. Read this before touching `auth-bridge`, `SupabaseAuth`,
-`AtprotoAuth`, or anything that handles sessions/JWTs.
+Mustard authenticates users via OAuth (Bluesky/AT Protocol and GitHub) and mints
+Supabase JWTs server-side. A Mustard account is an **opaque UUID** that can link
+multiple provider identities. Read this before touching `auth-bridge`,
+`SupabaseAuth`, `AtprotoAuth`, `GithubAuth`, or anything that handles
+sessions/JWTs/account linking.
+
+## Account model (UUID-always)
+
+- A Mustard user is a `users.id` **UUID** that never encodes a provider id.
+- All provider-specific ids (atproto DID, GitHub numeric id) live only in the
+  `identities` table: `(user_id, provider, provider_account_id, handle)`, unique
+  on `(provider, provider_account_id)`. It is the authoritative map from an
+  external account → Mustard user, used by login, follow resolution, mentions.
+- The **JWT subject is the UUID** (`sub = users.id`), never a DID. All DB rows
+  (notes/comments/reposts/notifications authorship) are keyed by the UUID.
+- The client session (`AtprotoAuth.StoredSession`) is `{ userId, identities[] }`;
+  everything display-related (primary provider, handle, atproto DID) is derived
+  from `identities`, never stored separately.
+
+## Linking vs. new account
+
+- **First login** (no session): auth-bridge creates a `users` row + first
+  `identities` row, returns the UUID.
+- **Linking** (already logged in): the client passes its **current JWT** to the
+  `callback`; auth-bridge attaches the new identity to that UUID instead of
+  creating a new account. If the JWT is missing/expired the client must abort
+  (otherwise a new account is forked) — the options page enforces this.
+- **Unlinking** (`disconnect`): removes one identity; removing the **last**
+  identity deletes the whole account + all its content (delete-account RPC).
 
 ## Why BFF (Backend For Frontend) is mandatory
 
@@ -65,14 +93,19 @@ sequenceDiagram
     Bridge->>AS: Token exchange + DPoP proof + PKCE verifier
     AS-->>Bridge: {access_token, refresh_token, sub: DID}
     Bridge->>Bridge: Verify DID→PDS→AS matches issuer
-    Bridge->>DB: Store session (tokens, DPoP keys)
-    Bridge->>Bridge: Mint Supabase JWT (sub: DID)
-    Bridge-->>SW: {jwt, expiresAt, did}
+    Bridge->>DB: Upsert identity → users.id (UUID);<br/>link to current JWT's user if linking
+    Bridge->>DB: Store oauth_session (tokens, DPoP keys, user_id)
+    Bridge->>Bridge: Mint Supabase JWT (sub: UUID)
+    Bridge-->>SW: {jwt, expiresAt, userId, did}
 
-    SW->>SW: Cache JWT, broadcast SESSION_CHANGED
-    SW-->>Popup: {did}
+    SW->>SW: Cache JWT, sync identities, broadcast SESSION_CHANGED
+    SW-->>Popup: {userId, did}
     Popup->>User: Show "Logged in"
 ```
+
+GitHub login is the same shape minus DPoP/PAR/identity-verification (standard
+OAuth code exchange in `handleGithubInitiate`/`handleGithubCallback`); it ends
+with the same identity-upsert → UUID → JWT mint.
 
 ## Key components
 
@@ -108,19 +141,49 @@ sequenceDiagram
   opens (loses focus). Run OAuth in the **service worker** (persists) and
   communicate via messaging.
 
+## auth-bridge actions (provider-agnostic)
+
+One Edge Function, routed by `body.action` (legacy callers omit `provider` →
+default atproto):
+
+- `initiate` / `callback` — OAuth login or linking (atproto + github).
+- `refresh` — mint a fresh JWT for the UUID; for atproto also refresh the
+  upstream token. Verifies `payload.sub === userId` and looks up `oauth_session`
+  by `user_id`. GitHub classic OAuth tokens don't expire, so refresh just
+  re-mints the JWT.
+- `list-identities` — all identities for the JWT's user (options "Connected
+  Accounts").
+- `disconnect` — unlink a provider; deletes the account if it was the last.
+- `resolve-identities` — UUIDs → linked identities (used by `GET_PROFILES` and
+  mention-actor enrichment to turn author/actor UUIDs into bsky/github profiles).
+- `resolve-accounts` — reverse: provider account ids → Mustard userId.
+- `github-mention-candidates` — your GitHub follows who are also Mustard users
+  (the only github accounts that can be @-mentioned).
+
 ## Supabase JWT lifecycle
 
-- `SupabaseAuth.ts` caches the JWT with a 1h TTL; refresh goes through auth-bridge
-  using the expired JWT as proof.
-- **Refresh 404 = logout**: auth-bridge deletes the `oauth_session` row when an
-  ATProto token refresh fails (e.g. a race consuming a single-use refresh token).
-  The extension must treat **404/4xx/502** from refresh as "needs re-login": clear
-  both the ATProto session and the Supabase JWT from storage and broadcast
-  `SESSION_CHANGED(null)`. **Do NOT clear on 5xx** (transient server errors).
+- `SupabaseAuth.ts` caches the JWT (`{ jwt, userId, expiresAt }`) with a 1h TTL;
+  refresh goes through auth-bridge using the expired JWT as proof.
+- **Refresh 4xx/502 = logout**: a non-transient refresh failure means the
+  server-side session is gone — clear the stored session + JWT and broadcast
+  `SESSION_CHANGED(null)` + `SESSION_EXPIRED`. **Do NOT clear on other 5xx**
+  (transient server errors).
+- **Legacy DID sessions/caches** (pre multi-provider migration) have a DID where
+  the UUID should be. Migration `011` did `DELETE FROM oauth_session`, so there
+  is nothing to refresh against and AT Protocol re-auth is interactive-only —
+  **a silent re-login is impossible**. `getSupabaseJwt()` detects a `did:`-prefixed
+  `session.userId`, and `getCachedJwt()` rejects a `did:`/`userId`-less cache;
+  both wipe local creds and fire `SESSION_EXPIRED` to force a one-time re-login.
 - `SESSION_CHANGED` is broadcast to all tabs on login/logout so content scripts
   re-query notes without a page reload.
 
 ## Auth-related tables
 
-- `oauth_login_state`: temporary PAR/PKCE/DPoP state during login (~10 min TTL).
-- `oauth_session`: server-side ATProto token storage used for JWT refresh.
+- `users`: opaque account UUID (the JWT subject).
+- `identities`: `(user_id, provider, provider_account_id, handle)` — the only
+  place provider ids live; unique on `(provider, provider_account_id)`.
+- `oauth_login_state`: temporary PAR/PKCE/DPoP state during login (~10 min TTL);
+  `provider` column distinguishes atproto vs github.
+- `oauth_session`: server-side token storage for refresh, PK
+  `(provider, provider_account_id)` + `user_id` FK. atproto-only columns
+  (DPoP keys, `token_endpoint`) are nullable so github rows can omit them.

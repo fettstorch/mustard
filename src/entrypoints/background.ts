@@ -13,9 +13,25 @@ import { mustardCommentsManager } from '@/background/business/MustardCommentsMan
 import { mustardNotificationsManager } from '@/background/business/MustardNotificationsManager'
 import { DtoMustardNote } from '@/shared/dto/DtoMustardNote'
 import { DtoMustardComment } from '@/shared/dto/DtoMustardComment'
-import { login, getSession, logout } from '@/background/auth/AtprotoAuth'
-import { clearSupabaseJwt, storeSupabaseJwt } from '@/background/auth/SupabaseAuth'
+import { login, atprotoDid } from '@/background/auth/AtprotoAuth'
+import {
+  getSession,
+  logout,
+  storeSession,
+  primaryIdentity,
+  purgeLegacySessionStorage,
+} from '@/background/auth/SessionStore'
+import { loginWithGithub } from '@/background/auth/GithubAuth'
+import {
+  listIdentities,
+  disconnectProvider,
+  resolveIdentities,
+  resolveGithubAccounts,
+  getGithubMentionCandidates,
+} from '@/background/auth/AuthBridge'
+import { clearSupabaseJwt, storeSupabaseJwt, getSupabaseJwt } from '@/background/auth/SupabaseAuth'
 import { MustardProfileServiceBsky } from '@/background/business/service/MustardProfileServiceBsky'
+import type { UserProfile, LinkedIdentity } from '@/shared/model/UserProfile'
 import { MustardMutualsServiceBsky } from '@/background/business/service/MustardMutualsServiceBsky'
 import { invalidateRemoteIndexCache } from '@/background/business/service/MustardNotesServiceRemote'
 import {
@@ -24,6 +40,18 @@ import {
   requestClientUpdate,
 } from '@/background/business/service/AppStatusService'
 import { CLIENT_OUTDATED_ERROR, isRemoteMutationMessage } from '@/shared/remote-mutation'
+import { githubAvatarUrl } from '@/shared/providers'
+
+/** Builds a github UserProfile from an id + login, falling back to the id when the login is unknown. */
+function buildGithubProfile(id: string, login: string | undefined): UserProfile {
+  return {
+    type: 'github',
+    id,
+    handle: login ?? id,
+    displayName: login ?? id,
+    avatarUrl: login ? githubAvatarUrl(login) : undefined,
+  }
+}
 
 export default defineBackground(() => {
   const profileService = new MustardProfileServiceBsky()
@@ -31,9 +59,71 @@ export default defineBackground(() => {
 
   console.log('Mustard background service worker loaded')
 
+  // One-time cleanup of pre-multi-provider session storage (see SessionStore).
+  void purgeLegacySessionStorage()
+
   /** Broadcast session change to all tabs so content scripts can update their state */
-  async function broadcastSessionChanged(did: string | null) {
-    await broadcastToAllTabs({ type: 'SESSION_CHANGED', did })
+  async function broadcastSessionChanged(userId: string | null) {
+    await broadcastToAllTabs({ type: 'SESSION_CHANGED', userId })
+  }
+
+  /**
+   * Pull the authoritative list of linked identities for `userId` from the
+   * server and persist it as the canonical session. All display fields are
+   * derived from the identity set at read time (see primaryIdentity/atprotoDid),
+   * so there is nothing to denormalize here. Returns the new session, or
+   * undefined if the identity list is empty (account gone).
+   */
+  async function syncSessionIdentities(
+    jwt: string,
+    userId: string,
+  ): Promise<Awaited<ReturnType<typeof getSession>>> {
+    const identities = await listIdentities(jwt)
+    if (identities.length === 0) return undefined
+
+    const session = { userId, identities }
+    await storeSession(session)
+    return session
+  }
+
+  /**
+   * Resolve opaque Mustard user UUIDs to display profiles: an atproto identity
+   * becomes a rich Bluesky profile, a github-only account a github profile, and
+   * anything unresolved stays null. Shared by GET_PROFILES (authors/reposters)
+   * and mention-actor enrichment so both paths handle post-UUID-migration ids.
+   */
+  async function resolveProfilesByUserId(
+    jwt: string | null,
+    userIds: string[],
+  ): Promise<Record<string, UserProfile | null>> {
+    const profiles: Record<string, UserProfile | null> = {}
+    for (const id of userIds) profiles[id] = null
+    if (userIds.length === 0) return profiles
+
+    const idMap = jwt
+      ? await resolveIdentities(jwt, userIds).catch((err) => {
+          console.warn('resolveProfilesByUserId: resolveIdentities failed:', err)
+          return new Map<string, LinkedIdentity[]>()
+        })
+      : new Map<string, LinkedIdentity[]>()
+
+    // atproto preferred (resolvable Bluesky profile); otherwise build from github login.
+    const didByKey = new Map<string, string>()
+    for (const id of userIds) {
+      const linked = idMap.get(id)
+      const atproto = linked?.find((l) => l.provider === 'atproto')
+      const github = linked?.find((l) => l.provider === 'github')
+      if (atproto) didByKey.set(id, atproto.providerAccountId)
+      else if (github) profiles[id] = buildGithubProfile(id, github.handle)
+    }
+
+    const dids = [...new Set(didByKey.values())]
+    const bskyByDid = dids.length ? await profileService.getProfiles(dids) : {}
+    for (const [key, did] of didByKey) {
+      const p = bskyByDid[did]
+      if (p) profiles[key] = { ...p, id: key }
+    }
+    return profiles
   }
 
   /** Broadcast that the unread-notifications state changed. Popup re-queries; content scripts can refresh in-page dots. */
@@ -183,7 +273,7 @@ export default defineBackground(() => {
           console.error('Cannot publish note - user not logged in')
           return []
         }
-        authorId = session.did
+        authorId = session.userId
       }
 
       const note = DtoMustardNote.fromDto({
@@ -202,7 +292,7 @@ export default defineBackground(() => {
       }
 
       invalidateRemoteIndexCache()
-      const allNotes = await mustardNotesManager.queryMustardNotesFor(pageUrl, session!.did)
+      const allNotes = await mustardNotesManager.queryMustardNotesFor(pageUrl, session!.userId)
 
       if (message.localNoteIdToDelete) {
         await mustardNotesManager.deleteNote(message.localNoteIdToDelete, pageUrl, 'local')
@@ -215,7 +305,7 @@ export default defineBackground(() => {
 
     QUERY_NOTES: async (message) => {
       const session = await getSession()
-      const notes = await mustardNotesManager.queryMustardNotesFor(message.pageUrl, session?.did)
+      const notes = await mustardNotesManager.queryMustardNotesFor(message.pageUrl, session?.userId)
       return notes.map(DtoMustardNote.toDto)
     },
 
@@ -231,7 +321,10 @@ export default defineBackground(() => {
       afterNotificationMutation()
 
       const session = await getSession()
-      const allNotes = await mustardNotesManager.queryMustardNotesFor(message.pageUrl, session?.did)
+      const allNotes = await mustardNotesManager.queryMustardNotesFor(
+        message.pageUrl,
+        session?.userId,
+      )
       return allNotes.map(DtoMustardNote.toDto)
     },
 
@@ -242,24 +335,48 @@ export default defineBackground(() => {
         return []
       }
 
-      await mustardNotesManager.setRepost(message.noteId, session.did, message.reposted)
+      await mustardNotesManager.setRepost(message.noteId, session.userId, message.reposted)
 
       // Repost changes visibility → bust the index cache so the next query
       // recomputes reposted note ids / reposter lists.
       invalidateRemoteIndexCache()
 
-      const allNotes = await mustardNotesManager.queryMustardNotesFor(message.pageUrl, session.did)
+      const allNotes = await mustardNotesManager.queryMustardNotesFor(
+        message.pageUrl,
+        session.userId,
+      )
       return allNotes.map(DtoMustardNote.toDto)
+    },
+
+    GITHUB_LOGIN: async (message) => {
+      try {
+        // If a currentJwt is not provided explicitly, try to get the active one
+        // so the user's existing Mustard account is linked to GitHub.
+        const jwt = message.currentJwt ?? (await getSupabaseJwt()) ?? undefined
+        const result = await loginWithGithub(jwt)
+        await storeSupabaseJwt(result.jwt, result.expiresAt, result.userId)
+        // Enrich the session with the full identity set (github login may have
+        // linked into an existing multi-provider account).
+        await syncSessionIdentities(result.jwt, result.userId)
+        invalidateRemoteIndexCache()
+        broadcastSessionChanged(result.userId)
+        updateActionBadge()
+        return { userId: result.userId }
+      } catch (err) {
+        console.error('GITHUB_LOGIN failed:', err)
+        return null
+      }
     },
 
     ATPROTO_LOGIN: async (message) => {
       try {
-        const result = await login(message.handle)
-        await storeSupabaseJwt(result.jwt, result.expiresAt, result.did)
+        const result = await login(message.handle, message.currentJwt)
+        await storeSupabaseJwt(result.jwt, result.expiresAt, result.userId)
+        await syncSessionIdentities(result.jwt, result.userId)
         invalidateRemoteIndexCache()
-        broadcastSessionChanged(result.did)
+        broadcastSessionChanged(result.userId)
         updateActionBadge()
-        return { did: result.did }
+        return { userId: result.userId, did: result.did }
       } catch (err) {
         console.error('ATPROTO_LOGIN failed:', err)
         return null
@@ -268,9 +385,24 @@ export default defineBackground(() => {
 
     GET_ATPROTO_SESSION: async () => {
       try {
-        const session = await getSession()
+        let session = await getSession()
         updateActionBadge()
-        return session ? { did: session.did } : null
+        if (!session) return null
+
+        // Older sessions (stored before multi-provider) may lack the identities
+        // array. Lazily backfill it from the server so the options page can
+        // render Connected Accounts without a separate round-trip.
+        if (session.identities.length === 0) {
+          const jwt = await getSupabaseJwt()
+          if (jwt) session = (await syncSessionIdentities(jwt, session.userId)) ?? session
+        }
+
+        return {
+          userId: session.userId,
+          did: atprotoDid(session),
+          provider: primaryIdentity(session)?.provider,
+          identities: session.identities,
+        }
       } catch (err) {
         console.error('GET_ATPROTO_SESSION failed:', err)
         return null
@@ -279,7 +411,7 @@ export default defineBackground(() => {
 
     ATPROTO_LOGOUT: async (message) => {
       try {
-        await logout(message.did)
+        await logout(message.userId)
         await clearSupabaseJwt()
         invalidateRemoteIndexCache()
         mutualsService.clear()
@@ -288,6 +420,36 @@ export default defineBackground(() => {
         return null
       } catch (err) {
         console.error('ATPROTO_LOGOUT failed:', err)
+        return null
+      }
+    },
+
+    DISCONNECT_PROVIDER: async (message) => {
+      try {
+        const jwt = await getSupabaseJwt()
+        if (!jwt) return null
+        const session = await getSession()
+        const result = await disconnectProvider(jwt, message.provider)
+
+        if (result.accountDeleted) {
+          // Last identity removed → the account (and all its content) is gone.
+          // Tear down local state exactly like a logout.
+          await logout(session?.userId ?? '')
+          await clearSupabaseJwt()
+          mutualsService.clear()
+          broadcastSessionChanged(null)
+        } else {
+          // A secondary provider was unlinked; the account (userId) lives on.
+          // Re-derive the primary display identity from what remains.
+          await syncSessionIdentities(jwt, session!.userId)
+          broadcastSessionChanged(session!.userId)
+        }
+
+        invalidateRemoteIndexCache()
+        updateActionBadge()
+        return result
+      } catch (err) {
+        console.error('DISCONNECT_PROVIDER failed:', err)
         return null
       }
     },
@@ -303,7 +465,49 @@ export default defineBackground(() => {
 
     GET_PROFILES: async (message) => {
       try {
-        return await profileService.getProfiles(message.userIds)
+        const { userIds, mentions } = message
+        const jwt = await getSupabaseJwt()
+
+        // Authors/reposters: opaque UUIDs → linked identities → profiles.
+        const profiles = await resolveProfilesByUserId(jwt, userIds)
+        for (const m of mentions) profiles[m.accountId] ??= null
+
+        // DIDs to resolve in one Bluesky batch, keyed back under the id the
+        // caller asked for (the DID itself for atproto mentions).
+        const didByKey = new Map<string, string>()
+        // GitHub account ids still needing a login lookup (atproto mentions resolve
+        // via Bluesky; github ones via the identities table).
+        const githubAccountIds: string[] = []
+
+        // Mentions: provider is explicit, so dispatch directly (no shape sniffing).
+        for (const m of mentions) {
+          if (m.provider === 'atproto') didByKey.set(m.accountId, m.accountId)
+          else if (m.provider === 'github') githubAccountIds.push(m.accountId)
+        }
+
+        // GitHub mentions → @login via the identities table. Non-Mustard github
+        // accounts stay unresolved (placeholder rendered).
+        if (jwt && githubAccountIds.length > 0) {
+          const loginByAccountId = await resolveGithubAccounts(jwt, githubAccountIds).catch(
+            (err) => {
+              console.warn('GET_PROFILES: resolveGithubAccounts failed:', err)
+              return new Map<string, string | undefined>()
+            },
+          )
+          for (const [accountId, login] of loginByAccountId) {
+            profiles[accountId] = buildGithubProfile(accountId, login)
+          }
+        }
+
+        // One Bluesky batch for every DID (authors + atproto mentions).
+        const dids = [...new Set(didByKey.values())]
+        const bskyByDid = dids.length ? await profileService.getProfiles(dids) : {}
+        for (const [key, did] of didByKey) {
+          const p = bskyByDid[did]
+          if (p) profiles[key] = { ...p, id: key }
+        }
+
+        return profiles
       } catch (err) {
         console.error('GET_PROFILES failed:', err)
         return {}
@@ -314,9 +518,24 @@ export default defineBackground(() => {
       try {
         const session = await getSession()
         if (!session) return []
-        return await mutualsService.getMutuals(session.did)
+        // Mutuals service needs an atproto DID for the Bsky API call. A
+        // github-only account has none, so there are no mutuals (expected).
+        const did = atprotoDid(session)
+        if (!did) return []
+        return await mutualsService.getMutuals(did)
       } catch (err) {
         console.error('GET_MUTUALS failed:', err)
+        return []
+      }
+    },
+
+    GET_GITHUB_MENTION_CANDIDATES: async () => {
+      try {
+        const jwt = await getSupabaseJwt()
+        if (!jwt) return []
+        return await getGithubMentionCandidates(jwt)
+      } catch (err) {
+        console.error('GET_GITHUB_MENTION_CANDIDATES failed:', err)
         return []
       }
     },
@@ -344,7 +563,7 @@ export default defineBackground(() => {
       await mustardCommentsManager.upsertComment({
         id: '', // not used by the insert path; service ignores empty string
         noteId: message.noteId,
-        authorId: session.did,
+        authorId: session.userId,
         content: message.content,
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -398,7 +617,7 @@ export default defineBackground(() => {
       try {
         const session = await getSession()
         if (!session) return []
-        const overview = await mustardNotificationsManager.queryMyPagesOverview(session.did)
+        const overview = await mustardNotificationsManager.queryMyPagesOverview(session.userId)
         // Sync the badge whenever the popup pulls the overview — this is a
         // cheap natural-event trigger to keep the badge fresh.
         updateActionBadge()
@@ -413,7 +632,10 @@ export default defineBackground(() => {
       try {
         const session = await getSession()
         if (!session) return []
-        return await mustardNotificationsManager.getMyMentions()
+        const jwt = await getSupabaseJwt()
+        return await mustardNotificationsManager.getMyMentions((ids) =>
+          resolveProfilesByUserId(jwt, ids),
+        )
       } catch (err) {
         console.error('GET_MY_MENTIONS failed:', err)
         return []
