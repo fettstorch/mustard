@@ -177,7 +177,13 @@ export default defineBackground(() => {
         resolveProfilesByUserId(jwt, ids),
       )
     },
-    acknowledge: acknowledgeNotification,
+    async acknowledge(notificationId) {
+      // Native toast clicks bypass the message dispatcher's version gate, so an
+      // outdated (read-only) client would still delete the row. Mirror the popup:
+      // skip mark-seen while outdated; the click still routes to the page.
+      if (await isClientOutdated()) return
+      await acknowledgeNotification(notificationId)
+    },
   })
 
   /**
