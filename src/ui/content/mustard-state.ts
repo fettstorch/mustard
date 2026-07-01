@@ -2,10 +2,12 @@ import { reactive } from 'vue'
 import type { MustardNoteAnchorData } from '@/shared/model/MustardNoteAnchorData'
 import type { MustardNote } from '@/shared/model/MustardNote'
 import type { MustardComment } from '@/shared/model/MustardComment'
-import type { UserProfile } from '@/shared/model/UserProfile'
+import type { UserProfile, UserProfileType } from '@/shared/model/UserProfile'
 
 export type MustardState = {
   currentUserId: string | null
+  /** Providers linked to the current account, driving provider-specific copy (e.g. the publish warning). Empty when logged out. */
+  connectedProviders: UserProfileType[]
   editor: {
     isOpen: boolean
     anchor: MustardNoteAnchorData | null
@@ -44,6 +46,7 @@ export type MustardState = {
 export function createMustardState(): MustardState {
   return reactive({
     currentUserId: null,
+    connectedProviders: [],
     editor: {
       isOpen: false,
       anchor: null,

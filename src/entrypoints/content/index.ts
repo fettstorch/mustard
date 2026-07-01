@@ -434,6 +434,7 @@ export default defineContentScript({
       }
       if (message.type === 'SESSION_CHANGED') {
         mustardState.currentUserId = message.userId
+        mustardState.connectedProviders = message.providers
         if (message.userId) {
           document.getElementById('mustard-session-expired-banner')?.remove()
           fetchProfiles({ userIds: [message.userId] })
@@ -473,6 +474,9 @@ export default defineContentScript({
       .then((response) => {
         console.debug('mustard [content-script] session:', response)
         mustardState.currentUserId = response?.userId ?? null
+        mustardState.connectedProviders = [
+          ...new Set(response?.identities?.map((i) => i.provider) ?? []),
+        ]
         // Eagerly resolve the current user's profile so the comment editor can
         // render their avatar next to the input (and any other UI that wants it).
         if (response?.userId) fetchProfiles({ userIds: [response.userId] })

@@ -3,7 +3,7 @@ import type { DtoMustardComment } from './dto/DtoMustardComment'
 import type { DtoMyPagesOverview } from './dto/DtoMyPagesOverview'
 import type { DtoMustardMention } from './dto/DtoMustardMention'
 import type { Satisfies } from './Satisfies'
-import type { UserProfile, UserId, LinkedIdentity } from './model/UserProfile'
+import type { UserProfile, UserId, LinkedIdentity, UserProfileType } from './model/UserProfile'
 import type { MentionTarget } from './mentions'
 import type { BskyProfile } from './model/BskyProfile'
 import type { MentionCandidate } from './model/MentionCandidate'
@@ -187,6 +187,9 @@ export type SessionChangedMessage = Satisfies<
   {
     type: 'SESSION_CHANGED'
     userId: string | null // null means logged out
+    // Providers linked to the account, so content scripts can render
+    // provider-specific copy (e.g. the publish warning). Empty when logged out.
+    providers: UserProfileType[]
   }
 >
 

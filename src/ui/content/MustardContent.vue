@@ -284,6 +284,7 @@ function onNoteRepost(note: MustardNoteType, reposted: boolean) {
           v-if="pendingPublish?.source === note.id"
           variant="danger"
           title="Attention!"
+          :providers="mustardState.connectedProviders"
           @confirm="onPublishConfirm"
           @cancel="onPublishCancel"
         />
@@ -305,6 +306,7 @@ function onNoteRepost(note: MustardNoteType, reposted: boolean) {
           v-if="pendingPublish?.source === 'editor'"
           variant="danger"
           title="Attention!"
+          :providers="mustardState.connectedProviders"
           @confirm="onPublishConfirm"
           @cancel="onPublishCancel"
         />

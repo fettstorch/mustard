@@ -68,7 +68,12 @@ export default defineBackground(() => {
 
   /** Broadcast session change to all tabs so content scripts can update their state */
   async function broadcastSessionChanged(userId: string | null) {
-    await broadcastToAllTabs({ type: 'SESSION_CHANGED', userId })
+    // Derive the linked providers from the freshly-stored session (callers
+    // persist identities before broadcasting) so content scripts can render
+    // provider-specific copy. Logged out → no session → no providers.
+    const session = userId ? await getSession() : null
+    const providers = [...new Set(session?.identities.map((i) => i.provider) ?? [])]
+    await broadcastToAllTabs({ type: 'SESSION_CHANGED', userId, providers })
   }
 
   /**

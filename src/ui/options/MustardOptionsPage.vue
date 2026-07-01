@@ -41,6 +41,7 @@ import {
 } from '@/shared/messaging'
 import { getSupabaseJwt } from '@/background/auth/SupabaseAuth'
 import type { LinkedIdentity, UserProfileType } from '@/shared/model/UserProfile'
+import { PROVIDER_LABELS } from '@/shared/providers'
 
 const PUBLISH_CONFIRM_DISMISSED_KEY = 'mustard-publish-confirm-dismissed'
 const NOTES_MINIMIZED_KEY = 'mustard-notes-minimized'
@@ -76,8 +77,8 @@ const showBlueskyConnect = ref(false)
 
 // The providers Mustard can link, in display order.
 const SUPPORTED_PROVIDERS: { id: UserProfileType; label: string }[] = [
-  { id: 'atproto', label: 'Bluesky' },
-  { id: 'github', label: 'GitHub' },
+  { id: 'atproto', label: PROVIDER_LABELS.atproto },
+  { id: 'github', label: PROVIDER_LABELS.github },
 ]
 
 const linkedByProvider = computed<Record<string, LinkedIdentity | undefined>>(() => {

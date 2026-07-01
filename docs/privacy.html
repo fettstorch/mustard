@@ -44,7 +44,8 @@
         margin-top: 8px;
       }
 
-      p, li {
+      p,
+      li {
         font-size: 14px;
         line-height: 1.7;
       }
@@ -71,7 +72,8 @@
           color: #e5e5e5;
         }
 
-        h1, h2 {
+        h1,
+        h2 {
           color: #ffe066;
         }
 
@@ -92,7 +94,8 @@
         <h2>What Mustard does</h2>
         <p>
           Mustard is a browser extension that lets you annotate web pages with notes. Notes can be
-          saved locally in your browser or published to share with your Bluesky followers.
+          saved locally in your browser or published to share with your Bluesky and GitHub
+          followers.
         </p>
       </div>
 
@@ -100,15 +103,16 @@
         <h2>Data we collect</h2>
         <ul>
           <li>
-            <strong>Bluesky account information:</strong> If you log in, we receive your Bluesky DID
-            (decentralized identifier) and public profile information (display name, handle, avatar).
-            This is used solely for authentication and displaying note authorship.
+            <strong>Account information:</strong> If you log in, we receive account information from
+            the provider you use — your Bluesky DID (decentralized identifier) or your GitHub
+            account id — along with public profile information (display name, handle, avatar). This
+            is used solely for authentication and displaying note authorship.
           </li>
           <li>
-            <strong>Published notes:</strong> When you publish a note, we store the note content
-            (up to 300 characters), the page URL it is attached to, and positioning data (CSS selector
+            <strong>Published notes:</strong> When you publish a note, we store the note content (up
+            to 300 characters), the page URL it is attached to, and positioning data (CSS selector
             or click coordinates). This data is stored on our server (Supabase) and is visible to
-            anyone who follows you on Bluesky.
+            anyone who follows you on Bluesky or GitHub.
           </li>
           <li>
             <strong>Page URLs:</strong> When you visit a page, the extension checks whether any
@@ -120,8 +124,8 @@
       <div>
         <h2>Data stored locally</h2>
         <p>
-          Notes saved locally are stored in your browser's extension storage and never leave your browser.
-          Your authentication session is also stored locally.
+          Notes saved locally are stored in your browser's extension storage and never leave your
+          browser. Your authentication session is also stored locally.
         </p>
       </div>
 
@@ -146,6 +150,10 @@
             <strong>Bluesky (AT Protocol):</strong> Used for authentication and fetching your social
             graph (who you follow) to determine which notes to display.
           </li>
+          <li>
+            <strong>GitHub:</strong> Used for authentication and fetching your social graph (who you
+            follow) to determine which notes to display.
+          </li>
         </ul>
       </div>
 
@@ -153,8 +161,8 @@
         <h2>Data deletion</h2>
         <p>
           You can delete any note you have created at any time using the delete button on the note.
-          Local notes are removed from your browser immediately. Published notes are removed from our
-          server immediately. Uninstalling the extension removes all local data.
+          Local notes are removed from your browser immediately. Published notes are removed from
+          our server immediately. Uninstalling the extension removes all local data.
         </p>
       </div>
 

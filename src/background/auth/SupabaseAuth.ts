@@ -118,6 +118,6 @@ function isExpiringSoon(expiresAt: number): boolean {
 
 /** Notify all tabs that the session has been cleared so content scripts can update. */
 async function broadcastSessionCleared(): Promise<void> {
-  await broadcastToAllTabs({ type: 'SESSION_CHANGED', userId: null })
+  await broadcastToAllTabs({ type: 'SESSION_CHANGED', userId: null, providers: [] })
   await broadcastToAllTabs({ type: 'SESSION_EXPIRED' })
 }

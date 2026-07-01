@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
+import type { UserProfileType } from '@/shared/model/UserProfile'
+import { followersPhrase } from '@/shared/providers'
 
 const props = withDefaults(
   defineProps<{
@@ -8,6 +10,8 @@ const props = withDefaults(
     message?: string
     confirmLabel?: string
     cancelLabel?: string
+    /** Providers linked to the account; tailors the default warning's audience. */
+    providers?: UserProfileType[]
   }>(),
   {
     variant: 'default',
@@ -15,6 +19,7 @@ const props = withDefaults(
     message: undefined,
     confirmLabel: 'Publish',
     cancelLabel: 'Cancel',
+    providers: () => [],
   },
 )
 
@@ -24,6 +29,10 @@ const emit = defineEmits<{
 }>()
 
 const dontShowAgain = ref(false)
+
+// "all your Bluesky followers" / "all your GitHub followers" / "…Bluesky and
+// GitHub followers", matching whatever the account is actually linked to.
+const audience = computed(() => followersPhrase(props.providers))
 </script>
 
 <template>
@@ -40,7 +49,7 @@ const dontShowAgain = ref(false)
     <p class="bubble-message">
       <slot>
         {{ props.message ?? 'Your note will be visible to' }}
-        <strong v-if="!props.message">all your Bluesky followers</strong>
+        <strong v-if="!props.message">{{ audience }}</strong>
         <template v-if="!props.message">. Make sure not to share sensitive information.</template>
       </slot>
     </p>
