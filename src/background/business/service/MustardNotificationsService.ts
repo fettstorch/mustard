@@ -51,18 +51,13 @@ export interface MustardNotificationsService {
   getTotalUnreadCount(): Promise<number>
 
   /**
-   * The current user's unread @-mention notifications (in notes or comments),
-   * newest first. RLS scopes to the recipient.
-   */
-  getMyMentions(): Promise<RawMention[]>
-
-  /**
    * ALL of the current user's unread notifications — both mentions and comments
    * on their notes — newest first. RLS scopes to the recipient. Drives native
-   * browser notifications, which mirror every event the in-app system tracks.
+   * browser notifications and the popup's Mentions list (filtered to mentions by
+   * the caller), mirroring every event the in-app system tracks.
    */
   getUnreadNotifications(): Promise<RawNotification[]>
 
-  /** Delete a single notification row by id (acknowledge one mention). */
-  markMentionSeen(notificationId: string): Promise<void>
+  /** Delete a single notification row by id (mention or comment). */
+  markNotificationSeen(notificationId: string): Promise<void>
 }

@@ -13,7 +13,7 @@ import { mustardCommentsManager } from '@/background/business/MustardCommentsMan
 import { mustardNotificationsManager } from '@/background/business/MustardNotificationsManager'
 import { DtoMustardNote } from '@/shared/dto/DtoMustardNote'
 import { DtoMustardComment } from '@/shared/dto/DtoMustardComment'
-import type { DtoMustardNotification } from '@/shared/dto/DtoMustardMention'
+import { createNativeNotifications } from '@/background/native-notifications'
 import { login, atprotoDid } from '@/background/auth/AtprotoAuth'
 import {
   getSession,
@@ -146,128 +146,31 @@ export default defineBackground(() => {
     void broadcastNotificationsChanged()
   }
 
-  // --- Native browser notifications -----------------------------------------
-  // We never poll. Native OS toasts ride along on the unread-notification
-  // fetches the content script + popup already trigger (page loads, popup
-  // open): at each, we diff the current unread set against what we've already
-  // shown and toast the new ones. Default-on; users opt out in the options page.
-  const BROWSER_NOTIFICATIONS_ENABLED_KEY = 'mustard-browser-notifications-enabled'
-  // The notification ids we've already toasted, kept in sync with the current
-  // unread set so acknowledged ones drop out and the list stays bounded.
-  const NATIVE_NOTIFIED_IDS_KEY = 'mustard-native-notified-ids'
-  // notificationId → pageUrl, so a click can open the right page.
-  const NATIVE_NOTIF_TARGETS_KEY = 'mustard-native-notif-targets'
-  // Coalesce bursts (e.g. many tabs reloading) into at most one fetch per window.
-  const NATIVE_DISPATCH_MIN_INTERVAL_MS = 15_000
-  const NATIVE_NOTIF_ICON = browser.runtime.getURL('/mustard_bottle_smile_128.png')
-
-  let nativeDispatchInFlight = false
-  let lastNativeDispatchAt = 0
-
-  function nativeActorName(n: DtoMustardNotification): string {
-    return n.actorDisplayName || (n.actorHandle ? `@${n.actorHandle}` : 'Someone')
+  /**
+   * Acknowledge one notification by id — the single code path that both the
+   * popup's mention press (via the MARK_MENTION_SEEN message) and a native-toast
+   * click funnel through, so "engage with the notification → it's seen" behaves
+   * identically on both surfaces. Deletes the row (any type) and fans out the
+   * badge/UI refresh.
+   */
+  async function acknowledgeNotification(notificationId: string): Promise<void> {
+    await mustardNotificationsManager.markNotificationSeen(notificationId)
+    afterNotificationMutation()
   }
 
-  /**
-   * Fire native browser notifications for any unread notification we haven't
-   * shown yet. Fire-and-forget; safe to call on every notification fetch.
-   */
-  async function maybeFireNativeNotifications(): Promise<void> {
-    // Absent on some surfaces (e.g. older Firefox MV2); WXT types assume it
-    // exists, so guard before touching it.
-    if (!browser.notifications?.create) return
-    if (nativeDispatchInFlight) return
-    const now = Date.now()
-    if (now - lastNativeDispatchAt < NATIVE_DISPATCH_MIN_INTERVAL_MS) return
-    nativeDispatchInFlight = true
-    lastNativeDispatchAt = now
-    try {
-      const store = await browser.storage.local.get([
-        BROWSER_NOTIFICATIONS_ENABLED_KEY,
-        NATIVE_NOTIFIED_IDS_KEY,
-        NATIVE_NOTIF_TARGETS_KEY,
-      ])
-      // Default ON: only an explicit `false` disables it.
-      if (store[BROWSER_NOTIFICATIONS_ENABLED_KEY] === false) return
-
+  // Native OS notifications. The mechanics live in the dedicated module; here we
+  // just wire in the data sources. dispatch() rides the existing every-page-load
+  // / popup-open trigger (GET_ATPROTO_SESSION below).
+  const nativeNotifications = createNativeNotifications({
+    async fetchUnread() {
       const session = await getSession()
-      if (!session) return
-
+      if (!session) return null
       const jwt = await getSupabaseJwt()
-      const notifications = await mustardNotificationsManager.getUnreadNotifications((ids) =>
+      return mustardNotificationsManager.getUnreadNotifications((ids) =>
         resolveProfilesByUserId(jwt, ids),
       )
-      const currentIds = notifications.map((n) => n.id)
-
-      // First run (key never written): seed the "already shown" set without
-      // toasting, so enabling the feature never blasts a backlog of old unread.
-      const seen = store[NATIVE_NOTIFIED_IDS_KEY] as string[] | undefined
-      if (seen === undefined) {
-        await browser.storage.local.set({ [NATIVE_NOTIFIED_IDS_KEY]: currentIds })
-        return
-      }
-
-      const seenSet = new Set(seen)
-      const fresh = notifications.filter((n) => !seenSet.has(n.id))
-      const targets = { ...((store[NATIVE_NOTIF_TARGETS_KEY] as Record<string, string>) ?? {}) }
-
-      for (const n of fresh) {
-        const title =
-          n.type === 'mention'
-            ? `${nativeActorName(n)} mentioned you`
-            : `${nativeActorName(n)} commented on your note`
-        try {
-          await browser.notifications.create(n.id, {
-            type: 'basic',
-            iconUrl: NATIVE_NOTIF_ICON,
-            title,
-            message: n.snippet || '',
-          })
-          targets[n.id] = n.pageUrl
-        } catch (err) {
-          console.debug('mustard [service-worker] notifications.create failed:', err)
-        }
-      }
-
-      // Persist the set as exactly what's currently unread: acknowledged ids
-      // drop out (so we never re-toast and the list can't grow unbounded).
-      const nextTargets: Record<string, string> = {}
-      for (const id of currentIds) if (targets[id]) nextTargets[id] = targets[id]
-      await browser.storage.local.set({
-        [NATIVE_NOTIFIED_IDS_KEY]: currentIds,
-        [NATIVE_NOTIF_TARGETS_KEY]: nextTargets,
-      })
-    } catch (err) {
-      console.debug('mustard [service-worker] maybeFireNativeNotifications failed:', err)
-    } finally {
-      nativeDispatchInFlight = false
-    }
-  }
-
-  // Clicking a native notification opens (or focuses) the note's page.
-  browser.notifications?.onClicked?.addListener(async (notificationId) => {
-    try {
-      const store = await browser.storage.local.get(NATIVE_NOTIF_TARGETS_KEY)
-      const targets = (store[NATIVE_NOTIF_TARGETS_KEY] as Record<string, string>) ?? {}
-      const pageUrl = targets[notificationId]
-      browser.notifications?.clear?.(notificationId)
-      if (!pageUrl) return
-      // Focus an already-open tab for this URL if there is one; else open it.
-      try {
-        const existing = await browser.tabs.query({ url: pageUrl })
-        const tab = existing[0]
-        if (tab?.id != null) {
-          await browser.tabs.update(tab.id, { active: true })
-          if (tab.windowId != null) await browser.windows?.update?.(tab.windowId, { focused: true })
-          return
-        }
-      } catch {
-        // tabs.query can reject on some surfaces — fall through to opening a tab.
-      }
-      await browser.tabs.create({ url: pageUrl })
-    } catch (err) {
-      console.debug('mustard [service-worker] notification click failed:', err)
-    }
+    },
+    acknowledge: acknowledgeNotification,
   })
 
   /**
@@ -514,6 +417,12 @@ export default defineBackground(() => {
         updateActionBadge()
         if (!session) return null
 
+        // The single native-toast trigger: the content script (every page load)
+        // and the popup (on open) both send this, so a new mention/comment
+        // surfaces on any page — not only ones bearing notes. The dispatcher's
+        // own throttle + seen-set keep repeat calls cheap and duplicate-free.
+        void nativeNotifications.dispatch()
+
         // Older sessions (stored before multi-provider) may lack the identities
         // array. Lazily backfill it from the server so the options page can
         // render Connected Accounts without a separate round-trip.
@@ -716,8 +625,6 @@ export default defineBackground(() => {
       try {
         const session = await getSession()
         if (!session) return {}
-        // Page loads are our primary "poll": ride along to toast anything new.
-        void maybeFireNativeNotifications()
         const map = await mustardNotificationsManager.queryUnreadCountsForNotes(message.noteIds)
         const response: QueryNotificationsForNotesResponse = {}
         for (const [noteId, count] of map.entries()) {
@@ -744,7 +651,6 @@ export default defineBackground(() => {
       try {
         const session = await getSession()
         if (!session) return []
-        void maybeFireNativeNotifications()
         const overview = await mustardNotificationsManager.queryMyPagesOverview(session.userId)
         // Sync the badge whenever the popup pulls the overview — this is a
         // cheap natural-event trigger to keep the badge fresh.
@@ -760,11 +666,11 @@ export default defineBackground(() => {
       try {
         const session = await getSession()
         if (!session) return []
-        void maybeFireNativeNotifications()
         const jwt = await getSupabaseJwt()
-        return await mustardNotificationsManager.getMyMentions((ids) =>
+        const notifications = await mustardNotificationsManager.getUnreadNotifications((ids) =>
           resolveProfilesByUserId(jwt, ids),
         )
+        return notifications.filter((n) => n.type === 'mention')
       } catch (err) {
         console.error('GET_MY_MENTIONS failed:', err)
         return []
@@ -773,8 +679,7 @@ export default defineBackground(() => {
 
     MARK_MENTION_SEEN: async (message) => {
       try {
-        await mustardNotificationsManager.markMentionSeen(message.notificationId)
-        afterNotificationMutation()
+        await acknowledgeNotification(message.notificationId)
       } catch (err) {
         console.error('MARK_MENTION_SEEN failed:', err)
       }

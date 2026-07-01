@@ -88,8 +88,9 @@ export class MustardNotificationsServiceRemote implements MustardNotificationsSe
   async markSeenForNote(noteId: string): Promise<void> {
     // RLS limits deletes to recipient_id = auth.jwt().sub.
     // type='comment' so opening a note's comment thread clears only comment
-    // notifications — mention rows are acknowledged separately (markMentionSeen)
-    // via the popup's Mentions section, not silently wiped here.
+    // notifications — mention rows are acknowledged individually (markNotificationSeen)
+    // when their row is pressed in the popup or their native toast is clicked,
+    // not silently wiped here.
     const { error } = await supabase
       .from('notifications')
       .delete()
@@ -113,32 +114,14 @@ export class MustardNotificationsServiceRemote implements MustardNotificationsSe
     return count ?? 0
   }
 
-  async getMyMentions(): Promise<RawMention[]> {
-    // RLS scopes to recipient_id = auth.jwt().sub. Embeds pull the note's page
-    // URL + the source content for the snippet.
-    // supabase-js infers embedded resources as arrays, but a to-one FK embed
-    // (notifications → notes/comments) returns a single object (or null) at
-    // runtime — overrideTypes(merge:false) restates the real row shape.
-    const { data, error } = await supabase
-      .from('notifications')
-      .select(
-        'id, note_id, comment_id, actor_id, created_at, notes(page_url, content), comments(content)',
-      )
-      .eq('type', 'mention')
-      .order('created_at', { ascending: false })
-      .overrideTypes<DbMentionRow[], { merge: false }>()
-
-    if (error) {
-      throw new Error(`Failed to query mentions: ${error.message}`)
-    }
-
-    return (data ?? []).filter((row) => row.notes != null).map(toRawMention)
-  }
-
   async getUnreadNotifications(): Promise<RawNotification[]> {
-    // Like getMyMentions, but across BOTH types (no `type` filter) so native
-    // browser notifications cover mentions and comments-on-your-note alike.
-    // RLS still scopes to recipient_id = auth.jwt().sub.
+    // All unread rows of BOTH types (no `type` filter) so native browser
+    // notifications and the popup's Mentions list share one query; callers that
+    // want only mentions filter on `type`. RLS scopes to recipient_id =
+    // auth.jwt().sub. Embeds pull the note's page URL + the source content for
+    // the snippet. supabase-js infers embedded resources as arrays, but a to-one
+    // FK embed (notifications → notes/comments) returns a single object (or
+    // null) at runtime — overrideTypes(merge:false) restates the real row shape.
     const { data, error } = await supabase
       .from('notifications')
       .select(
@@ -156,11 +139,11 @@ export class MustardNotificationsServiceRemote implements MustardNotificationsSe
       .map((row) => ({ ...toRawMention(row), type: row.type }) satisfies RawNotification)
   }
 
-  async markMentionSeen(notificationId: string): Promise<void> {
+  async markNotificationSeen(notificationId: string): Promise<void> {
     // RLS limits deletes to recipient_id = auth.jwt().sub.
     const { error } = await supabase.from('notifications').delete().eq('id', notificationId)
     if (error) {
-      throw new Error(`Failed to mark mention seen: ${error.message}`)
+      throw new Error(`Failed to mark notification seen: ${error.message}`)
     }
   }
 }
