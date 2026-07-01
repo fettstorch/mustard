@@ -26,6 +26,10 @@ const NOTIFIED_IDS_KEY = 'mustard-native-notified-ids'
 const TARGETS_KEY = 'mustard-native-notif-targets'
 // Coalesce bursts (e.g. many tabs reloading) into at most one fetch per window.
 const DISPATCH_MIN_INTERVAL_MS = 15_000
+// Firefox drops toasts created in rapid succession (per MDN), so a multi-row
+// batch can show zero. Space successive creates out — Firefox only, since Chrome
+// has no such quirk and we don't want to keep its MV3 worker alive longer.
+const FIREFOX_CREATE_STAGGER_MS = 500
 
 type NativeNotifTarget = { pageUrl: string; noteId: string }
 
@@ -103,7 +107,12 @@ export function createNativeNotifications(deps: NativeNotificationsDeps): Native
       const targets = { ...((store[TARGETS_KEY] as Record<string, NativeNotifTarget>) ?? {}) }
       const fired = new Set<string>()
 
+      let staggered = false
       for (const n of fresh) {
+        if (import.meta.env.FIREFOX && staggered) {
+          await new Promise((resolve) => setTimeout(resolve, FIREFOX_CREATE_STAGGER_MS))
+        }
+        staggered = true
         const title =
           n.type === 'mention'
             ? `${actorName(n)} mentioned you`
