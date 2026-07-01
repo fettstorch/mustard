@@ -1,5 +1,5 @@
 import type { DtoMyPagesOverview } from '@/shared/dto/DtoMyPagesOverview'
-import type { DtoMustardMention } from '@/shared/dto/DtoMustardMention'
+import type { DtoMustardNotification } from '@/shared/dto/DtoMustardMention'
 import type { UserProfile } from '@/shared/model/UserProfile'
 import { MustardNotificationsServiceRemote } from './service/MustardNotificationsServiceRemote'
 import { mustardNotesServiceRemote } from './service/MustardNotesServiceRemote'
@@ -36,42 +36,44 @@ export const mustardNotificationsManager = {
     }
   },
 
+  /** Acknowledge a single notification (mention or comment) by its id. */
+  async markNotificationSeen(notificationId: string): Promise<void> {
+    await notificationsService.markNotificationSeen(notificationId)
+  },
+
   /**
-   * The current user's unread @-mentions (note + comment), newest first, with
-   * each actor (the person who mentioned you) resolved to a profile so the popup
-   * can render avatar + handle without an extra round-trip.
+   * All of the current user's unread notifications (mentions AND comments on
+   * their notes), newest first, with each actor resolved to a profile. Drives
+   * both native browser notifications and the popup's Mentions list (filtered to
+   * `type === 'mention'` by the caller).
    *
    * Actor ids are opaque Mustard UUIDs (post multi-provider migration), so
    * resolution goes through the caller-supplied resolver (identities → atproto
    * Bluesky / github) rather than a direct DID-based Bluesky lookup.
    */
-  async getMyMentions(
+  async getUnreadNotifications(
     resolveProfiles: (userIds: string[]) => Promise<Record<string, UserProfile | null>>,
-  ): Promise<DtoMustardMention[]> {
-    const raw = await notificationsService.getMyMentions()
-    const actorIds = [...new Set(raw.map((m) => m.actorId))]
+  ): Promise<DtoMustardNotification[]> {
+    const raw = await notificationsService.getUnreadNotifications()
+    const actorIds = [...new Set(raw.map((n) => n.actorId))]
     const profiles = actorIds.length > 0 ? await resolveProfiles(actorIds) : {}
 
-    return raw.map((m) => {
-      const profile = profiles[m.actorId] ?? null
+    return raw.map((n) => {
+      const profile = profiles[n.actorId] ?? null
       return {
-        id: m.id,
-        noteId: m.noteId,
-        pageUrl: m.pageUrl,
-        actorId: m.actorId,
+        id: n.id,
+        noteId: n.noteId,
+        pageUrl: n.pageUrl,
+        actorId: n.actorId,
         actorHandle: profile?.handle ?? null,
         actorDisplayName: profile?.displayName ?? null,
         actorAvatarUrl: profile?.avatarUrl ?? null,
-        source: m.source,
-        snippet: m.snippet,
-        createdAt: m.createdAt,
-      } satisfies DtoMustardMention
+        source: n.source,
+        snippet: n.snippet,
+        createdAt: n.createdAt,
+        type: n.type,
+      } satisfies DtoMustardNotification
     })
-  },
-
-  /** Acknowledge a single mention by its notification id. */
-  async markMentionSeen(notificationId: string): Promise<void> {
-    await notificationsService.markMentionSeen(notificationId)
   },
 
   /**

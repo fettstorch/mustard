@@ -1,4 +1,8 @@
-import type { MustardNotificationsService, RawMention } from './MustardNotificationsService'
+import type {
+  MustardNotificationsService,
+  RawMention,
+  RawNotification,
+} from './MustardNotificationsService'
 import { supabase } from '@/background/supabase-client'
 import { makeMentionSentinelRegex } from '@/shared/mentions'
 
@@ -17,6 +21,25 @@ interface DbMentionRow {
   created_at: string
   notes: { page_url: string; content: string } | null
   comments: { content: string } | null
+}
+
+interface DbNotificationFullRow extends DbMentionRow {
+  type: 'mention' | 'comment'
+}
+
+/** Map a joined notifications row to the shared raw shape (snippet from note or comment). */
+function toRawMention(row: DbMentionRow): RawMention {
+  const isComment = row.comment_id != null
+  const rawContent = isComment ? (row.comments?.content ?? '') : (row.notes?.content ?? '')
+  return {
+    id: row.id,
+    noteId: row.note_id,
+    pageUrl: row.notes?.page_url ?? '',
+    actorId: row.actor_id,
+    source: isComment ? 'comment' : 'note',
+    snippet: toSnippet(rawContent),
+    createdAt: new Date(row.created_at).getTime(),
+  }
 }
 
 /**
@@ -65,8 +88,9 @@ export class MustardNotificationsServiceRemote implements MustardNotificationsSe
   async markSeenForNote(noteId: string): Promise<void> {
     // RLS limits deletes to recipient_id = auth.jwt().sub.
     // type='comment' so opening a note's comment thread clears only comment
-    // notifications — mention rows are acknowledged separately (markMentionSeen)
-    // via the popup's Mentions section, not silently wiped here.
+    // notifications — mention rows are acknowledged individually (markNotificationSeen)
+    // when their row is pressed in the popup or their native toast is clicked,
+    // not silently wiped here.
     const { error } = await supabase
       .from('notifications')
       .delete()
@@ -90,47 +114,36 @@ export class MustardNotificationsServiceRemote implements MustardNotificationsSe
     return count ?? 0
   }
 
-  async getMyMentions(): Promise<RawMention[]> {
-    // RLS scopes to recipient_id = auth.jwt().sub. Embeds pull the note's page
-    // URL + the source content for the snippet.
-    // supabase-js infers embedded resources as arrays, but a to-one FK embed
-    // (notifications → notes/comments) returns a single object (or null) at
-    // runtime — overrideTypes(merge:false) restates the real row shape.
+  async getUnreadNotifications(): Promise<RawNotification[]> {
+    // All unread rows of BOTH types (no `type` filter) so native browser
+    // notifications and the popup's Mentions list share one query; callers that
+    // want only mentions filter on `type`. RLS scopes to recipient_id =
+    // auth.jwt().sub. Embeds pull the note's page URL + the source content for
+    // the snippet. supabase-js infers embedded resources as arrays, but a to-one
+    // FK embed (notifications → notes/comments) returns a single object (or
+    // null) at runtime — overrideTypes(merge:false) restates the real row shape.
     const { data, error } = await supabase
       .from('notifications')
       .select(
-        'id, note_id, comment_id, actor_id, created_at, notes(page_url, content), comments(content)',
+        'id, type, note_id, comment_id, actor_id, created_at, notes(page_url, content), comments(content)',
       )
-      .eq('type', 'mention')
       .order('created_at', { ascending: false })
-      .overrideTypes<DbMentionRow[], { merge: false }>()
+      .overrideTypes<DbNotificationFullRow[], { merge: false }>()
 
     if (error) {
-      throw new Error(`Failed to query mentions: ${error.message}`)
+      throw new Error(`Failed to query notifications: ${error.message}`)
     }
 
     return (data ?? [])
       .filter((row) => row.notes != null)
-      .map((row) => {
-        const isComment = row.comment_id != null
-        const rawContent = isComment ? (row.comments?.content ?? '') : (row.notes?.content ?? '')
-        return {
-          id: row.id,
-          noteId: row.note_id,
-          pageUrl: row.notes?.page_url ?? '',
-          actorId: row.actor_id,
-          source: isComment ? 'comment' : 'note',
-          snippet: toSnippet(rawContent),
-          createdAt: new Date(row.created_at).getTime(),
-        } satisfies RawMention
-      })
+      .map((row) => ({ ...toRawMention(row), type: row.type }) satisfies RawNotification)
   }
 
-  async markMentionSeen(notificationId: string): Promise<void> {
+  async markNotificationSeen(notificationId: string): Promise<void> {
     // RLS limits deletes to recipient_id = auth.jwt().sub.
     const { error } = await supabase.from('notifications').delete().eq('id', notificationId)
     if (error) {
-      throw new Error(`Failed to mark mention seen: ${error.message}`)
+      throw new Error(`Failed to mark notification seen: ${error.message}`)
     }
   }
 }

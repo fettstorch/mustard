@@ -46,6 +46,7 @@ const PUBLISH_CONFIRM_DISMISSED_KEY = 'mustard-publish-confirm-dismissed'
 const NOTES_MINIMIZED_KEY = 'mustard-notes-minimized'
 const SHOW_ANCHOR_IN_EDITOR_KEY = 'mustard-show-anchor-in-editor'
 const ALT_CLICK_ENABLED_KEY = 'mustard-alt-click-enabled'
+const BROWSER_NOTIFICATIONS_ENABLED_KEY = 'mustard-browser-notifications-enabled'
 
 const logoUrl = browser.runtime.getURL('/mustard_bottle_smile_512.png')
 const helloMustardUrl = 'https://fettstorch.github.io/mustard/'
@@ -55,6 +56,8 @@ const showPublishWarning = ref(true)
 const minimizeNotes = ref(false)
 const showAnchorInEditor = ref(false)
 const altClickEnabled = ref(false)
+// Default ON — users discover native notifications and can switch them off here.
+const browserNotificationsEnabled = ref(true)
 const selectedFontId = ref<string>(DEFAULT_FONT_ID)
 const selectedThemeId = ref<string>(DEFAULT_THEME_ID)
 
@@ -99,6 +102,7 @@ onMounted(async () => {
     NOTES_MINIMIZED_KEY,
     SHOW_ANCHOR_IN_EDITOR_KEY,
     ALT_CLICK_ENABLED_KEY,
+    BROWSER_NOTIFICATIONS_ENABLED_KEY,
     MUSTARD_FONT_KEY,
     MUSTARD_THEME_KEY,
   ])
@@ -106,6 +110,8 @@ onMounted(async () => {
   minimizeNotes.value = !!result[NOTES_MINIMIZED_KEY]
   showAnchorInEditor.value = !!result[SHOW_ANCHOR_IN_EDITOR_KEY]
   altClickEnabled.value = !!result[ALT_CLICK_ENABLED_KEY]
+  // Missing == enabled (default on).
+  browserNotificationsEnabled.value = result[BROWSER_NOTIFICATIONS_ENABLED_KEY] !== false
   selectedFontId.value = getFontById(result[MUSTARD_FONT_KEY] as string | undefined).id
   selectedThemeId.value = getThemeById(result[MUSTARD_THEME_KEY] as string | undefined).id
 
@@ -158,6 +164,12 @@ function onShowAnchorInEditorChange() {
 
 function onAltClickEnabledChange() {
   browser.storage.local.set({ [ALT_CLICK_ENABLED_KEY]: altClickEnabled.value })
+}
+
+function onBrowserNotificationsChange() {
+  browser.storage.local.set({
+    [BROWSER_NOTIFICATIONS_ENABLED_KEY]: browserNotificationsEnabled.value,
+  })
 }
 
 function onFontChange() {
@@ -418,6 +430,21 @@ async function disconnect(provider: string, label: string) {
             When on, holding {{ isMacPlatform ? 'Option (⌥)' : 'Alt' }} and clicking anywhere on a
             page creates a mustard note there. Off by default so it won't interfere with sites that
             use {{ isMacPlatform ? 'Option' : 'Alt' }}+Click.
+          </span>
+        </div>
+        <div class="pref-row pref-row-stack">
+          <label class="pref-row">
+            <input
+              v-model="browserNotificationsEnabled"
+              type="checkbox"
+              class="pref-checkbox"
+              @change="onBrowserNotificationsChange"
+            />
+            <span class="pref-label">Browser notifications</span>
+          </label>
+          <span class="pref-hint">
+            Get a native browser notification when someone mentions you or comments on your note —
+            on top of the in-app badge. Picked up as you browse, so there may be a short delay.
           </span>
         </div>
         <div class="pref-row pref-row-stack">

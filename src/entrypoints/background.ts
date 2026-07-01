@@ -13,6 +13,10 @@ import { mustardCommentsManager } from '@/background/business/MustardCommentsMan
 import { mustardNotificationsManager } from '@/background/business/MustardNotificationsManager'
 import { DtoMustardNote } from '@/shared/dto/DtoMustardNote'
 import { DtoMustardComment } from '@/shared/dto/DtoMustardComment'
+import {
+  createNativeNotifications,
+  clearNativeNotificationState,
+} from '@/background/native-notifications'
 import { login, atprotoDid } from '@/background/auth/AtprotoAuth'
 import {
   getSession,
@@ -144,6 +148,43 @@ export default defineBackground(() => {
     void updateActionBadge()
     void broadcastNotificationsChanged()
   }
+
+  /**
+   * Acknowledge one notification by id — the single code path that both the
+   * popup's mention press (via the MARK_MENTION_SEEN message) and a native-toast
+   * click funnel through, so "engage with the notification → it's seen" behaves
+   * identically on both surfaces. Deletes the row (any type) and fans out the
+   * badge/UI refresh.
+   */
+  async function acknowledgeNotification(notificationId: string): Promise<void> {
+    await mustardNotificationsManager.markNotificationSeen(notificationId)
+    afterNotificationMutation()
+  }
+
+  // Native OS notifications. The mechanics live in the dedicated module; here we
+  // just wire in the data sources. dispatch() rides the existing every-page-load
+  // / popup-open trigger (GET_ATPROTO_SESSION below).
+  const nativeNotifications = createNativeNotifications({
+    async fetchUnread() {
+      const session = await getSession()
+      if (!session) return null
+      // A session can outlive a usable JWT (transient refresh failure, missing
+      // cache). Without a JWT the notifications query runs anon and RLS yields
+      // [], which would wrongly seed/wipe the seen-set. Bail so dispatch no-ops.
+      const jwt = await getSupabaseJwt()
+      if (!jwt) return null
+      return mustardNotificationsManager.getUnreadNotifications((ids) =>
+        resolveProfilesByUserId(jwt, ids),
+      )
+    },
+    async acknowledge(notificationId) {
+      // Native toast clicks bypass the message dispatcher's version gate, so an
+      // outdated (read-only) client would still delete the row. Mirror the popup:
+      // skip mark-seen while outdated; the click still routes to the page.
+      if (await isClientOutdated()) return
+      await acknowledgeNotification(notificationId)
+    },
+  })
 
   /**
    * Browser-agnostic accessor for the toolbar action API.
@@ -389,6 +430,12 @@ export default defineBackground(() => {
         updateActionBadge()
         if (!session) return null
 
+        // The single native-toast trigger: the content script (every page load)
+        // and the popup (on open) both send this, so a new mention/comment
+        // surfaces on any page — not only ones bearing notes. The dispatcher's
+        // own throttle + seen-set keep repeat calls cheap and duplicate-free.
+        void nativeNotifications.dispatch()
+
         // Older sessions (stored before multi-provider) may lack the identities
         // array. Lazily backfill it from the server so the options page can
         // render Connected Accounts without a separate round-trip.
@@ -413,6 +460,7 @@ export default defineBackground(() => {
       try {
         await logout(message.userId)
         await clearSupabaseJwt()
+        await clearNativeNotificationState()
         invalidateRemoteIndexCache()
         mutualsService.clear()
         broadcastSessionChanged(null)
@@ -436,6 +484,7 @@ export default defineBackground(() => {
           // Tear down local state exactly like a logout.
           await logout(session?.userId ?? '')
           await clearSupabaseJwt()
+          await clearNativeNotificationState()
           mutualsService.clear()
           broadcastSessionChanged(null)
         } else {
@@ -633,9 +682,10 @@ export default defineBackground(() => {
         const session = await getSession()
         if (!session) return []
         const jwt = await getSupabaseJwt()
-        return await mustardNotificationsManager.getMyMentions((ids) =>
+        const notifications = await mustardNotificationsManager.getUnreadNotifications((ids) =>
           resolveProfilesByUserId(jwt, ids),
         )
+        return notifications.filter((n) => n.type === 'mention')
       } catch (err) {
         console.error('GET_MY_MENTIONS failed:', err)
         return []
@@ -644,8 +694,7 @@ export default defineBackground(() => {
 
     MARK_MENTION_SEEN: async (message) => {
       try {
-        await mustardNotificationsManager.markMentionSeen(message.notificationId)
-        afterNotificationMutation()
+        await acknowledgeNotification(message.notificationId)
       } catch (err) {
         console.error('MARK_MENTION_SEEN failed:', err)
       }

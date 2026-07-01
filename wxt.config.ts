@@ -52,7 +52,7 @@ export default defineConfig({
           },
         }
       : {}),
-    permissions: ['storage', 'contextMenus', 'identity'],
+    permissions: ['storage', 'contextMenus', 'identity', 'notifications'],
     host_permissions: ['<all_urls>'],
     // Keyboard shortcuts. Users can rebind via:
     //   - Chrome:  chrome://extensions/shortcuts
