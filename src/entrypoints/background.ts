@@ -13,7 +13,10 @@ import { mustardCommentsManager } from '@/background/business/MustardCommentsMan
 import { mustardNotificationsManager } from '@/background/business/MustardNotificationsManager'
 import { DtoMustardNote } from '@/shared/dto/DtoMustardNote'
 import { DtoMustardComment } from '@/shared/dto/DtoMustardComment'
-import { createNativeNotifications } from '@/background/native-notifications'
+import {
+  createNativeNotifications,
+  clearNativeNotificationState,
+} from '@/background/native-notifications'
 import { login, atprotoDid } from '@/background/auth/AtprotoAuth'
 import {
   getSession,
@@ -447,6 +450,7 @@ export default defineBackground(() => {
       try {
         await logout(message.userId)
         await clearSupabaseJwt()
+        await clearNativeNotificationState()
         invalidateRemoteIndexCache()
         mutualsService.clear()
         broadcastSessionChanged(null)
@@ -470,6 +474,7 @@ export default defineBackground(() => {
           // Tear down local state exactly like a logout.
           await logout(session?.userId ?? '')
           await clearSupabaseJwt()
+          await clearNativeNotificationState()
           mutualsService.clear()
           broadcastSessionChanged(null)
         } else {

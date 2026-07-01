@@ -49,6 +49,18 @@ interface NativeNotifications {
 }
 
 /**
+ * Drop the per-session dispatch state (the "already shown" seen-set + click
+ * targets). Both keys are global in storage.local while the data behind them is
+ * session-scoped, so a logout/account switch must reset them — otherwise the
+ * next account's `seen` set is non-empty, its existing unread never gets seeded,
+ * and the first dispatch toasts its whole backlog. Clearing makes the next login
+ * hit the first-run seed path (no backlog blast). Call on session teardown.
+ */
+export async function clearNativeNotificationState(): Promise<void> {
+  await browser.storage.local.remove([NOTIFIED_IDS_KEY, TARGETS_KEY])
+}
+
+/**
  * Create the native-notifications dispatcher and register the toast-click
  * handler. Call once from the background composition root.
  */
