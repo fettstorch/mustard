@@ -168,7 +168,11 @@ export default defineBackground(() => {
     async fetchUnread() {
       const session = await getSession()
       if (!session) return null
+      // A session can outlive a usable JWT (transient refresh failure, missing
+      // cache). Without a JWT the notifications query runs anon and RLS yields
+      // [], which would wrongly seed/wipe the seen-set. Bail so dispatch no-ops.
       const jwt = await getSupabaseJwt()
+      if (!jwt) return null
       return mustardNotificationsManager.getUnreadNotifications((ids) =>
         resolveProfilesByUserId(jwt, ids),
       )
