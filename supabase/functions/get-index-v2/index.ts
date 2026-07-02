@@ -1,17 +1,23 @@
 import * as jose from 'https://deno.land/x/jose@v5.2.0/index.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
-
-// Mustard official account — always included so every user sees official notes.
-// This is the official account's atproto DID. User_ids are opaque UUIDs now, so
-// at request time we resolve this DID → its Mustard userId via `identities`.
-const MUSTARD_OFFICIAL_DID = 'did:plc:sxwohckesqi25evf7jxfshdz'
+import type { SupabaseClient } from 'jsr:@supabase/supabase-js@2'
 
 const BATCH_SIZE = 200
 const MAX_FOLLOWS = 5000
 
-// ─── Types ───────────────────────────────────────────────────────────────────
+// Refresh a user's follow graph at most hourly. Between refreshes the index is
+// served entirely from Postgres (follows_cache + get_index_payload) — zero
+// external API calls on the hot path.
+const FOLLOWS_TTL_MS = 60 * 60 * 1000
+// Claim-loser poll on a cold cache: 20 × 500ms = 10s max.
+const COLD_WAIT_ATTEMPTS = 20
+const COLD_WAIT_INTERVAL_MS = 500
 
-type Supabase = ReturnType<typeof createClient>
+// Supabase's deployed edge runtime exposes EdgeRuntime for background tasks;
+// local `supabase functions serve` may not.
+declare const EdgeRuntime: { waitUntil(promise: Promise<unknown>): void } | undefined
+
+// ─── Types ───────────────────────────────────────────────────────────────────
 
 interface IdentityRow {
   provider: string
@@ -24,13 +30,6 @@ interface ProviderAccount {
   providerAccountId: string
 }
 
-interface NoteRow {
-  id: string
-  author_id: string
-  page_url: string
-  updated_at: string
-}
-
 interface FollowRecord {
   did: string
   handle: string
@@ -39,6 +38,20 @@ interface FollowRecord {
 interface FollowsResponse {
   follows: FollowRecord[]
   cursor?: string
+}
+
+/**
+ * Shape returned by the get_index_payload RPC (migration 015). Everything
+ * except followsFetchedAt is the client-facing response contract.
+ */
+interface IndexPayload {
+  index: Record<string, string[]>
+  myUnreadByPage: Record<string, number>
+  latestNoteAtByPage: Record<string, number>
+  repostedNoteIds: string[]
+  mentionedNoteIds: string[]
+  repostersByNoteId: Record<string, string[]>
+  followsFetchedAt: string | null
 }
 
 // Thrown by helpers to short-circuit with a specific HTTP status; mapped to a
@@ -87,10 +100,18 @@ async function verifyRequest(req: Request, userId: string): Promise<void> {
   if (sub !== userId) throw new HttpError(403, 'userId does not match authenticated user')
 }
 
+// ─── Supabase client (module scope: reused across requests) ──────────────────
+
+const supabase = createClient(
+  Deno.env.get('SUPABASE_URL')!,
+  Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+)
+
 // ─── Provider follow fetchers ─────────────────────────────────────────────────
 //
 // Each fetcher returns ProviderAccount pairs — the canonical external identity
-// for each person the user follows on that provider.
+// for each person the user follows on that provider. These run only inside
+// refreshFollows (at most once per user per FOLLOWS_TTL_MS), never per request.
 
 /** Fetch all accounts the user follows on Bluesky (paginated, capped). */
 async function fetchAtprotoFollows(did: string): Promise<ProviderAccount[]> {
@@ -143,7 +164,7 @@ async function fetchGithubFollows(accessToken: string): Promise<ProviderAccount[
 /** Fetch the accounts a single linked identity follows on its provider. */
 async function fetchFollowsForIdentity(
   identity: IdentityRow,
-  supabase: Supabase,
+  supabase: SupabaseClient,
 ): Promise<ProviderAccount[]> {
   if (identity.provider === 'atproto') {
     return fetchAtprotoFollows(identity.provider_account_id)
@@ -173,7 +194,7 @@ async function fetchFollowsForIdentity(
  */
 async function resolveFollowsToUserIds(
   follows: ProviderAccount[],
-  supabase: Supabase,
+  supabase: SupabaseClient,
 ): Promise<string[]> {
   if (follows.length === 0) return []
 
@@ -197,123 +218,104 @@ async function resolveFollowsToUserIds(
         .in('provider_account_id', accountIds)
 
       if (error) throw new Error(`identities lookup failed: ${error.message}`)
-      for (const row of (data ?? []) as { user_id: string }[]) userIds.add(row.user_id)
+      // supabase-js rows are untyped for an untyped client; the row shape is the select above.
+      const rows = (data ?? []) as { user_id: string }[]
+      for (const row of rows) userIds.add(row.user_id)
     }
   }
 
   return [...userIds]
 }
 
-/** Resolve the official Mustard account's userId (skipped if not signed up). */
-async function resolveOfficialUserId(supabase: Supabase): Promise<string | undefined> {
-  const { data } = await supabase
-    .from('identities')
-    .select('user_id')
-    .eq('provider', 'atproto')
-    .eq('provider_account_id', MUSTARD_OFFICIAL_DID)
-    .maybeSingle()
-  return (data as { user_id: string } | null)?.user_id
+// ─── Follows cache (stale-while-revalidate) ────────────────────────────────────
+
+/** One round-trip: the full index payload computed in SQL (migration 015). */
+async function fetchPayload(userId: string): Promise<IndexPayload> {
+  const { data, error } = await supabase.rpc('get_index_payload', { p_user_id: userId })
+  if (error) throw new Error(`get_index_payload failed: ${error.message}`)
+  // supabase-js types rpc() results as generic Json; the shape is defined by
+  // the get_index_payload function (migration 015).
+  const payload = data as IndexPayload
+  return payload
 }
 
-// ─── Note / visibility queries ─────────────────────────────────────────────────
-
-/** All notes authored by any of `authorIds`. */
-async function fetchNotesByAuthors(supabase: Supabase, authorIds: string[]): Promise<NoteRow[]> {
-  const notes: NoteRow[] = []
-  for (let i = 0; i < authorIds.length; i += BATCH_SIZE) {
-    const batch = authorIds.slice(i, i + BATCH_SIZE)
-    const { data, error } = await supabase
-      .from('notes')
-      .select('id, author_id, page_url, updated_at')
-      .in('author_id', batch)
-    if (error) throw new Error(`Supabase query failed: ${error.message}`)
-    notes.push(...((data ?? []) as NoteRow[]))
-  }
-  return notes
-}
-
-/** Note ids that any of `reposterIds` has reposted. */
-async function fetchRepostedNoteIds(supabase: Supabase, reposterIds: string[]): Promise<Set<string>> {
-  const set = new Set<string>()
-  for (let i = 0; i < reposterIds.length; i += BATCH_SIZE) {
-    const batch = reposterIds.slice(i, i + BATCH_SIZE)
-    const { data, error } = await supabase.from('reposts').select('note_id').in('reposter_id', batch)
-    if (error) throw new Error(`Reposts visibility query failed: ${error.message}`)
-    for (const row of (data ?? []) as { note_id: string }[]) set.add(row.note_id)
-  }
-  return set
+/** True when this instance won the refresh claim (row inserted or stale claim taken over). */
+async function claimRefresh(userId: string): Promise<boolean> {
+  const { data, error } = await supabase.rpc('claim_follows_refresh', { p_user_id: userId })
+  if (error) throw new Error(`claim_follows_refresh failed: ${error.message}`)
+  return data === true
 }
 
 /**
- * Note ids that mention the viewer. mentions[] stores provider account ids
- * (DIDs / github ids), so we test array-overlap (`&&`) against the viewer's own
- * account ids — not their userId.
+ * Fetch follows from every linked provider, resolve to Mustard userIds, store
+ * in follows_cache and release the claim. On failure: release the claim but
+ * keep the previous row (stale data beats no data); the next request after the
+ * claim window retries. Never throws.
  */
-async function fetchMentionedNoteIds(
-  supabase: Supabase,
-  viewerAccountIds: string[],
-): Promise<Set<string>> {
-  const set = new Set<string>()
-  if (viewerAccountIds.length === 0) return set
-
-  const noteRes = await supabase.from('notes').select('id').overlaps('mentions', viewerAccountIds)
-  if (noteRes.error) throw new Error(`Note-mention visibility query failed: ${noteRes.error.message}`)
-  for (const row of (noteRes.data ?? []) as { id: string }[]) set.add(row.id)
-
-  const commentRes = await supabase
-    .from('comments')
-    .select('note_id')
-    .overlaps('mentions', viewerAccountIds)
-  if (commentRes.error) {
-    throw new Error(`Comment-mention visibility query failed: ${commentRes.error.message}`)
-  }
-  for (const row of (commentRes.data ?? []) as { note_id: string }[]) set.add(row.note_id)
-
-  return set
-}
-
-/** Map of noteId → unique reposter ids, for the given visible note ids. */
-async function fetchRepostersByNoteId(
-  supabase: Supabase,
-  visibleNoteIds: string[],
-): Promise<Record<string, string[]>> {
-  const repostersByNoteId: Record<string, string[]> = {}
-  for (let i = 0; i < visibleNoteIds.length; i += BATCH_SIZE) {
-    const batch = visibleNoteIds.slice(i, i + BATCH_SIZE)
+async function refreshFollows(userId: string): Promise<void> {
+  try {
     const { data, error } = await supabase
-      .from('reposts')
-      .select('note_id, reposter_id')
-      .in('note_id', batch)
-    if (error) throw new Error(`Reposters query failed: ${error.message}`)
-    for (const row of (data ?? []) as { note_id: string; reposter_id: string }[]) {
-      const list = (repostersByNoteId[row.note_id] ??= [])
-      if (!list.includes(row.reposter_id)) list.push(row.reposter_id)
-    }
+      .from('identities')
+      .select('provider, provider_account_id')
+      .eq('user_id', userId)
+    if (error) throw new Error(`identities fetch failed: ${error.message}`)
+    const identities = (data ?? []) as IdentityRow[]
+
+    // Per-provider graceful degrade: a dead github token contributes []
+    // instead of failing the whole refresh.
+    const followLists = await Promise.all(
+      identities.map((identity) =>
+        fetchFollowsForIdentity(identity, supabase).catch((err) => {
+          console.warn(
+            `[get-index-v2] follows fetch failed for ${identity.provider}:${identity.provider_account_id}:`,
+            err,
+          )
+          return [] as ProviderAccount[]
+        }),
+      ),
+    )
+    const followedUserIds = await resolveFollowsToUserIds(followLists.flat(), supabase)
+
+    const { error: upsertError } = await supabase.from('follows_cache').upsert({
+      user_id: userId,
+      followed_user_ids: followedUserIds,
+      fetched_at: new Date().toISOString(),
+      refresh_started_at: null,
+    })
+    if (upsertError) throw new Error(`follows_cache upsert failed: ${upsertError.message}`)
+  } catch (err) {
+    console.error('[get-index-v2] follows refresh failed:', err)
+    await supabase.from('follows_cache').update({ refresh_started_at: null }).eq('user_id', userId)
   }
-  return repostersByNoteId
 }
 
-/** Count of the viewer's unread notifications, keyed by the page their note is on. */
-async function fetchUnreadByPage(
-  supabase: Supabase,
-  userId: string,
-  myNotePageById: Map<string, string>,
-): Promise<Record<string, number>> {
-  const myUnreadByPage: Record<string, number> = {}
-  if (myNotePageById.size === 0) return myUnreadByPage
+function delay(ms: number): Promise<void> {
+  const { promise, resolve } = Promise.withResolvers<void>()
+  setTimeout(resolve, ms)
+  return promise
+}
 
-  const { data, error } = await supabase
-    .from('notifications')
-    .select('note_id')
-    .eq('recipient_id', userId)
-  if (error) throw new Error(`Failed to query notifications: ${error.message}`)
-
-  for (const row of (data ?? []) as { note_id: string }[]) {
-    const pageUrl = myNotePageById.get(row.note_id)
-    if (!pageUrl) continue
-    myUnreadByPage[pageUrl] = (myUnreadByPage[pageUrl] ?? 0) + 1
+/** Claim-loser path on cold cache: poll until the winner's refresh lands (≤10s). */
+async function waitForFreshCache(userId: string): Promise<boolean> {
+  for (let i = 0; i < COLD_WAIT_ATTEMPTS; i++) {
+    await delay(COLD_WAIT_INTERVAL_MS)
+    const { data } = await supabase
+      .from('follows_cache')
+      .select('fetched_at')
+      .eq('user_id', userId)
+      .maybeSingle()
+    if (data?.fetched_at) return true
   }
-  return myUnreadByPage
+  return false
+}
+
+/** Deployed Supabase edge runtime: keep the promise alive past the response. Local serve: fire-and-forget. */
+function runInBackground(promise: Promise<unknown>): void {
+  if (typeof EdgeRuntime !== 'undefined' && EdgeRuntime) {
+    EdgeRuntime.waitUntil(promise)
+  } else {
+    promise.catch((err) => console.warn('[get-index-v2] background refresh failed:', err))
+  }
 }
 
 // ─── Main handler ─────────────────────────────────────────────────────────────
@@ -330,89 +332,36 @@ Deno.serve(async (req) => {
     const body = await req.json()
     const userId: string = body.userId
     if (!userId || typeof userId !== 'string') throw new HttpError(400, 'userId is required')
+    // p_user_id is cast to uuid in SQL; reject junk early with a 400 instead of a 500.
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)) {
+      throw new HttpError(400, 'userId must be a UUID')
+    }
 
     await verifyRequest(req, userId)
 
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
-    )
+    let payload = await fetchPayload(userId)
+    const fetchedAtMs = payload.followsFetchedAt ? Date.parse(payload.followsFetchedAt) : null
 
-    // ── Step 1: this user's linked provider identities ────────────────────────
-    const { data: identitiesData, error: identitiesError } = await supabase
-      .from('identities')
-      .select('provider, provider_account_id')
-      .eq('user_id', userId)
-    if (identitiesError) throw new Error(`Failed to fetch identities: ${identitiesError.message}`)
-    const userIdentities: IdentityRow[] = (identitiesData ?? []) as IdentityRow[]
-
-    // The viewer's own provider account ids — used for mention visibility.
-    const viewerAccountIds = userIdentities.map((i) => i.provider_account_id)
-
-    // ── Step 2: fetch follows from every provider in parallel ─────────────────
-    // Degrade gracefully per-provider: a dead/revoked token (e.g. github 401)
-    // must not reject the whole index and blank out every note — including the
-    // viewer's own and their other providers' follows. A failed provider just
-    // contributes no follows.
-    const followLists = await Promise.all(
-      userIdentities.map((identity) =>
-        fetchFollowsForIdentity(identity, supabase).catch((err) => {
-          console.warn(
-            `[get-index-v2] follows fetch failed for ${identity.provider}:${identity.provider_account_id}:`,
-            err,
-          )
-          return [] as ProviderAccount[]
-        }),
-      ),
-    )
-    const allFollows = followLists.flat()
-
-    // ── Step 3: resolve followed accounts → Mustard userIds ───────────────────
-    const followedUserIds = await resolveFollowsToUserIds(allFollows, supabase)
-    const officialUserId = await resolveOfficialUserId(supabase)
-
-    const allUserIds = [userId, ...followedUserIds, ...(officialUserId ? [officialUserId] : [])]
-
-    // ── Step 4: notes by visible authors → page index + own-note bookkeeping ──
-    const notes = await fetchNotesByAuthors(supabase, allUserIds)
-
-    const index: Record<string, string[]> = {}
-    const latestNoteAtByPage: Record<string, number> = {}
-    const myNotePageById = new Map<string, string>()
-
-    for (const note of notes) {
-      const pages = (index[note.author_id] ??= [])
-      if (!pages.includes(note.page_url)) pages.push(note.page_url)
-
-      if (note.author_id === userId) {
-        const ts = new Date(note.updated_at).getTime()
-        const existing = latestNoteAtByPage[note.page_url]
-        if (existing === undefined || ts > existing) latestNoteAtByPage[note.page_url] = ts
-        myNotePageById.set(note.id, note.page_url)
+    if (fetchedAtMs === null) {
+      // Cold: this user's follows were never fetched. Block — an empty index on
+      // first login is worse than a slow first response.
+      if (await claimRefresh(userId)) {
+        await refreshFollows(userId)
+        payload = await fetchPayload(userId)
+      } else if (await waitForFreshCache(userId)) {
+        payload = await fetchPayload(userId)
+      }
+      // If the wait timed out: serve the (empty-follows) payload; the client
+      // retries within its own TTL.
+    } else if (Date.now() - fetchedAtMs > FOLLOWS_TTL_MS) {
+      // Stale: serve immediately, refresh in the background (SWR).
+      if (await claimRefresh(userId)) {
+        runInBackground(refreshFollows(userId))
       }
     }
 
-    // ── Step 5-6: reposted + mentioned note ids ───────────────────────────────
-    const repostedNoteIdSet = await fetchRepostedNoteIds(supabase, allUserIds)
-    const mentionedNoteIdSet = await fetchMentionedNoteIds(supabase, viewerAccountIds)
-
-    // ── Step 7: full reposter list for every visible note ─────────────────────
-    const visibleNoteIdSet = new Set<string>(repostedNoteIdSet)
-    for (const note of notes) visibleNoteIdSet.add(note.id)
-    for (const id of mentionedNoteIdSet) visibleNoteIdSet.add(id)
-    const repostersByNoteId = await fetchRepostersByNoteId(supabase, [...visibleNoteIdSet])
-
-    // ── Step 8: unread notifications per page ─────────────────────────────────
-    const myUnreadByPage = await fetchUnreadByPage(supabase, userId, myNotePageById)
-
-    return json({
-      index,
-      myUnreadByPage,
-      latestNoteAtByPage,
-      repostedNoteIds: [...repostedNoteIdSet],
-      mentionedNoteIds: [...mentionedNoteIdSet],
-      repostersByNoteId,
-    })
+    const { followsFetchedAt: _stripped, ...response } = payload
+    return json(response)
   } catch (error) {
     if (error instanceof HttpError) return json({ error: error.message }, error.status)
     console.error('Error in get-index-v2:', error)
