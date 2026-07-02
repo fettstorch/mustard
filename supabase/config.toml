@@ -89,13 +89,6 @@ enabled = true
 verify_jwt = false
 entrypoint = "./functions/auth-bridge/index.ts"
 
-# Fetches the user's Bluesky follows and maps which pages have notes from them.
-# verify_jwt = false for the same reason as auth-bridge.
-[functions.get-index]
-enabled = true
-verify_jwt = false
-entrypoint = "./functions/get-index/index.ts"
-
 [analytics]
 enabled = false  # Logflare — disabled locally to keep things simple
 port = 54327
