@@ -571,19 +571,6 @@ export default defineContentScript({
       document.body.appendChild(banner)
     }
 
-    function showRefreshBanner() {
-      if (document.getElementById('mustard-refresh-banner')) return
-      const banner = document.createElement('div')
-      banner.id = 'mustard-refresh-banner'
-      banner.style.cssText =
-        'position:fixed;top:0;left:50%;transform:translateX(-50%);background:#ffb800;color:#3d2200;' +
-        'padding:8px 20px;border-radius:0 0 10px 10px;font-family:monospace;font-size:13px;font-weight:600;' +
-        'z-index:2147483647;box-shadow:0 2px 8px rgba(0,0,0,0.25);cursor:pointer'
-      banner.textContent = '🟡 Mustard was updated — please refresh this page'
-      banner.onclick = () => banner.remove()
-      document.body.appendChild(banner)
-    }
-
     // Single host element for all Mustard UI
     const mustardHost = document.createElement('div')
     mustardHost.id = 'mustard-host'
@@ -633,21 +620,6 @@ export default defineContentScript({
         }
       },
     )
-
-    // When extension context is invalidated (hot-reload / update), unmount and prompt refresh.
-    function handlePotentialInvalidation() {
-      if (!browser.runtime.id) {
-        app.unmount()
-        mustardHost.remove()
-        altBadge?.remove()
-        altBadge = null
-        showRefreshBanner()
-        window.removeEventListener('mousemove', handlePotentialInvalidation)
-        window.removeEventListener('keydown', handlePotentialInvalidation)
-      }
-    }
-    window.addEventListener('mousemove', handlePotentialInvalidation, { passive: true })
-    window.addEventListener('keydown', handlePotentialInvalidation, { passive: true })
 
     // content-script acts as message relay between the vue app and the service
     // worker. `sendMessage` strips Vue reactive Proxies before sending (Firefox's
