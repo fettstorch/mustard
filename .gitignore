@@ -39,3 +39,6 @@ __screenshots__/
 supabase/.temp/
 paseo.json
 supabase/functions/.env
+
+# Local working docs / task plans — not shipped artifacts
+plans/
