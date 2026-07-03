@@ -46,6 +46,10 @@ interface FollowsResponse {
  */
 interface IndexPayload {
   index: Record<string, string[]>
+  // Compat-only: the 2.2.0+ client computes unread-per-page from the
+  // notifications table and ignores this field. Kept solely for pre-2.2.0
+  // clients. Remove from here AND migration 015's SQL once
+  // min_client_version >= 2.2.0 (see specs/performance/post-release-cleanup.md).
   myUnreadByPage: Record<string, number>
   latestNoteAtByPage: Record<string, number>
   repostedNoteIds: string[]

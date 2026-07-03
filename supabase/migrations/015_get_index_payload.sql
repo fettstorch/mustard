@@ -66,6 +66,9 @@ SELECT jsonb_build_object(
       SELECT author_id, jsonb_agg(DISTINCT page_url) AS pages
       FROM visible_notes GROUP BY author_id
     ) t), '{}'::jsonb),
+  -- Compat-only for pre-2.2.0 clients (2.2.0+ computes unread from the
+  -- notifications table). Remove this key AND the edge's IndexPayload field
+  -- once min_client_version >= 2.2.0 — see specs/performance/post-release-cleanup.md.
   'myUnreadByPage', coalesce(
     (SELECT jsonb_object_agg(page_url, cnt) FROM my_unread), '{}'::jsonb),
   'latestNoteAtByPage', coalesce(

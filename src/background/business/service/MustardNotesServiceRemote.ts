@@ -7,20 +7,28 @@ import { MustardIndex as MustardIndexClass } from '@/shared/model/MustardIndex'
 import { LIMITS } from '@/shared/constants'
 import { deriveMentions } from '@/shared/mentions'
 
-// Versioned endpoint. The legacy `get-index` function is kept deployed for
-// older clients (which send the anon key as Bearer); this client mints a
-// per-user JWT and uses `get-index-v2`, which strictly verifies the JWT and
-// also returns the myUnreadByPage / latestNoteAtByPage fields the popup's
-// "My Mustard Notes" overview needs.
+// Versioned endpoint. The client sends its Supabase JWT (minted server-side by
+// the auth-bridge edge function at login, refreshed there on expiry) to
+// `get-index-v2`, which strictly verifies the JWT and serves the index from a
+// server-side follows cache.
 const GET_INDEX_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-index-v2`
 
-// Index cache with TTL (30 seconds for dev, increase for production)
-const INDEX_CACHE_TTL_MS = 30 * 1000
+// Index cache TTL. The index only changes when someone you follow publishes,
+// reposts, or mentions you — 5 min staleness is acceptable; the user's own
+// mutations invalidate this cache explicitly (invalidateRemoteIndexCache).
+const INDEX_CACHE_TTL_MS = 5 * 60 * 1000
 
-type IndexCachePayload = {
-  index: MustardIndex
-  /** pageUrl → unread comment-notification count for the cached user (only their own pages) */
-  myUnreadByPage: Record<string, number>
+// The index cache lives in storage.session (not a background-memory variable):
+// the background process can be torn down between page loads, which would
+// otherwise drop the cache and defeat the TTL. storage.session survives those
+// restarts and clears when the browser closes.
+const INDEX_CACHE_KEY = 'mustard-remote-index-cache'
+
+// The index fields shared by every representation (wire / runtime / persisted).
+// Declared once so adding an index field means editing one place. The `index`
+// field is NOT here because its shape differs per representation (raw record vs
+// MustardIndex) — each type below declares its own.
+type IndexData = {
   /** pageUrl → most recent updated_at (Unix ms) across the cached user's own notes */
   latestNoteAtByPage: Record<string, number>
   /** Note ids visible to the cached user via repost (reposted by them or someone they follow). */
@@ -35,7 +43,19 @@ type IndexCachePayload = {
   repostersByNoteId: Record<string, string[]>
 }
 
-let indexCache: (IndexCachePayload & { userId: string; timestamp: number }) | null = null
+// Runtime shape returned to callers: the index as a queryable MustardIndex.
+type IndexCachePayload = IndexData & {
+  index: MustardIndex
+}
+
+// JSON-safe shape actually persisted in storage.session. `index` is the raw
+// record (a MustardIndex wraps a Map, which doesn't survive serialization);
+// userId + timestamp drive the hit check.
+type StoredIndexCache = IndexData & {
+  userId: string
+  timestamp: number
+  index: Record<string, string[]>
+}
 
 interface DbNote {
   id: string
@@ -53,7 +73,6 @@ interface DbNote {
 
 interface GetIndexResponse {
   index: Record<string, string[]>
-  myUnreadByPage?: Record<string, number>
   latestNoteAtByPage?: Record<string, number>
   repostedNoteIds?: string[]
   mentionedNoteIds?: string[]
@@ -82,9 +101,21 @@ async function fetchNotesByIdForPage(
   }
 }
 
+/** Rebuild the runtime payload (with a MustardIndex) from the stored raw shape. */
+function hydrateIndexCache(stored: StoredIndexCache): IndexCachePayload {
+  return {
+    index: new MustardIndexClass(new Map(Object.entries(stored.index))),
+    latestNoteAtByPage: stored.latestNoteAtByPage,
+    repostedNoteIds: stored.repostedNoteIds,
+    mentionedNoteIds: stored.mentionedNoteIds,
+    repostersByNoteId: stored.repostersByNoteId,
+  }
+}
+
 /**
- * Fetch the get-index response (cached). Returns the index plus
- * the per-page overview data the popup needs.
+ * Get the (cached) get-index-v2 payload: the visibility index + the
+ * repost/mention id lists + latestNoteAtByPage. Served from storage.session
+ * within INDEX_CACHE_TTL_MS; otherwise refetched from the edge and re-cached.
  *
  * Returns null when:
  *   - userId is missing, or
@@ -99,12 +130,10 @@ async function getCachedIndexPayload(userId?: string): Promise<IndexCachePayload
   if (!jwt) return null
 
   const now = Date.now()
-  if (
-    indexCache &&
-    indexCache.userId === userId &&
-    now - indexCache.timestamp < INDEX_CACHE_TTL_MS
-  ) {
-    return indexCache
+  const store = await browser.storage.session.get(INDEX_CACHE_KEY)
+  const cached = store[INDEX_CACHE_KEY] as StoredIndexCache | undefined
+  if (cached && cached.userId === userId && now - cached.timestamp < INDEX_CACHE_TTL_MS) {
+    return hydrateIndexCache(cached)
   }
 
   try {
@@ -124,21 +153,17 @@ async function getCachedIndexPayload(userId?: string): Promise<IndexCachePayload
 
     const data: GetIndexResponse = await response.json()
 
-    const indexMap = new Map<string, string[]>(Object.entries(data.index))
-    const index = new MustardIndexClass(indexMap)
-
-    const payload: IndexCachePayload = {
-      index,
-      myUnreadByPage: data.myUnreadByPage ?? {},
+    const stored: StoredIndexCache = {
+      userId,
+      timestamp: now,
+      index: data.index,
       latestNoteAtByPage: data.latestNoteAtByPage ?? {},
       repostedNoteIds: data.repostedNoteIds ?? [],
       mentionedNoteIds: data.mentionedNoteIds ?? [],
       repostersByNoteId: data.repostersByNoteId ?? {},
     }
-
-    indexCache = { ...payload, userId, timestamp: now }
-
-    return payload
+    await browser.storage.session.set({ [INDEX_CACHE_KEY]: stored })
+    return hydrateIndexCache(stored)
   } catch (error) {
     console.error('Failed to query remote index:', error)
     return null
@@ -151,17 +176,10 @@ class MustardNotesServiceRemote implements MustardNotesService {
     return payload?.index ?? new MustardIndexClass(new Map())
   }
 
-  /** Per-page overview data for the current user. Empty object if not logged in / not cached. */
-  async queryMyOverviewData(userId?: string): Promise<{
-    myUnreadByPage: Record<string, number>
-    latestNoteAtByPage: Record<string, number>
-  }> {
+  /** pageUrl → latest own-note timestamp for the current user. Empty object if not logged in / not cached. */
+  async queryMyLatestNoteAtByPage(userId?: string): Promise<Record<string, number>> {
     const payload = await getCachedIndexPayload(userId)
-    if (!payload) return { myUnreadByPage: {}, latestNoteAtByPage: {} }
-    return {
-      myUnreadByPage: payload.myUnreadByPage,
-      latestNoteAtByPage: payload.latestNoteAtByPage,
-    }
+    return payload?.latestNoteAtByPage ?? {}
   }
 
   async queryNotes(pageUrl: string, userId?: string): Promise<MustardNote[]> {
@@ -307,10 +325,10 @@ class MustardNotesServiceRemote implements MustardNotesService {
 }
 
 /**
- * Shared singleton. The index cache lives in module scope, so this service is
- * inherently process-wide — exporting one instance keeps every consumer (notes
- * + notifications managers) on the same cached state instead of each `new`-ing
- * its own object that only stayed consistent by accident via the module cache.
+ * Shared singleton. The index cache lives in storage.session (keyed globally),
+ * so this service is inherently process-wide — exporting one instance keeps
+ * every consumer (notes + notifications managers) on one code path instead of
+ * each `new`-ing its own object.
  */
 export const mustardNotesServiceRemote = new MustardNotesServiceRemote()
 
@@ -338,6 +356,6 @@ function dbNoteToMustardNote(dbNote: DbNote, reposterIds: string[] = []): Mustar
 }
 
 /** Clear the cached index. Call on login/logout/mutations to ensure fresh data. */
-export function invalidateRemoteIndexCache(): void {
-  indexCache = null
+export async function invalidateRemoteIndexCache(): Promise<void> {
+  await browser.storage.session.remove(INDEX_CACHE_KEY)
 }

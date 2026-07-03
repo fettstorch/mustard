@@ -9,7 +9,6 @@
 // events the app already fires. Default-on; users opt out in the options page.
 
 import type { DtoMustardNotification } from '@/shared/dto/DtoMustardMention'
-import { PENDING_FOCUS_KEY, type PendingFocus } from '@/shared/pending-focus'
 // Inlined as a base64 data URI by the `inlineIcons` Vite plugin (see
 // wxt.config.ts). Chrome's MV3 notifications.create() fails to fetch an
 // extension-URL iconUrl from the service worker ("Unable to download all
@@ -42,6 +41,12 @@ interface NativeNotificationsDeps {
   fetchUnread: () => Promise<DtoMustardNotification[] | null>
   /** Mark a single notification (any type) seen by its id. */
   acknowledge: (notificationId: string) => Promise<void>
+  /**
+   * Open the note's page in a new tab, focused on the note. Shared with the
+   * popup deep-link; the background's openDeepLink owns the mechanics (see its
+   * docstring).
+   */
+  openDeepLink: (pageUrl: string, noteId: string | null) => Promise<void>
 }
 
 interface NativeNotifications {
@@ -151,9 +156,8 @@ export function createNativeNotifications(deps: NativeNotificationsDeps): Native
   }
 
   // Clicking a toast acknowledges that exact notification (its id IS the DB
-  // notification id) and deep-links to the note — same as pressing its row in
-  // the popup. We stash a PendingFocus before opening a fresh tab so that page's
-  // content script expands the thread and scrolls the note into view on load.
+  // notification id) and deep-links to the note — identical to pressing its row
+  // in the popup, via the same shared openDeepLink routine.
   browser.notifications?.onClicked?.addListener(async (notificationId) => {
     try {
       void deps.acknowledge(notificationId).catch(() => {})
@@ -163,9 +167,7 @@ export function createNativeNotifications(deps: NativeNotificationsDeps): Native
       const target = targets[notificationId]
       browser.notifications?.clear?.(notificationId)
       if (!target) return
-      const focus: PendingFocus = { pageUrl: target.pageUrl, noteId: target.noteId }
-      await browser.storage.local.set({ [PENDING_FOCUS_KEY]: focus }).catch(() => {})
-      await browser.tabs.create({ url: target.pageUrl, active: true })
+      await deps.openDeepLink(target.pageUrl, target.noteId)
     } catch (err) {
       console.debug('mustard [native-notif] click failed:', err)
     }

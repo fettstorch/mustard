@@ -114,6 +114,35 @@ export class MustardNotificationsServiceRemote implements MustardNotificationsSe
     return count ?? 0
   }
 
+  async queryMyUnreadByPage(userId: string): Promise<Record<string, number>> {
+    // RLS scopes rows to recipient_id = auth.jwt().sub. The note embed carries
+    // page_url + author_id; mention notifications can sit on OTHER authors'
+    // notes — the popup overview only counts activity on the user's own notes,
+    // so filter to notes.author_id === userId (same semantics the edge
+    // function's per-page unread aggregation has).
+    //
+    // Not batched (unlike queryUnreadCountsForNotes): this reads the recipient's
+    // OWN unread rows, a naturally small bounded set, in one query — there's no
+    // caller-supplied id list to chunk against the PostgREST URI limit.
+    // overrideTypes(merge:false): supabase-js infers an embedded resource as an
+    // array, but this to-one FK embed (notification → note) is one object or
+    // null at runtime — see getUnreadNotifications for the same pattern.
+    const { data, error } = await supabase
+      .from('notifications')
+      .select('note_id, notes(page_url, author_id)')
+      .overrideTypes<
+        { note_id: string; notes: { page_url: string; author_id: string } | null }[],
+        { merge: false }
+      >()
+    if (error) throw new Error(`Failed to query unread by page: ${error.message}`)
+    const result: Record<string, number> = {}
+    for (const row of data ?? []) {
+      if (row.notes?.author_id !== userId) continue
+      result[row.notes.page_url] = (result[row.notes.page_url] ?? 0) + 1
+    }
+    return result
+  }
+
   async getUnreadNotifications(): Promise<RawNotification[]> {
     // All unread rows of BOTH types (no `type` filter) so native browser
     // notifications and the popup's Mentions list share one query; callers that

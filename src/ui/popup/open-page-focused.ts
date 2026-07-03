@@ -1,15 +1,13 @@
-import { PENDING_FOCUS_KEY, type PendingFocus } from '@/shared/pending-focus'
+import { createOpenDeepLinkMessage, sendMessage } from '@/shared/messaging'
 
 /**
- * Open a page in a new tab with a focus target, then close the popup.
- *
- * The focus is written to storage *before* the tab is created so the new page's
- * content script can read it on load and expand/scroll to the relevant note.
- * `noteId === null` focuses whichever notes have unread comments.
+ * Ask the background to open a page focused on a note, then close the popup.
+ * All mechanics live in the background's openDeepLink (shared with the
+ * native-notification click path); `noteId === null` focuses whichever notes
+ * have unread comments. The send is awaited (best-effort) so the focus target
+ * is persisted before the popup tears down.
  */
 export async function openPageFocused(pageUrl: string, noteId: string | null): Promise<void> {
-  const focus: PendingFocus = { pageUrl, noteId }
-  await browser.storage.local.set({ [PENDING_FOCUS_KEY]: focus }).catch(() => {})
-  await browser.tabs.create({ url: pageUrl, active: true }).catch(() => {})
+  await sendMessage(createOpenDeepLinkMessage(pageUrl, noteId)).catch(() => {})
   window.close()
 }

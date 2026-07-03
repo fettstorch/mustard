@@ -51,6 +51,13 @@ export interface MustardNotificationsService {
   getTotalUnreadCount(): Promise<number>
 
   /**
+   * pageUrl → unread count across the current user's OWN notes (both comment
+   * and mention types). Pages with zero unread are absent. Drives the popup's
+   * My Pages overview; always fresh (no index cache involved).
+   */
+  queryMyUnreadByPage(userId: string): Promise<Record<string, number>>
+
+  /**
    * ALL of the current user's unread notifications — both mentions and comments
    * on their notes — newest first. RLS scopes to the recipient. Drives native
    * browser notifications and the popup's Mentions list (filtered to mentions by

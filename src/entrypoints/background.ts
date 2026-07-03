@@ -45,6 +45,7 @@ import {
 } from '@/background/business/service/AppStatusService'
 import { CLIENT_OUTDATED_ERROR, isRemoteMutationMessage } from '@/shared/remote-mutation'
 import { githubAvatarUrl } from '@/shared/providers'
+import { PENDING_FOCUS_KEY, type PendingFocus } from '@/shared/pending-focus'
 
 /** Builds a github UserProfile from an id + login, falling back to the id when the login is unknown. */
 function buildGithubProfile(id: string, login: string | undefined): UserProfile {
@@ -65,6 +66,28 @@ export default defineBackground(() => {
 
   // One-time cleanup of pre-multi-provider session storage (see SessionStore).
   void purgeLegacySessionStorage()
+
+  /**
+   * Open a page in a new tab focused on a note — the single implementation
+   * behind both the popup row click and the native-notification toast click.
+   *
+   * Order matters:
+   *  1. persist the focus target so the opening tab's content script can expand
+   *     the thread + scroll to it on load;
+   *  2. refresh the index cache so the guaranteed boot-time note fetch returns a
+   *     CURRENT index — a note made visible only by a recent mention/repost
+   *     lives in the index's mentioned/reposted lists, which a stale cache would
+   *     omit, leaving the note silently absent on the page;
+   *  3. open the tab.
+   *
+   * `noteId === null` focuses whichever notes have unread comments.
+   */
+  async function openDeepLink(pageUrl: string, noteId: string | null): Promise<void> {
+    const focus: PendingFocus = { pageUrl, noteId }
+    await browser.storage.local.set({ [PENDING_FOCUS_KEY]: focus }).catch(() => {})
+    await invalidateRemoteIndexCache()
+    await browser.tabs.create({ url: pageUrl, active: true }).catch(() => {})
+  }
 
   /** Broadcast session change to all tabs so content scripts can update their state */
   async function broadcastSessionChanged(userId: string | null) {
@@ -144,12 +167,13 @@ export default defineBackground(() => {
 
   /**
    * Shared cleanup after a mutation that can change THIS user's unread
-   * notifications (remote note/comment deletion cascades, mark-seen): drop the
-   * stale index cache, refresh the toolbar badge, and tell the popup + content
-   * scripts. Fire-and-forget — callers don't need to await the fan-out.
+   * notifications (remote note/comment deletion cascades, mark-seen): refresh
+   * the toolbar badge and tell the popup + content scripts. The index cache is
+   * NOT invalidated — unread counts are computed straight from the
+   * notifications table (queryMyUnreadByPage), never from the cached index.
+   * Fire-and-forget — callers don't need to await the fan-out.
    */
   function afterNotificationMutation(): void {
-    invalidateRemoteIndexCache()
     void updateActionBadge()
     void broadcastNotificationsChanged()
   }
@@ -189,6 +213,7 @@ export default defineBackground(() => {
       if (await isClientOutdated()) return
       await acknowledgeNotification(notificationId)
     },
+    openDeepLink,
   })
 
   /**
@@ -337,7 +362,7 @@ export default defineBackground(() => {
         return localNotes.map(DtoMustardNote.toDto)
       }
 
-      invalidateRemoteIndexCache()
+      await invalidateRemoteIndexCache()
       const allNotes = await mustardNotesManager.queryMustardNotesFor(pageUrl, session!.userId)
 
       if (message.localNoteIdToDelete) {
@@ -385,7 +410,7 @@ export default defineBackground(() => {
 
       // Repost changes visibility → bust the index cache so the next query
       // recomputes reposted note ids / reposter lists.
-      invalidateRemoteIndexCache()
+      await invalidateRemoteIndexCache()
 
       const allNotes = await mustardNotesManager.queryMustardNotesFor(
         message.pageUrl,
@@ -404,7 +429,7 @@ export default defineBackground(() => {
         // Enrich the session with the full identity set (github login may have
         // linked into an existing multi-provider account).
         await syncSessionIdentities(result.jwt, result.userId)
-        invalidateRemoteIndexCache()
+        await invalidateRemoteIndexCache()
         broadcastSessionChanged(result.userId)
         updateActionBadge()
         return { userId: result.userId }
@@ -419,7 +444,7 @@ export default defineBackground(() => {
         const result = await login(message.handle, message.currentJwt)
         await storeSupabaseJwt(result.jwt, result.expiresAt, result.userId)
         await syncSessionIdentities(result.jwt, result.userId)
-        invalidateRemoteIndexCache()
+        await invalidateRemoteIndexCache()
         broadcastSessionChanged(result.userId)
         updateActionBadge()
         return { userId: result.userId, did: result.did }
@@ -466,7 +491,7 @@ export default defineBackground(() => {
         await logout(message.userId)
         await clearSupabaseJwt()
         await clearNativeNotificationState()
-        invalidateRemoteIndexCache()
+        await invalidateRemoteIndexCache()
         mutualsService.clear()
         broadcastSessionChanged(null)
         updateActionBadge()
@@ -499,7 +524,7 @@ export default defineBackground(() => {
           broadcastSessionChanged(session!.userId)
         }
 
-        invalidateRemoteIndexCache()
+        await invalidateRemoteIndexCache()
         updateActionBadge()
         return result
       } catch (err) {
@@ -626,7 +651,7 @@ export default defineBackground(() => {
       // A new comment notifies the note's *author* (not the commenter), so this
       // user's own badge/overview is unaffected — only the cached index needs
       // busting so the author picks it up on their next query.
-      invalidateRemoteIndexCache()
+      await invalidateRemoteIndexCache()
 
       const fresh = await mustardCommentsManager.queryCommentsForNote(message.noteId)
       return fresh.map(DtoMustardComment.toDto)
@@ -704,6 +729,10 @@ export default defineBackground(() => {
         console.error('MARK_MENTION_SEEN failed:', err)
       }
       return null
+    },
+
+    OPEN_DEEP_LINK: async (message) => {
+      await openDeepLink(message.pageUrl, message.noteId)
     },
   }
 

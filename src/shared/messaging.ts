@@ -331,6 +331,20 @@ export type NotificationsChangedMessage = Satisfies<
   }
 >
 
+// Popup → background: "open this page and focus this note". The background's
+// openDeepLink owns the whole routine (persist focus target, refresh the index,
+// open the tab) — shared with the native-notification click path; see its
+// docstring for why the index refresh matters.
+export type OpenDeepLinkMessage = Satisfies<
+  BaseMessage,
+  {
+    type: 'OPEN_DEEP_LINK'
+    pageUrl: string
+    /** Note to expand + scroll to. null = focus whichever notes have unread comments. */
+    noteId: string | null
+  }
+>
+
 // Discriminated union of all messages - enables type narrowing
 export type Message =
   | OpenNoteEditorMessage
@@ -362,6 +376,7 @@ export type Message =
   | GetMyMentionsMessage
   | MarkMentionSeenMessage
   | NotificationsChangedMessage
+  | OpenDeepLinkMessage
 
 /**
  * Maps each message type to the value its handler resolves with. Drives the
@@ -400,6 +415,7 @@ type MessageResponses = {
   GET_MY_MENTIONS: GetMyMentionsResponse
   MARK_MENTION_SEEN: null
   NOTIFICATIONS_CHANGED: void
+  OPEN_DEEP_LINK: void
 }
 
 export type ResponseFor<T extends Message['type']> = MessageResponses[T]
@@ -653,5 +669,16 @@ export function createMarkMentionSeenMessage(notificationId: string): MarkMentio
   return {
     type: 'MARK_MENTION_SEEN',
     notificationId,
+  }
+}
+
+export function createOpenDeepLinkMessage(
+  pageUrl: string,
+  noteId: string | null,
+): OpenDeepLinkMessage {
+  return {
+    type: 'OPEN_DEEP_LINK',
+    pageUrl,
+    noteId,
   }
 }
