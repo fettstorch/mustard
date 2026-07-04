@@ -206,6 +206,81 @@ export default defineContentScript({
       mustardState.notes = [...localNotes, ...remoteNotes]
     }
 
+    /**
+     * Optimistically render a brand-new remote note the instant the user hits
+     * publish, before the network write returns — so latency never shows as a
+     * blank gap. Assigns a temporary `optimistic-…` id; the real server row
+     * (from the UPSERT_NOTE response) swaps in later via mergeRemoteUpsertResponse,
+     * or removeOptimisticNote tears it down if the publish fails.
+     * Returns the temp id, or undefined if we can't attribute an author.
+     */
+    function insertOptimisticNote(
+      data: Omit<DtoMustardNote, 'id' | 'authorId'>,
+    ): string | undefined {
+      const authorId = mustardState.currentUserId
+      if (!authorId) return undefined
+
+      const tempId = `optimistic-${crypto.randomUUID()}`
+      // Deep-clone: `data.anchorData` is the editor's reactive object, which the
+      // editor may reuse/reset before we reconcile. Detach so our stored note is
+      // a stable, plain snapshot (same reason sendMessage strips proxies).
+      const snapshot = JSON.parse(JSON.stringify(data)) as Omit<DtoMustardNote, 'id' | 'authorId'>
+      const note = DtoMustardNote.fromDto({ ...snapshot, id: tempId, authorId })
+      mustardState.notes = [...mustardState.notes, note]
+      // Pending → action buttons (delete/repost) stay disabled until confirmed.
+      mustardState.pendingNoteIds[tempId] = true
+      // A brand-new note has no comments; mark loaded-empty so the toggle works.
+      mustardState.comments[tempId] = []
+      mustardState.commentsLoadState[tempId] = 'loaded'
+      fetchProfilesForNotes([note])
+      return tempId
+    }
+
+    /** Tear down an optimistic placeholder (publish failed). */
+    function removeOptimisticNote(tempId: string): void {
+      mustardState.notes = mustardState.notes.filter((n) => n.id !== tempId)
+      delete mustardState.pendingNoteIds[tempId]
+      delete mustardState.comments[tempId]
+      delete mustardState.commentsLoadState[tempId]
+    }
+
+    /**
+     * Merge a single freshly-published remote note (returned by UPSERT_NOTE)
+     * into state without a full index re-query. Drops any prior copy (update
+     * case) plus the given stale placeholders — the optimistic temp note and/or
+     * the local note it was converted from — then appends the real row (newest →
+     * renders on top). A brand-new note has no comments yet, so we mark its
+     * thread loaded-empty to make the toggle interactive immediately.
+     */
+    function mergeRemoteUpsertResponse(
+      dtos: DtoMustardNote[] | undefined,
+      staleIds: (string | undefined)[] = [],
+    ): void {
+      const created = (dtos ?? []).map(DtoMustardNote.fromDto)
+      if (created.length === 0) return
+
+      const drop = new Set<string>(created.map((n) => n.id).filter((id): id is string => !!id))
+      for (const id of staleIds) if (id) drop.add(id)
+
+      const kept = mustardState.notes.filter((n) => !n.id || !drop.has(n.id))
+      mustardState.notes = [...kept, ...created]
+
+      // Retire placeholder comment/pending state we just dropped.
+      for (const id of staleIds) {
+        if (!id) continue
+        delete mustardState.comments[id]
+        delete mustardState.commentsLoadState[id]
+        delete mustardState.pendingNoteIds[id]
+      }
+
+      fetchProfilesForNotes(created)
+      for (const n of created) {
+        if (!n.id) continue
+        if (!mustardState.comments[n.id]) mustardState.comments[n.id] = []
+        mustardState.commentsLoadState[n.id] = 'loaded'
+      }
+    }
+
     let currentPageUrl = normalizePageUrl(window.location.href)
 
     function getCurrentPageUrl(): string {
@@ -636,17 +711,28 @@ export default defineContentScript({
 
       if (message.type === 'UPSERT_NOTE') {
         const isLocalOperation = message.target === 'local'
+        // Fresh remote publish (not converting an existing local note, which is
+        // already on screen) → paint an optimistic placeholder now so the note
+        // never waits on network latency to appear.
+        const optimisticId =
+          !isLocalOperation && !message.localNoteIdToDelete
+            ? insertOptimisticNote(message.data)
+            : undefined
         sendMessage(message)
           .then((dtos) => {
             console.debug('mustard [content-script] received notes after upsert:', dtos)
-            // A new remote note populates comments too (so the toggle becomes
-            // interactive); local saves keep the existing remote notes in place.
+            // Local saves swap only local notes. A remote publish returns just
+            // the newly-created note (no index re-query) — merge it in place,
+            // retiring the optimistic placeholder and/or converted local note.
             if (isLocalOperation) applyLocalNotesResponse(dtos)
-            else applyNotesResponse(dtos, { withComments: true })
+            else mergeRemoteUpsertResponse(dtos, [optimisticId, message.localNoteIdToDelete])
             clearPendingNoteIds()
           })
           .catch((err) => {
             console.error('mustard [content-script] UPSERT_NOTE failed:', err)
+            // Roll back the optimistic note so a failed publish leaves no ghost.
+            if (optimisticId) removeOptimisticNote(optimisticId)
+            clearPendingNoteIds()
           })
       }
 

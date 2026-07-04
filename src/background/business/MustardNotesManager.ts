@@ -67,13 +67,20 @@ export const mustardNotesManager = {
    * Upsert a note to the appropriate service based on target.
    * - 'local': Store in chrome.storage.local (offline, not published)
    * - 'remote': Publish to server (visible to followers)
+   *
+   * Returns the created/updated note for remote target (carrying the
+   * server-generated id) so the caller can merge it without re-querying the
+   * index; returns undefined for local (the caller re-reads local notes).
    */
-  async upsertNote(note: MustardNote, target: 'local' | 'remote'): Promise<void> {
+  async upsertNote(
+    note: MustardNote,
+    target: 'local' | 'remote',
+  ): Promise<MustardNote | undefined> {
     if (target === 'local') {
       await localService.upsertNote(note)
-    } else {
-      await remoteService.upsertNote(note)
+      return undefined
     }
+    return remoteService.upsertNote(note)
   },
 
   /**

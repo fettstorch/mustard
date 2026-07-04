@@ -228,7 +228,7 @@ class MustardNotesServiceRemote implements MustardNotesService {
     }
   }
 
-  async upsertNote(note: MustardNote): Promise<void> {
+  async upsertNote(note: MustardNote): Promise<MustardNote> {
     // Validate content length
     if (note.content.length > LIMITS.CONTENT_MAX_LENGTH) {
       throw new Error(`Content exceeds ${LIMITS.CONTENT_MAX_LENGTH} character limit`)
@@ -263,20 +263,30 @@ class MustardNotesServiceRemote implements MustardNotesService {
     }
 
     if (note.id) {
-      // Update existing note
-      const { error } = await supabase.from('notes').update(dbNote).eq('id', note.id)
+      // Update existing note. `.select().single()` returns the updated row so
+      // callers can merge it directly instead of re-querying the whole index.
+      const { data, error } = await supabase
+        .from('notes')
+        .update(dbNote)
+        .eq('id', note.id)
+        .select()
+        .single()
 
       if (error) {
         throw new Error(`Failed to update note: ${error.message}`)
       }
-    } else {
-      // Insert new note
-      const { error } = await supabase.from('notes').insert(dbNote)
-
-      if (error) {
-        throw new Error(`Failed to insert note: ${error.message}`)
-      }
+      // Reposters aren't part of the write payload; preserve what the caller knew.
+      return dbNoteToMustardNote(data as DbNote, note.reposterIds)
     }
+
+    // Insert new note. `.select().single()` hands back the server-generated id
+    // so the UI can render the real note immediately (no index round-trip).
+    const { data, error } = await supabase.from('notes').insert(dbNote).select().single()
+
+    if (error) {
+      throw new Error(`Failed to insert note: ${error.message}`)
+    }
+    return dbNoteToMustardNote(data as DbNote)
   }
 
   async deleteNote(noteId: string, _pageUrl: string): Promise<void> {

@@ -16,6 +16,7 @@ export interface MustardNotesService {
    */
   queryNotes(pageUrl: string, userId?: string): Promise<MustardNote[]>
 
-  upsertNote(note: MustardNote): Promise<void>
+  /** Returns the created/updated note when the service can (remote); void otherwise (local). */
+  upsertNote(note: MustardNote): Promise<MustardNote | void>
   deleteNote(noteId: string, pageUrl: string): Promise<void>
 }
