@@ -205,8 +205,14 @@ const isExpanded = computed(() => {
 
 const isLoggedIn = computed(() => mustardState.currentUserId !== null)
 
-/** Show the toggle only on remote notes (local notes can't have remote comments). */
-const showCommentToggle = computed(() => isRemoteNote.value && !!noteId.value)
+/**
+ * Show the toggle only on remote notes (local notes can't have remote comments)
+ * that are confirmed by the server. While pending — notably an optimistic note
+ * still carrying its temporary `optimistic-…` id — the toggle stays hidden:
+ * commenting would send that non-UUID id to `comments.note_id` and fail after
+ * the editor already cleared the draft. It appears once the real id swaps in.
+ */
+const showCommentToggle = computed(() => isRemoteNote.value && !!noteId.value && !isPending.value)
 
 function onToggleComments() {
   const id = noteId.value
