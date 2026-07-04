@@ -355,23 +355,25 @@ export default defineBackground(() => {
         updatedAt: message.data.updatedAt,
       })
 
-      await mustardNotesManager.upsertNote(note, target)
+      const created = await mustardNotesManager.upsertNote(note, target)
 
       if (target === 'local') {
         const localNotes = await mustardNotesManager.queryLocalNotesFor(pageUrl)
         return localNotes.map(DtoMustardNote.toDto)
       }
 
+      // Remote publish. Bust the index cache so the NEXT natural query is fresh,
+      // but DON'T re-query the index here — that round-trip (follow-graph
+      // resolution + per-page fetches) is the multi-second wall. `upsertNote`
+      // already returned the created row with its server id, so we hand back
+      // just that note and let the content script merge it in immediately.
       await invalidateRemoteIndexCache()
-      const allNotes = await mustardNotesManager.queryMustardNotesFor(pageUrl, session!.userId)
 
       if (message.localNoteIdToDelete) {
         await mustardNotesManager.deleteNote(message.localNoteIdToDelete, pageUrl, 'local')
-        const filteredNotes = allNotes.filter((n) => n.id !== message.localNoteIdToDelete)
-        return filteredNotes.map(DtoMustardNote.toDto)
       }
 
-      return allNotes.map(DtoMustardNote.toDto)
+      return created ? [DtoMustardNote.toDto(created)] : []
     },
 
     QUERY_NOTES: async (message) => {
