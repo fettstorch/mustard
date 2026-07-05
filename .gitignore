@@ -42,3 +42,6 @@ supabase/functions/.env
 
 # Local working docs / task plans — not shipped artifacts
 plans/
+
+# Video sources — commit only the web-optimized .mp4 exports, not the raw .mov
+docs/assets/*.mov
