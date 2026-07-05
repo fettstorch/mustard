@@ -22,7 +22,7 @@
   },
   "dependencies": {
     "@atproto/api": "^0.18.14",
-    "@fettstorch/jule": "^1.5.3",
+    "@fettstorch/jule": "^3.0.0",
     "@supabase/supabase-js": "^2.97.0",
     "@tiptap/core": "^3.20.0",
     "@tiptap/extension-image": "^3.20.0",

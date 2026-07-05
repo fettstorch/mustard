@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, watch, computed, onUnmounted, useTemplateRef } from 'vue'
+import { getDebouncer } from '@fettstorch/jule'
 // GIPHY requires a "Powered By GIPHY" attribution mark wherever the API is used.
 // Static "Light Backgrounds" logo mark — suited to the bright mustard gradient.
 import giphyAttributionUrl from '@/assets/giphy-attribution.png'
@@ -46,7 +47,7 @@ const selectedIndex = ref(0)
 const gridRef = useTemplateRef<HTMLElement>('gridRef')
 
 let abortController: AbortController | null = null
-let debounceTimer: number | null = null
+const gifSearchDebouncer = getDebouncer()
 
 async function fetchGifs(term: string) {
   if (!GIPHY_API_KEY) {
@@ -93,16 +94,13 @@ async function fetchGifs(term: string) {
 
 watch(
   () => props.query,
-  (q) => {
-    if (debounceTimer) clearTimeout(debounceTimer)
-    debounceTimer = window.setTimeout(() => fetchGifs(q), DEBOUNCE_MS)
-  },
+  (q) => gifSearchDebouncer.debounce(() => fetchGifs(q), DEBOUNCE_MS),
   { immediate: true },
 )
 
 onUnmounted(() => {
   abortController?.abort()
-  if (debounceTimer) clearTimeout(debounceTimer)
+  gifSearchDebouncer.clear()
 })
 
 const position = computed(() => {

@@ -6,6 +6,7 @@
 
 import { supabase } from '@/background/supabase-client'
 import { isOutdated } from '@/shared/version'
+import { once } from '@fettstorch/jule'
 
 type AppStatus = {
   currentVersion: string
@@ -67,15 +68,12 @@ const CHROME_STORE_URL =
 // about:addons), so the click just opens the AMO listing.
 const FIREFOX_STORE_URL: string | null = 'https://addons.mozilla.org/firefox/addon/mustard-notes/'
 
-let updateApplyListenerRegistered = false
-function ensureUpdateApplyListener(): void {
-  if (updateApplyListenerRegistered) return
-  updateApplyListenerRegistered = true
-  // Apply the update by reloading once Chrome has downloaded it. Registered only
-  // after the user opts in (clicks "update"), so we never silently reload the
-  // extension out from under an unrelated background update.
+// Apply the update by reloading once Chrome has downloaded it. Registered only
+// after the user opts in (clicks "update"), so we never silently reload the
+// extension out from under an unrelated background update.
+const ensureUpdateApplyListener = once(() => {
   browser.runtime.onUpdateAvailable?.addListener(() => browser.runtime.reload())
-}
+})
 
 async function openStoreListing(): Promise<void> {
   const url = import.meta.env.FIREFOX ? FIREFOX_STORE_URL : CHROME_STORE_URL

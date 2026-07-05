@@ -1,3 +1,4 @@
+import { when } from '@fettstorch/jule'
 import type { UserProfileType } from './model/UserProfile'
 
 /**
@@ -11,13 +12,10 @@ export const GITHUB_PROFILE_URL_PREFIX = 'https://github.com/'
 
 /** Builds a profile URL for a given provider and its mutable handle. */
 export function providerProfileUrl(provider: string, handle: string): string {
-  switch (provider) {
-    case 'github':
-      return `${GITHUB_PROFILE_URL_PREFIX}${handle}`
-    case 'atproto':
-    default:
-      return `${BSKY_PROFILE_URL_PREFIX}${handle}`
-  }
+  return when(provider)({
+    github: `${GITHUB_PROFILE_URL_PREFIX}${handle}`,
+    else: `${BSKY_PROFILE_URL_PREFIX}${handle}`,
+  })
 }
 
 /** GitHub serves a public, token-free avatar at github.com/<login>.png. */

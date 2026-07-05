@@ -5,6 +5,7 @@
 import type { LinkedIdentity } from '@/shared/model/UserProfile'
 import type { MentionCandidate } from '@/shared/model/MentionCandidate'
 import { githubAvatarUrl } from '@/shared/providers'
+import { toMap } from '@fettstorch/jule'
 
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
 const AUTH_BRIDGE_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/auth-bridge`
@@ -100,11 +101,7 @@ export async function resolveGithubAccounts(
     accountIds,
   })
   const rows = (result.identities as RawIdentity[] | undefined) ?? []
-  const map = new Map<string, string | undefined>()
-  for (const r of rows) {
-    map.set(r.provider_account_id, r.handle ?? undefined)
-  }
-  return map
+  return toMap(rows, (r) => [r.provider_account_id, r.handle ?? undefined])
 }
 
 /**

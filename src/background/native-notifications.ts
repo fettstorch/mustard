@@ -14,6 +14,7 @@ import type { DtoMustardNotification } from '@/shared/dto/DtoMustardMention'
 // extension-URL iconUrl from the service worker ("Unable to download all
 // specified images"), so we hand it the bytes directly instead.
 import notifIconUrl from '@/assets/icons/mustard_bottle_smile_48.png'
+import { sleep } from '@fettstorch/jule'
 
 // Off only when explicitly `false` (default ON). The options page mirrors this key.
 const ENABLED_KEY = 'mustard-browser-notifications-enabled'
@@ -115,7 +116,7 @@ export function createNativeNotifications(deps: NativeNotificationsDeps): Native
       let staggered = false
       for (const n of fresh) {
         if (import.meta.env.FIREFOX && staggered) {
-          await new Promise((resolve) => setTimeout(resolve, FIREFOX_CREATE_STAGGER_MS))
+          await sleep(FIREFOX_CREATE_STAGGER_MS)
         }
         staggered = true
         const title =
