@@ -233,6 +233,156 @@
         color: #c0392b;
       }
 
+      /* ── Tabs ── */
+      .tabs {
+        position: relative;
+        display: flex;
+        justify-content: center;
+        padding: 0 36px;
+      }
+
+      .tab-line {
+        position: absolute;
+        left: 0;
+        bottom: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 0;
+        pointer-events: none;
+        overflow: visible;
+      }
+
+      .tab-line path {
+        fill: #ffcc33;
+        stroke: #5c3a1e;
+        stroke-width: 2;
+        stroke-linejoin: round;
+      }
+
+      .tab {
+        position: relative;
+        z-index: 1;
+        font-family: inherit;
+        cursor: pointer;
+        padding: 10px 24px 12px;
+        font-size: 14px;
+        font-weight: 600;
+        color: #3d2200;
+        background: transparent;
+        border: none;
+        opacity: 0.55;
+        transition:
+          opacity 0.25s ease,
+          color 0.25s ease;
+      }
+
+      .tab:hover {
+        opacity: 0.85;
+      }
+
+      .tab.active {
+        opacity: 1;
+      }
+
+      .tab:focus-visible {
+        outline: 2px solid #e53e3e;
+        outline-offset: 2px;
+        border-radius: 6px;
+      }
+
+      .tab-panel {
+        display: flex;
+        flex-direction: column;
+        gap: 32px;
+      }
+
+      .tab-panel[hidden] {
+        display: none;
+      }
+
+      /* ── News (Bluesky feed) ── */
+      .news-feed {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .news-status {
+        opacity: 0.75;
+      }
+
+      .bsky-post {
+        background: rgba(255, 255, 255, 0.35);
+        border: 1px solid rgba(92, 58, 30, 0.4);
+        border-radius: 10px;
+        padding: 14px;
+      }
+
+      .bsky-post-header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 8px;
+      }
+
+      .bsky-post-avatar {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        flex-shrink: 0;
+      }
+
+      .bsky-post-author {
+        font-weight: 600;
+        font-size: 13px;
+        line-height: 1.2;
+      }
+
+      .bsky-post-handle {
+        font-size: 12px;
+        opacity: 0.7;
+      }
+
+      .bsky-post-text {
+        font-size: 14px;
+        line-height: 1.5;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+      }
+
+      .bsky-post-images {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 10px;
+      }
+
+      .bsky-post-images img {
+        flex: 1 1 45%;
+        min-width: 0;
+        max-width: 100%;
+        border-radius: 8px;
+        object-fit: cover;
+      }
+
+      .news-section .bsky-post-date {
+        display: inline-block;
+        margin-top: 10px;
+        font-size: 12px;
+        opacity: 0.65;
+        font-weight: 400;
+        text-decoration: none;
+      }
+
+      .news-section .bsky-post-date:hover {
+        text-decoration: underline;
+      }
+
+      .news-footer {
+        margin: 0 0 16px;
+        font-size: 13px;
+      }
+
       /* ── Dark mode ── */
       @media (prefers-color-scheme: dark) {
         body {
@@ -294,6 +444,28 @@
         .warning h2 {
           color: #e74c3c;
         }
+
+        .tab-line path {
+          fill: #ffcc33;
+          stroke: #ffb800;
+        }
+
+        .tab {
+          color: #e5e5e5;
+        }
+
+        .tab.active {
+          color: #1a1200;
+        }
+
+        .bsky-post {
+          background: rgba(255, 255, 255, 0.04);
+          border-color: rgba(255, 184, 0, 0.35);
+        }
+
+        .bsky-post-text {
+          color: #d4d4d4;
+        }
       }
     </style>
   </head>
@@ -338,140 +510,187 @@
     </div>
 
     <div class="content">
-      <section>
-        <h2>What is Mustard?</h2>
-        <p>
-          Mustard lets you annotate any webpage with notes — like adding your "mustard" (from the
-          German saying <em>"seinen Senf dazu geben"</em>). Save notes locally or publish them to
-          your followers on Bluesky (or GitHub), who can comment on your published notes to start a
-          conversation right where it's relevant.<br />
-          Like a note someone shared? <strong>Repost</strong>
-          it so your own followers can see it too — even if they don't follow the original author.
-        </p>
-      </section>
+      <div class="tabs" role="tablist" aria-label="Page sections">
+        <svg class="tab-line" aria-hidden="true"><path d=""></path></svg>
+        <button
+          id="tab-intro"
+          class="tab active"
+          type="button"
+          role="tab"
+          aria-selected="true"
+          aria-controls="panel-intro"
+        >
+          Introduction
+        </button>
+        <button
+          id="tab-news"
+          class="tab"
+          type="button"
+          role="tab"
+          aria-selected="false"
+          aria-controls="panel-news"
+        >
+          News
+        </button>
+      </div>
 
-      <section>
-        <h2>How to use</h2>
-        <video
-          src="assets/creating-a-mustard-note.mp4"
-          autoplay
-          loop
-          muted
-          playsinline
-          controls
-          preload="metadata"
-          aria-label="Creating a mustard note via the right-click menu"
-          style="
-            display: block;
-            width: 100%;
-            max-width: 360px;
-            margin: 4px auto 20px;
-            border-radius: 8px;
-          "
-        ></video>
-        <ol>
-          <li>
-            <strong>Right-click</strong> anywhere on a webpage and select
-            <strong>"Add Mustard"</strong> — or, when enabled in the options, hold
-            <strong>Alt</strong> and click anywhere for a faster shortcut
-          </li>
-          <li>Write your note (up to 300 characters)</li>
-          <li>
-            Click the <strong>floppy disk</strong> to save locally (no account needed) or the
-            <strong>blue arrow</strong> to publish (requires a login — connect Bluesky and/or GitHub
-            from the popup)
-          </li>
-        </ol>
-        <h3>Tips</h3>
-        <ul>
-          <li>
-            <strong>Faster note creation</strong> — enable <strong>Alt+Click</strong> on the
-            extension's <strong>options page</strong> to create a note by holding
-            <strong>Alt</strong> and clicking anywhere on a page. It's off by default so it won't
-            interfere with sites that already use Alt+Click.
-          </li>
-          <li><strong>Drag notes around</strong> if they're covering something you want to see</li>
-          <li>
-            <strong>Toggle notes off</strong> via the extension popup — click the Mustard bottle
-            icon in your toolbar
-          </li>
-          <li>
-            <strong>Minimize notes</strong> to small pills — toggle in the popup or options page, or
-            press <code>Alt+Shift+Z</code> (<code>⌥+Shift+Z</code> on Mac); hover a minimized note
-            to expand it
-          </li>
-          <li>
-            <strong>Markdown supported</strong> — use <code>**bold**</code>, <code>*italic*</code>,
-            <code>[links](url)</code>, and more
-          </li>
-          <li>
-            <strong>Add gifs</strong> by typing <code>/</code> followed by your search — e.g.
-            <code>/wow</code> opens the Giphy picker, then use arrow keys + enter to pick one<br />
-            <img
-              src="https://media.tenor.com/AUteKr8hSX0AAAAC/i-said-hey-he-man.gif"
-              alt="example gif"
-              style="margin-top: 8px; max-width: 100%; border-radius: 8px"
-            />
-          </li>
-          <li><strong>Add images</strong> by pasting an image link directly into your note</li>
-          <li>
-            <strong>Mention others</strong> by typing <code>@</code> and their handle e.g.
-            <a href="https://fettstorch.dev"><code>@fettstorch.dev</code></a
-            >. The mention turns into a link to their profile, and they get a heads-up in the
-            <strong>Mentions</strong> section of the extension popup. You can mention your Bluesky
-            <strong>mutuals</strong> (people you follow who also follow you), and people you follow
-            on <strong>GitHub</strong> who also use Mustard.
-          </li>
-          <li>
-            <strong>Repost a note</strong> from someone you follow so your own followers can see it
-            too — hover a published note and click the repost icon. Reposters show up as small
-            avatars stacked behind the original author's
-          </li>
-          <li><strong>Delete</strong> your own notes by clicking the bin icon</li>
-        </ul>
-      </section>
+      <div id="panel-intro" class="tab-panel" role="tabpanel" aria-labelledby="tab-intro">
+        <section>
+          <h2>What is Mustard?</h2>
+          <p>
+            Mustard lets you annotate any webpage with notes — like adding your "mustard" (from the
+            German saying <em>"seinen Senf dazu geben"</em>). Save notes locally or publish them to
+            your followers on Bluesky (or GitHub), who can comment on your published notes to start
+            a conversation right where it's relevant.<br />
+            Like a note someone shared? <strong>Repost</strong>
+            it so your own followers can see it too — even if they don't follow the original author.
+          </p>
+        </section>
 
-      <section>
-        <h2>Ideas for your Mustard</h2>
-        <ul>
-          <li>Share your thoughts on something you just read</li>
-          <li>Provide additional context to a blog post</li>
-          <li>Fact-check a news article</li>
-          <li>Just slap a funny gif on something</li>
-        </ul>
-      </section>
+        <section>
+          <h2>How to use</h2>
+          <video
+            src="assets/creating-a-mustard-note.mp4"
+            autoplay
+            loop
+            muted
+            playsinline
+            controls
+            preload="metadata"
+            aria-label="Creating a mustard note via the right-click menu"
+            style="
+              display: block;
+              width: 100%;
+              max-width: 360px;
+              margin: 4px auto 20px;
+              border-radius: 8px;
+            "
+          ></video>
+          <ol>
+            <li>
+              <strong>Right-click</strong> anywhere on a webpage and select
+              <strong>"Add Mustard"</strong> — or, when enabled in the options, hold
+              <strong>Alt</strong> and click anywhere for a faster shortcut
+            </li>
+            <li>Write your note (up to 300 characters)</li>
+            <li>
+              Click the <strong>floppy disk</strong> to save locally (no account needed) or the
+              <strong>blue arrow</strong> to publish (requires a login — connect Bluesky and/or
+              GitHub from the popup)
+            </li>
+          </ol>
+          <h3>Tips</h3>
+          <ul>
+            <li>
+              <strong>Faster note creation</strong> — enable <strong>Alt+Click</strong> on the
+              extension's <strong>options page</strong> to create a note by holding
+              <strong>Alt</strong> and clicking anywhere on a page. It's off by default so it won't
+              interfere with sites that already use Alt+Click.
+            </li>
+            <li>
+              <strong>Drag notes around</strong> if they're covering something you want to see
+            </li>
+            <li>
+              <strong>Toggle notes off</strong> via the extension popup — click the Mustard bottle
+              icon in your toolbar
+            </li>
+            <li>
+              <strong>Minimize notes</strong> to small pills — toggle in the popup or options page,
+              or press <code>Alt+Shift+Z</code> (<code>⌥+Shift+Z</code> on Mac); hover a minimized
+              note to expand it
+            </li>
+            <li>
+              <strong>Markdown supported</strong> — use <code>**bold**</code>,
+              <code>*italic*</code>, <code>[links](url)</code>, and more
+            </li>
+            <li>
+              <strong>Add gifs</strong> by typing <code>/</code> followed by your search — e.g.
+              <code>/wow</code> opens the Giphy picker, then use arrow keys + enter to pick one<br />
+              <img
+                src="https://media.tenor.com/AUteKr8hSX0AAAAC/i-said-hey-he-man.gif"
+                alt="example gif"
+                style="margin-top: 8px; max-width: 100%; border-radius: 8px"
+              />
+            </li>
+            <li><strong>Add images</strong> by pasting an image link directly into your note</li>
+            <li>
+              <strong>Mention others</strong> by typing <code>@</code> and their handle e.g.
+              <a href="https://fettstorch.dev"><code>@fettstorch.dev</code></a
+              >. The mention turns into a link to their profile, and they get a heads-up in the
+              <strong>Mentions</strong> section of the extension popup. You can mention your Bluesky
+              <strong>mutuals</strong> (people you follow who also follow you), and people you
+              follow on <strong>GitHub</strong> who also use Mustard.
+            </li>
+            <li>
+              <strong>Repost a note</strong> from someone you follow so your own followers can see
+              it too — hover a published note and click the repost icon. Reposters show up as small
+              avatars stacked behind the original author's
+            </li>
+            <li><strong>Delete</strong> your own notes by clicking the bin icon</li>
+          </ul>
+        </section>
 
-      <section class="warning">
-        <h2>Do not publish sensitive information</h2>
-        <p>
-          Never include passwords, API keys, personal addresses, or other private data in published
-          notes. Published notes are stored on our server and <strong>visible to anyone</strong> who
-          follows you.
-        </p>
-      </section>
+        <section>
+          <h2>Ideas for your Mustard</h2>
+          <ul>
+            <li>Share your thoughts on something you just read</li>
+            <li>Provide additional context to a blog post</li>
+            <li>Fact-check a news article</li>
+            <li>Just slap a funny gif on something</li>
+          </ul>
+        </section>
 
-      <section>
-        <h2>Heads up</h2>
-        <ul>
-          <li>
-            <strong>Content script on all pages:</strong> Mustard injects a content script on every
-            page you visit to display notes. It does <em>not</em> read or collect any page data — it
-            only checks if there are notes for the current URL.
-          </li>
-          <li>
-            <strong>Local notes are truly local:</strong> Notes saved locally never leave your
-            browser. They're stored in your browser's extension storage.
-          </li>
-          <li>
-            <strong>Single page applications:</strong> Notes are tied to URLs. On single page
-            applications where navigation doesn't always change the URL, notes may not appear on the
-            correct view.
-          </li>
-          <li>
-            <strong>Early stage:</strong> Mustard is in early development. Expect rough edges 🙏🏻
-          </li>
-        </ul>
-      </section>
+        <section class="warning">
+          <h2>Do not publish sensitive information</h2>
+          <p>
+            Never include passwords, API keys, personal addresses, or other private data in
+            published notes. Published notes are stored on our server and
+            <strong>visible to anyone</strong> who follows you.
+          </p>
+        </section>
+
+        <section>
+          <h2>Heads up</h2>
+          <ul>
+            <li>
+              <strong>Content script on all pages:</strong> Mustard injects a content script on
+              every page you visit to display notes. It does <em>not</em> read or collect any page
+              data — it only checks if there are notes for the current URL.
+            </li>
+            <li>
+              <strong>Local notes are truly local:</strong> Notes saved locally never leave your
+              browser. They're stored in your browser's extension storage.
+            </li>
+            <li>
+              <strong>Single page applications:</strong> Notes are tied to URLs. On single page
+              applications where navigation doesn't always change the URL, notes may not appear on
+              the correct view.
+            </li>
+            <li>
+              <strong>Early stage:</strong> Mustard is in early development. Expect rough edges 🙏🏻
+            </li>
+          </ul>
+        </section>
+      </div>
+
+      <div id="panel-news" class="tab-panel" role="tabpanel" aria-labelledby="tab-news" hidden>
+        <section class="news-section">
+          <h2>Latest from Bluesky</h2>
+          <p class="news-footer">
+            Follow
+            <a
+              href="https://bsky.app/profile/mustardnotes.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              >@mustardnotes.com</a
+            >
+            on Bluesky
+          </p>
+          <div class="news-feed" id="news-feed">
+            <p class="news-status">Loading posts…</p>
+          </div>
+        </section>
+      </div>
     </div>
     <script>
       ;(function () {
@@ -484,6 +703,266 @@
           chromeLink.style.display = 'none'
         } else if (isChromium && !isFirefox) {
           firefoxLink.style.display = 'none'
+        }
+      })()
+    </script>
+    <script>
+      ;(function () {
+        var FEED_URL =
+          'https://public.api.bsky.app/xrpc/app.bsky.feed.getAuthorFeed?actor=mustardnotes.com&limit=8&filter=posts_no_replies'
+        var feedEl = document.getElementById('news-feed')
+
+        // Prefetch the feed immediately on load and render it into the (hidden)
+        // News panel, so switching to the News tab is instant.
+        fetch(FEED_URL, { headers: { Accept: 'application/json' } })
+          .then(function (r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status)
+            return r.json()
+          })
+          .then(renderFeed)
+          .catch(showError)
+
+        function el(tag, cls, text) {
+          var n = document.createElement(tag)
+          if (cls) n.className = cls
+          if (text != null) n.textContent = text
+          return n
+        }
+
+        function postUrl(post) {
+          var parts = String(post.uri).split('/')
+          var rkey = parts[parts.length - 1]
+          return 'https://bsky.app/profile/' + post.author.handle + '/post/' + rkey
+        }
+
+        function formatDate(iso) {
+          try {
+            return new Date(iso).toLocaleDateString(undefined, {
+              year: 'numeric',
+              month: 'short',
+              day: 'numeric',
+            })
+          } catch (e) {
+            return ''
+          }
+        }
+
+        function imagesFromEmbed(embed) {
+          if (!embed) return null
+          if (embed.$type === 'app.bsky.embed.images#view') return embed.images
+          if (
+            embed.$type === 'app.bsky.embed.recordWithMedia#view' &&
+            embed.media &&
+            embed.media.$type === 'app.bsky.embed.images#view'
+          )
+            return embed.media.images
+          return null
+        }
+
+        function renderFeed(data) {
+          var items = (data && data.feed) || []
+          feedEl.innerHTML = ''
+          if (!items.length) {
+            feedEl.appendChild(el('p', 'news-status', 'No posts yet.'))
+            return
+          }
+          items.forEach(function (item) {
+            var post = item.post
+            if (!post || !post.record) return
+
+            var card = el('article', 'bsky-post')
+
+            var header = el('div', 'bsky-post-header')
+            if (post.author.avatar) {
+              var av = el('img', 'bsky-post-avatar')
+              av.src = post.author.avatar
+              av.alt = ''
+              av.loading = 'lazy'
+              header.appendChild(av)
+            }
+            var names = el('div')
+            names.appendChild(
+              el('div', 'bsky-post-author', post.author.displayName || post.author.handle),
+            )
+            names.appendChild(el('div', 'bsky-post-handle', '@' + post.author.handle))
+            header.appendChild(names)
+            card.appendChild(header)
+
+            if (post.record.text) {
+              card.appendChild(el('div', 'bsky-post-text', post.record.text))
+            }
+
+            var images = imagesFromEmbed(post.embed)
+            if (images && images.length) {
+              var wrap = el('div', 'bsky-post-images')
+              images.slice(0, 4).forEach(function (im) {
+                var img = el('img')
+                img.src = im.thumb
+                img.alt = im.alt || ''
+                img.loading = 'lazy'
+                wrap.appendChild(img)
+              })
+              card.appendChild(wrap)
+            }
+
+            var date = el('a', 'bsky-post-date', formatDate(post.record.createdAt))
+            date.href = postUrl(post)
+            date.target = '_blank'
+            date.rel = 'noopener noreferrer'
+            card.appendChild(date)
+
+            feedEl.appendChild(card)
+          })
+        }
+
+        function showError() {
+          feedEl.innerHTML = ''
+          var p = el('p', 'news-status', 'Couldn’t load posts right now — ')
+          var a = el('a', null, 'view on Bluesky')
+          a.href = 'https://bsky.app/profile/mustardnotes.com'
+          a.target = '_blank'
+          a.rel = 'noopener noreferrer'
+          p.appendChild(a)
+          feedEl.appendChild(p)
+        }
+
+        // ── Tab switching ──
+        var tabIntro = document.getElementById('tab-intro')
+        var tabNews = document.getElementById('tab-news')
+        var panelIntro = document.getElementById('panel-intro')
+        var panelNews = document.getElementById('panel-news')
+
+        // ── Tab switching + animated SVG tab line ──
+        // One continuous stroked+filled path: the implicit fill-close runs along
+        // the baseline, so the fill only appears under the "hump" that carves
+        // around the active tab. Switching tabs animates just two scalars
+        // (hump left/right x) so the carve slides + resizes to the active tab.
+        var tabsBar = document.querySelector('.tabs')
+        var svg = tabsBar.querySelector('.tab-line')
+        var pathEl = svg.querySelector('path')
+        var RB = 12 // bottom flare radius (concave, at the baseline)
+        var RT = 14 // top corner radius (convex)
+        var STROKE = 2
+        var activeTab = tabIntro
+        var current = null // last-drawn { x0, x1 }
+        var rafId = null
+
+        function sizeSvg() {
+          var W = tabsBar.clientWidth
+          var H = tabsBar.clientHeight
+          svg.setAttribute('width', W)
+          svg.setAttribute('height', H)
+          svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H)
+          return { W: W, H: H }
+        }
+
+        function targetFor(tab) {
+          return { x0: tab.offsetLeft, x1: tab.offsetLeft + tab.offsetWidth }
+        }
+
+        function draw(x0, x1) {
+          current = { x0: x0, x1: x1 }
+          var g = sizeSvg()
+          var base = g.H - STROKE / 2
+          var top = STROKE / 2 + 1
+          // Baseline → concave flare up into a vertical side → rounded top
+          // corner → flat top → rounded corner → vertical side → concave flare
+          // → baseline. Quadratic control points sit exactly on each corner, so
+          // the curves meet the sides with vertical tangents (truly vertical edges).
+          var d = [
+            'M',
+            0,
+            base,
+            'L',
+            x0 - RB,
+            base,
+            'Q',
+            x0,
+            base,
+            x0,
+            base - RB,
+            'L',
+            x0,
+            top + RT,
+            'Q',
+            x0,
+            top,
+            x0 + RT,
+            top,
+            'L',
+            x1 - RT,
+            top,
+            'Q',
+            x1,
+            top,
+            x1,
+            top + RT,
+            'L',
+            x1,
+            base - RB,
+            'Q',
+            x1,
+            base,
+            x1 + RB,
+            base,
+            'L',
+            g.W,
+            base,
+          ].join(' ')
+          pathEl.setAttribute('d', d)
+        }
+
+        function easeInOutCubic(t) {
+          return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2
+        }
+
+        function animateTo(tab) {
+          var to = targetFor(tab)
+          if (!current) {
+            draw(to.x0, to.x1)
+            return
+          }
+          var from = { x0: current.x0, x1: current.x1 }
+          if (rafId) cancelAnimationFrame(rafId)
+          var start = performance.now()
+          var DUR = 300
+          function frame(now) {
+            var t = Math.min(1, (now - start) / DUR)
+            var e = easeInOutCubic(t)
+            draw(from.x0 + (to.x0 - from.x0) * e, from.x1 + (to.x1 - from.x1) * e)
+            if (t < 1) rafId = requestAnimationFrame(frame)
+          }
+          rafId = requestAnimationFrame(frame)
+        }
+
+        function activate(news) {
+          activeTab = news ? tabNews : tabIntro
+          tabNews.classList.toggle('active', news)
+          tabIntro.classList.toggle('active', !news)
+          tabNews.setAttribute('aria-selected', String(news))
+          tabIntro.setAttribute('aria-selected', String(!news))
+          panelNews.hidden = !news
+          panelIntro.hidden = news
+          animateTo(activeTab)
+        }
+
+        tabIntro.addEventListener('click', function () {
+          activate(false)
+        })
+        tabNews.addEventListener('click', function () {
+          activate(true)
+        })
+
+        // Initial draw (no animation); redraw on resize + once the web font
+        // loads, since tab widths shift when Azeret Mono replaces the fallback.
+        function reset() {
+          var t = targetFor(activeTab)
+          draw(t.x0, t.x1)
+        }
+        reset()
+        window.addEventListener('resize', reset)
+        if (document.fonts && document.fonts.ready) {
+          document.fonts.ready.then(reset)
         }
       })()
     </script>
