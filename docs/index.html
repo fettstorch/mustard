@@ -365,6 +365,53 @@
         object-fit: cover;
       }
 
+      .bsky-quote {
+        margin-top: 10px;
+        padding: 10px 12px;
+        border: 1px solid rgba(92, 58, 30, 0.35);
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.22);
+      }
+
+      .news-section .bsky-quote-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 6px;
+        color: inherit;
+        font-weight: 400;
+        text-decoration: none;
+      }
+
+      .news-section .bsky-quote-header:hover {
+        color: inherit;
+        text-decoration: none;
+      }
+
+      .bsky-quote-avatar {
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        flex-shrink: 0;
+      }
+
+      .bsky-quote-author {
+        font-weight: 600;
+        font-size: 12px;
+      }
+
+      .bsky-quote-handle {
+        font-size: 11px;
+        opacity: 0.7;
+      }
+
+      .bsky-quote-text {
+        font-size: 13px;
+        line-height: 1.45;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+      }
+
       .news-section .bsky-post-date {
         display: inline-block;
         margin-top: 10px;
@@ -464,6 +511,15 @@
         }
 
         .bsky-post-text {
+          color: #d4d4d4;
+        }
+
+        .bsky-quote {
+          background: rgba(255, 255, 255, 0.04);
+          border-color: rgba(255, 184, 0, 0.3);
+        }
+
+        .bsky-quote-text {
           color: #d4d4d4;
         }
       }
@@ -759,6 +815,108 @@
           return null
         }
 
+        var enc = window.TextEncoder ? new TextEncoder() : null
+        var dec = window.TextDecoder ? new TextDecoder() : null
+
+        function facetHref(feature) {
+          if (!feature) return null
+          if (feature.$type === 'app.bsky.richtext.facet#link') return feature.uri
+          if (feature.$type === 'app.bsky.richtext.facet#mention')
+            return 'https://bsky.app/profile/' + feature.did
+          if (feature.$type === 'app.bsky.richtext.facet#tag')
+            return 'https://bsky.app/hashtag/' + encodeURIComponent(feature.tag)
+          return null
+        }
+
+        // Bluesky facet indices are UTF-8 BYTE offsets, so slice the encoded
+        // bytes (not the JS string) and decode each run back to text. Anchors
+        // use textContent, so post content can never inject markup.
+        function richText(text, facets) {
+          var frag = document.createDocumentFragment()
+          if (!text) return frag
+          var usable = (facets || []).filter(function (f) {
+            return f && f.index && f.features && f.features.length
+          })
+          if (!usable.length || !enc || !dec) {
+            frag.appendChild(document.createTextNode(text))
+            return frag
+          }
+          var bytes = enc.encode(text)
+          usable.sort(function (a, b) {
+            return a.index.byteStart - b.index.byteStart
+          })
+          var cursor = 0
+          usable.forEach(function (f) {
+            var s = f.index.byteStart
+            var e = f.index.byteEnd
+            if (s < cursor || e > bytes.length || s >= e) return
+            if (s > cursor)
+              frag.appendChild(document.createTextNode(dec.decode(bytes.slice(cursor, s))))
+            var label = dec.decode(bytes.slice(s, e))
+            var href = facetHref(f.features[0])
+            if (href) {
+              var a = document.createElement('a')
+              a.href = href
+              a.target = '_blank'
+              a.rel = 'noopener noreferrer'
+              a.textContent = label
+              frag.appendChild(a)
+            } else {
+              frag.appendChild(document.createTextNode(label))
+            }
+            cursor = e
+          })
+          if (cursor < bytes.length)
+            frag.appendChild(document.createTextNode(dec.decode(bytes.slice(cursor))))
+          return frag
+        }
+
+        // Quote posts: record#view holds the quoted post at embed.record;
+        // recordWithMedia#view holds it at embed.record.record. Both point to a
+        // #viewRecord — blocked / detached / not-found records have a different
+        // $type and are skipped.
+        function quotedRecord(embed) {
+          if (!embed) return null
+          var rec = null
+          if (embed.$type === 'app.bsky.embed.record#view') rec = embed.record
+          else if (embed.$type === 'app.bsky.embed.recordWithMedia#view' && embed.record)
+            rec = embed.record.record
+          if (!rec || rec.$type !== 'app.bsky.embed.record#viewRecord') return null
+          return rec
+        }
+
+        function recordUrl(vr) {
+          var parts = String(vr.uri).split('/')
+          return 'https://bsky.app/profile/' + vr.author.handle + '/post/' + parts[parts.length - 1]
+        }
+
+        function renderQuote(vr) {
+          var card = el('div', 'bsky-quote')
+          var head = el('a', 'bsky-quote-header')
+          head.href = recordUrl(vr)
+          head.target = '_blank'
+          head.rel = 'noopener noreferrer'
+          if (vr.author.avatar) {
+            var av = el('img', 'bsky-quote-avatar')
+            av.src = vr.author.avatar
+            av.alt = ''
+            av.loading = 'lazy'
+            head.appendChild(av)
+          }
+          head.appendChild(
+            el('span', 'bsky-quote-author', vr.author.displayName || vr.author.handle),
+          )
+          head.appendChild(el('span', 'bsky-quote-handle', '@' + vr.author.handle))
+          card.appendChild(head)
+          var val = vr.value || {}
+          if (val.text) {
+            var t = el('div', 'bsky-quote-text')
+            t.appendChild(richText(val.text, val.facets))
+            card.appendChild(t)
+          }
+          return card
+        }
+
         function renderFeed(data) {
           var items = (data && data.feed) || []
           feedEl.innerHTML = ''
@@ -789,7 +947,9 @@
             card.appendChild(header)
 
             if (post.record.text) {
-              card.appendChild(el('div', 'bsky-post-text', post.record.text))
+              var textEl = el('div', 'bsky-post-text')
+              textEl.appendChild(richText(post.record.text, post.record.facets))
+              card.appendChild(textEl)
             }
 
             var images = imagesFromEmbed(post.embed)
@@ -803,6 +963,11 @@
                 wrap.appendChild(img)
               })
               card.appendChild(wrap)
+            }
+
+            var quoted = quotedRecord(post.embed)
+            if (quoted) {
+              card.appendChild(renderQuote(quoted))
             }
 
             var date = el('a', 'bsky-post-date', formatDate(post.record.createdAt))
