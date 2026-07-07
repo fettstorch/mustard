@@ -4,6 +4,7 @@
 
 import { getSession, clearStoredSession } from './SessionStore'
 import { broadcastToAllTabs } from '@/shared/messaging'
+import { synchronize } from '@fettstorch/jule'
 
 const STORAGE_KEY = 'supabase_jwt'
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
@@ -18,8 +19,18 @@ interface CachedJwt {
 /**
  * Get a valid Supabase JWT, either from cache or by refreshing.
  * Returns null if user is not logged in or refresh fails (user must re-login).
+ *
+ * `synchronize` serializes concurrent callers behind a single module-wide lock.
+ * On page load several message handlers (session, index, profiles, notifications)
+ * call this at once; without serialization each would independently see an
+ * expiring token and fire its own auth-bridge refresh — a thundering herd where
+ * later refreshes can invalidate earlier tokens. Serialized, only the first call
+ * refreshes; the rest re-enter, read the freshly-stored JWT from cache, and
+ * return it. The valid-token fast path is a cheap storage read, so serializing it
+ * too is harmless — and unlike a memoized result, re-running the body means every
+ * call re-validates against the current session (no stale token after a switch).
  */
-export async function getSupabaseJwt(): Promise<string | null> {
+export const getSupabaseJwt = synchronize(async (): Promise<string | null> => {
   // A session here always carries a UUID userId: pre-migration DID sessions live
   // under the old storage key (never read, purged at startup), so they surface as
   // "no session" and force a fresh login.
@@ -75,7 +86,7 @@ export async function getSupabaseJwt(): Promise<string | null> {
   }
 
   return null
-}
+})
 
 /**
  * Store a Supabase JWT in the cache. Called by the login flow after auth-bridge callback.
