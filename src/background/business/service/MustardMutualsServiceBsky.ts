@@ -1,4 +1,5 @@
 import { Agent } from '@atproto/api'
+import { cached } from '@fettstorch/jule'
 import type { BskyProfile } from '@/shared/model/BskyProfile'
 
 /**
@@ -22,19 +23,13 @@ export class MustardMutualsServiceBsky {
   private static readonly PAGE_LIMIT = 100
   private static readonly CACHE_TTL_MS = 5 * 60 * 1000
 
-  private cache: { did: string; mutuals: BskyProfile[]; timestamp: number } | null = null
-
-  async getMutuals(did: string): Promise<BskyProfile[]> {
-    const now = Date.now()
-    if (
-      this.cache &&
-      this.cache.did === did &&
-      now - this.cache.timestamp < MustardMutualsServiceBsky.CACHE_TTL_MS
-    ) {
-      return this.cache.mutuals
-    }
-
-    try {
+  // Per-DID mutuals cache with TTL, via jule `cached`. As a bonus it de-dupes
+  // concurrent callers onto one in-flight fetch within the TTL window. A failure
+  // is evicted in getMutuals below so a rejected promise is never memoized —
+  // otherwise `cached` would replay the error for the whole TTL instead of
+  // retrying on the next call.
+  private readonly loadMutuals = cached(
+    async (did: string): Promise<BskyProfile[]> => {
       const [followProfiles, followerDids] = await Promise.all([
         this.fetchFollows(did),
         this.fetchFollowerDids(did),
@@ -44,10 +39,18 @@ export class MustardMutualsServiceBsky {
       mutuals.sort((a, b) =>
         a.displayName.localeCompare(b.displayName, undefined, { sensitivity: 'base' }),
       )
-
-      this.cache = { did, mutuals, timestamp: now }
       return mutuals
+    },
+    { ttlMs: MustardMutualsServiceBsky.CACHE_TTL_MS },
+  )
+
+  async getMutuals(did: string): Promise<BskyProfile[]> {
+    try {
+      return await this.loadMutuals(did)
     } catch (err) {
+      // Drop the memoized rejection so the next call retries instead of
+      // replaying the error until the TTL lapses.
+      this.loadMutuals.evict(did)
       console.error('MustardMutualsServiceBsky.getMutuals failed:', err)
       return []
     }
@@ -55,7 +58,7 @@ export class MustardMutualsServiceBsky {
 
   /** Invalidate the cache (e.g. on logout). */
   clear(): void {
-    this.cache = null
+    this.loadMutuals.clear()
   }
 
   private async fetchFollows(did: string): Promise<BskyProfile[]> {
