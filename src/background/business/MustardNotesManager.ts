@@ -26,14 +26,26 @@ export const mustardNotesManager = {
   /**
    * Query notes for a page from all services.
    * @param pageUrl - The page URL to query notes for
-   * @param userId - The logged-in user's ID (DID), used for remote service queries
+   * @param userId - The logged-in user's ID (UUID), used for remote service queries
+   * @param opts.includeAllAuthors - One-shot "show all notes on this page": fetch
+   *   every published note on the page (ignoring the follow graph) instead of the
+   *   follow-filtered set. Requires a logged-in user; ignored when logged out.
    */
-  async queryMustardNotesFor(pageUrl: string, userId?: string): Promise<MustardNote[]> {
+  async queryMustardNotesFor(
+    pageUrl: string,
+    userId?: string,
+    opts?: { includeAllAuthors?: boolean },
+  ): Promise<MustardNote[]> {
     // Always query local notes
     const localNotes = await localService.queryNotes(pageUrl)
 
     // Query remote notes if user is logged in
-    const remoteNotes = userId ? await remoteService.queryNotes(pageUrl, userId) : []
+    let remoteNotes: MustardNote[] = []
+    if (userId) {
+      remoteNotes = opts?.includeAllAuthors
+        ? await remoteService.queryAllNotesForPage(pageUrl)
+        : await remoteService.queryNotes(pageUrl, userId)
+    }
 
     return sortByCreationDateAsc([...localNotes, ...remoteNotes])
   },
