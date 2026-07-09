@@ -330,3 +330,25 @@ supabase/
 ## Architecture
 
 For a system map (runtime surfaces, managers, services, storage, edge functions, data flow), see the `mustard-architecture` skill in `.agents/skills/`. Auth specifics live in the `atproto-supabase-auth` skill; cross-browser/WXT specifics in `cross-browser-webext`.
+
+## License
+
+Copyright © 2026 @fettstorch.dev.
+
+Mustard is free software licensed under the [GNU Affero General Public License
+version 3 only](./LICENSE). Modified versions that are distributed, or made
+available for users to interact with over a network, must make their
+corresponding source available under the same license.
+
+Contributions intentionally submitted for inclusion in Mustard are licensed
+under the same `AGPL-3.0-only` terms. No Contributor License Agreement is
+required.
+
+Third-party materials remain subject to their own terms; see
+[THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md).
+
+## Trademarks
+
+The AGPL license does not grant permission to present modified versions as
+official Mustard releases. See [TRADEMARKS.md](./TRADEMARKS.md) for permitted
+uses of the Mustard name and mustard-bottle logo.
