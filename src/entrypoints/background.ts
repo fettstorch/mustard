@@ -1,5 +1,6 @@
 import {
   createOpenNoteEditorMessage,
+  createLoadAllNotesMessage,
   broadcastToAllTabs,
   sendMessage,
   sendTabMessage,
@@ -317,6 +318,17 @@ export default defineBackground(() => {
         await browser.storage.local.set({ [NOTES_MINIMIZED_KEY]: !current })
       } catch (err) {
         console.debug('mustard [service-worker] toggle-minimize-notes failed:', err)
+      }
+    } else if (command === 'show-all-notes') {
+      // No popup is open on the shortcut path, so ask the active tab's content
+      // script to load all notes and render its own on-page feedback toast.
+      try {
+        const [tab] = await browser.tabs.query({ active: true, currentWindow: true })
+        if (tab?.id !== undefined) {
+          await sendTabMessage(tab.id, createLoadAllNotesMessage(true))
+        }
+      } catch (err) {
+        console.debug('mustard [service-worker] show-all-notes failed:', err)
       }
     }
   })

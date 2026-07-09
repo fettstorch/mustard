@@ -187,14 +187,21 @@ export type SetNotesVisibleMessage = Satisfies<
   }
 >
 
-// Popup → content script: one-shot "Show all notes on this page". The content
-// script re-queries the page ignoring the follow graph, renders the result, and
-// returns the resulting note count so the popup can show empty-state feedback.
-// Not a persistent mode — a later natural re-query reverts to follow-only notes.
+// Popup/background → content script: one-shot "Show all notes on this page". The
+// content script re-queries the page ignoring the follow graph, renders the
+// result, and returns the resulting note count so the popup can show empty-state
+// feedback. Not a persistent mode — a later natural re-query reverts to
+// follow-only notes.
 export type LoadAllNotesMessage = Satisfies<
   BaseMessage,
   {
     type: 'LOAD_ALL_NOTES'
+    /**
+     * When true, the content script shows its own on-page toast with the result.
+     * Set for the keyboard-shortcut path (no popup is open to render feedback);
+     * omitted for the popup button, which renders inline feedback itself.
+     */
+    withToast?: boolean
   }
 >
 
@@ -620,9 +627,10 @@ export function createSetNotesVisibleMessage(visible: boolean): SetNotesVisibleM
   }
 }
 
-export function createLoadAllNotesMessage(): LoadAllNotesMessage {
+export function createLoadAllNotesMessage(withToast?: boolean): LoadAllNotesMessage {
   return {
     type: 'LOAD_ALL_NOTES',
+    ...(withToast ? { withToast } : {}),
   }
 }
 

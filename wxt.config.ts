@@ -77,6 +77,12 @@ export default defineConfig({
           default: 'Alt+Shift+Z',
         },
       },
+      'show-all-notes': {
+        description: 'Show all Mustard notes on this page',
+        suggested_key: {
+          default: 'Alt+Shift+A',
+        },
+      },
     },
     content_security_policy: {
       extension_pages: "script-src 'self'; object-src 'self'; img-src 'self' https: data:",

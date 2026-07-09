@@ -92,6 +92,7 @@ const linkedCount = computed(() => currentSession.value?.identities?.length ?? 0
 const systemFonts = computed(() => MUSTARD_FONTS.filter((f) => f.category === 'system'))
 const webFonts = computed(() => MUSTARD_FONTS.filter((f) => f.category === 'web'))
 const minimizeShortcut = ref<string>('')
+const showAllNotesShortcut = ref<string>('')
 const popupShortcut = ref<string>('')
 const shortcutsUrl = ref<string>('')
 const isFirefoxBrowser = ref<boolean>(false)
@@ -123,6 +124,7 @@ onMounted(async () => {
     const commands = (await browser.commands?.getAll?.()) ?? []
     minimizeShortcut.value =
       commands.find((c) => c.name === 'toggle-minimize-notes')?.shortcut || ''
+    showAllNotesShortcut.value = commands.find((c) => c.name === 'show-all-notes')?.shortcut || ''
     popupShortcut.value =
       commands.find((c) => c.name === '_execute_action' || c.name === '_execute_browser_action')
         ?.shortcut || ''
@@ -498,6 +500,11 @@ async function disconnect(provider: string, label: string) {
         <div class="shortcut-row">
           <span class="pref-label">Toggle minimize notes</span>
           <kbd v-if="minimizeShortcut" class="shortcut-key">{{ minimizeShortcut }}</kbd>
+          <span v-else class="shortcut-unset">Not set</span>
+        </div>
+        <div class="shortcut-row">
+          <span class="pref-label">Show all notes on this page</span>
+          <kbd v-if="showAllNotesShortcut" class="shortcut-key">{{ showAllNotesShortcut }}</kbd>
           <span v-else class="shortcut-unset">Not set</span>
         </div>
         <a v-if="!isFirefoxBrowser" class="welcome-link" @click.prevent="openShortcutsPage">

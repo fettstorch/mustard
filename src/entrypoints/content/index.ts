@@ -504,11 +504,29 @@ export default defineContentScript({
         // the result, and report the count back so the popup can show an
         // empty-state message when nothing was found. Ensure notes are visible
         // so a hidden-notes toggle doesn't make a successful load look empty.
+        // `withToast` (keyboard-shortcut path) shows on-page feedback since no
+        // popup is open to render it.
+        const withToast = message.withToast === true
         mustardState.areNotesVisible = true
+        // Loading all notes needs a logged-in session (author profiles resolve
+        // via the authenticated path). On the shortcut path, nudge instead of
+        // silently doing nothing.
+        if (!mustardState.currentUserId) {
+          if (withToast) showLoadAllNotesToast('Log in to Mustard to see all notes on this page')
+          return Promise.resolve(0)
+        }
         return sendMessage(createQueryNotesMessage(getCurrentPageUrl(), true))
           .then((dtos) => {
             applyNotesResponse(dtos, { withComments: true })
-            return mustardState.notes.length
+            const count = mustardState.notes.length
+            if (withToast) {
+              showLoadAllNotesToast(
+                count > 0
+                  ? `Showing all ${count} note${count === 1 ? '' : 's'} on this page`
+                  : 'No mustard here yet — be the first to add a note on this page!',
+              )
+            }
+            return count
           })
           .catch(() => 0)
       }
@@ -657,6 +675,31 @@ export default defineContentScript({
         sendMessage(createRequestUpdateMessage()).catch(() => {})
       }
       document.body.appendChild(banner)
+    }
+
+    // Transient, auto-dismissing feedback for the "show all notes" keyboard
+    // shortcut (the popup — which normally renders this — isn't open). Bottom
+    // center so it doesn't collide with the top banners. Re-shown = replaced.
+    let loadAllNotesToastTimer: ReturnType<typeof setTimeout> | undefined
+    function showLoadAllNotesToast(text: string) {
+      document.getElementById('mustard-load-all-toast')?.remove()
+      if (loadAllNotesToastTimer) clearTimeout(loadAllNotesToastTimer)
+      const toast = document.createElement('div')
+      toast.id = 'mustard-load-all-toast'
+      toast.style.cssText =
+        'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#ffb800;color:#3d2200;' +
+        'padding:10px 18px;border-radius:10px;font-family:monospace;font-size:13px;font-weight:600;' +
+        'z-index:2147483647;box-shadow:0 2px 8px rgba(0,0,0,0.25);display:flex;align-items:center;gap:8px;' +
+        'max-width:min(90vw,420px)'
+      const icon = document.createElement('img')
+      icon.src = mustardIconUrl
+      icon.style.cssText = 'width:24px;height:24px;flex-shrink:0'
+      const label = document.createElement('span')
+      label.textContent = text
+      toast.appendChild(icon)
+      toast.appendChild(label)
+      document.body.appendChild(toast)
+      loadAllNotesToastTimer = setTimeout(() => toast.remove(), 4000)
     }
 
     // Single host element for all Mustard UI
