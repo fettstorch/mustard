@@ -499,6 +499,19 @@ export default defineContentScript({
         mustardState.areNotesVisible = message.visible
         return Promise.resolve(mustardState.areNotesVisible)
       }
+      if (message.type === 'LOAD_ALL_NOTES') {
+        // One-shot: re-query the current page ignoring the follow graph, render
+        // the result, and report the count back so the popup can show an
+        // empty-state message when nothing was found. Ensure notes are visible
+        // so a hidden-notes toggle doesn't make a successful load look empty.
+        mustardState.areNotesVisible = true
+        return sendMessage(createQueryNotesMessage(getCurrentPageUrl(), true))
+          .then((dtos) => {
+            applyNotesResponse(dtos, { withComments: true })
+            return mustardState.notes.length
+          })
+          .catch(() => 0)
+      }
       if (message.type === 'OPEN_NOTE_EDITOR') {
         openNoteEditor(lastContextMenuData)
         return

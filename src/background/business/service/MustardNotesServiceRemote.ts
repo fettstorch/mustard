@@ -101,6 +101,35 @@ async function fetchNotesByIdForPage(
   }
 }
 
+/**
+ * Fetch reposters for a batch of note ids → `noteId → reposterId[]` (all
+ * reposters, global — the reposts table is public-read). Batched to stay within
+ * PostgREST URI limits. Mirrors what `get_index_payload` bakes into
+ * `repostersByNoteId`, but resolved client-side for the "show all notes" path
+ * which bypasses the follow index entirely.
+ */
+async function fetchRepostersForNotes(noteIds: string[]): Promise<Map<string, string[]>> {
+  const byNoteId = new Map<string, string[]>()
+  const BATCH_SIZE = 200
+  for (let i = 0; i < noteIds.length; i += BATCH_SIZE) {
+    const batch = noteIds.slice(i, i + BATCH_SIZE)
+    const { data, error } = await supabase
+      .from('reposts')
+      .select('note_id, reposter_id')
+      .in('note_id', batch)
+
+    if (error) {
+      throw new Error(`Supabase reposts query failed: ${error.message}`)
+    }
+    for (const row of (data || []) as { note_id: string; reposter_id: string }[]) {
+      const list = byNoteId.get(row.note_id) ?? []
+      list.push(row.reposter_id)
+      byNoteId.set(row.note_id, list)
+    }
+  }
+  return byNoteId
+}
+
 /** Rebuild the runtime payload (with a MustardIndex) from the stored raw shape. */
 function hydrateIndexCache(stored: StoredIndexCache): IndexCachePayload {
   return {
@@ -224,6 +253,35 @@ class MustardNotesServiceRemote implements MustardNotesService {
       )
     } catch (error) {
       console.error('Failed to query remote notes:', error)
+      return []
+    }
+  }
+
+  /**
+   * Fetch EVERY published note on a page, ignoring the viewer's follow graph.
+   * Backs the one-shot "Show all notes on this page" action. Relies on the
+   * public-read RLS policies on `notes` and `reposts`, so no index/follow
+   * resolution is needed — just a direct page-scoped select plus a reposts
+   * lookup for the matched notes (so avatar stacks still render). A generous
+   * `limit` caps pathological pages.
+   */
+  async queryAllNotesForPage(pageUrl: string): Promise<MustardNote[]> {
+    try {
+      const { data, error } = await supabase
+        .from('notes')
+        .select('*')
+        .eq('page_url', pageUrl)
+        .limit(500)
+
+      if (error) {
+        throw new Error(`Supabase all-notes query failed: ${error.message}`)
+      }
+      const rows = (data || []) as DbNote[]
+
+      const repostersByNoteId = await fetchRepostersForNotes(rows.map((r) => r.id))
+      return rows.map((row) => dbNoteToMustardNote(row, repostersByNoteId.get(row.id) ?? []))
+    } catch (error) {
+      console.error('Failed to query all remote notes:', error)
       return []
     }
   }

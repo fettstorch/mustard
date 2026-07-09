@@ -12,6 +12,7 @@ import {
   createGetProfilesMessage,
   createGetNotesVisibleMessage,
   createSetNotesVisibleMessage,
+  createLoadAllNotesMessage,
   createGetAppStatusMessage,
   createRequestUpdateMessage,
   sendMessage,
@@ -31,6 +32,11 @@ const isOutdated = ref(false)
 const areNotesVisible = ref(true)
 const areNotesMinimized = ref(false)
 const activeTabId = ref<number | null>(null)
+
+// One-shot "Show all notes on this page" state.
+const isLoadingAllNotes = ref(false)
+// null = not run yet; a number = notes found on the last run (drives empty-state copy).
+const allNotesFound = ref<number | null>(null)
 
 onMounted(async () => {
   // Client-version guard: surface an update notice when the backend has moved
@@ -84,6 +90,21 @@ function toggleNotesMinimized() {
   const newValue = !areNotesMinimized.value
   areNotesMinimized.value = newValue
   browser.storage.local.set({ [NOTES_MINIMIZED_KEY]: newValue })
+}
+
+// One-shot action: ask the active tab's content script to load every note on
+// the page (ignoring the follow graph) and render them. We surface the resulting
+// count so a zero result reads as "be the first here", not a failure.
+async function loadAllNotes() {
+  if (!activeTabId.value || isLoadingAllNotes.value) return
+  isLoadingAllNotes.value = true
+  try {
+    allNotesFound.value = await sendTabMessage(activeTabId.value, createLoadAllNotesMessage())
+  } catch {
+    // Content script not available on this tab — leave the result unset.
+  } finally {
+    isLoadingAllNotes.value = false
+  }
 }
 
 // Fetch profile when session changes
@@ -163,6 +184,22 @@ const logoUrl = browser.runtime.getURL('/mustard_bottle_smile_512.png')
       >
         <span class="mustard-toggle-knob" />
       </button>
+    </div>
+
+    <!-- One-shot: load every note on this page, regardless of who you follow.
+         Only useful (and only resolvable) when logged in. -->
+    <div v-if="activeTabId && session" class="load-all-section">
+      <button
+        @click="loadAllNotes"
+        class="mustard-notes-btn load-all-btn"
+        :disabled="isLoadingAllNotes"
+        title="Load every Mustard note on this page, even from people you don't follow"
+      >
+        {{ isLoadingAllNotes ? 'Loading…' : 'Show all notes on this page' }}
+      </button>
+      <p v-if="!isLoadingAllNotes && allNotesFound === 0" class="load-all-empty">
+        No mustard here yet — be the first to add a note on this page!
+      </p>
     </div>
 
     <!-- Logged in -->
@@ -344,6 +381,26 @@ body::-webkit-scrollbar {
 
 .mustard-toggle.is-off .mustard-toggle-knob {
   transform: translateX(2px);
+}
+
+.load-all-section {
+  margin-bottom: 0.75rem;
+}
+
+.load-all-btn {
+  width: 100%;
+}
+
+.load-all-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.load-all-empty {
+  margin: 0.5rem 0 0;
+  font-size: 0.8125rem;
+  line-height: 1.35;
+  opacity: 0.8;
 }
 
 .session-container {

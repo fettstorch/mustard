@@ -378,7 +378,13 @@ export default defineBackground(() => {
 
     QUERY_NOTES: async (message) => {
       const session = await getSession()
-      const notes = await mustardNotesManager.queryMustardNotesFor(message.pageUrl, session?.userId)
+      const notes = await mustardNotesManager.queryMustardNotesFor(
+        message.pageUrl,
+        session?.userId,
+        {
+          includeAllAuthors: message.includeAllAuthors,
+        },
+      )
       return notes.map(DtoMustardNote.toDto)
     },
 

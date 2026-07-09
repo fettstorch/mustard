@@ -38,6 +38,12 @@ export type QueryNotesMessage = Satisfies<
   {
     type: 'QUERY_NOTES'
     pageUrl: string
+    /**
+     * When true, return every published note on the page (ignoring the viewer's
+     * follow graph). Powers the one-shot "Show all notes on this page" action.
+     * Defaults to the normal follow-filtered query when omitted.
+     */
+    includeAllAuthors?: boolean
   }
 >
 
@@ -178,6 +184,17 @@ export type SetNotesVisibleMessage = Satisfies<
   {
     type: 'SET_NOTES_VISIBLE'
     visible: boolean
+  }
+>
+
+// Popup → content script: one-shot "Show all notes on this page". The content
+// script re-queries the page ignoring the follow graph, renders the result, and
+// returns the resulting note count so the popup can show empty-state feedback.
+// Not a persistent mode — a later natural re-query reverts to follow-only notes.
+export type LoadAllNotesMessage = Satisfies<
+  BaseMessage,
+  {
+    type: 'LOAD_ALL_NOTES'
   }
 >
 
@@ -362,6 +379,7 @@ export type Message =
   | GetGithubMentionCandidatesMessage
   | GetNotesVisibleMessage
   | SetNotesVisibleMessage
+  | LoadAllNotesMessage
   | SessionChangedMessage
   | SessionExpiredMessage
   | OpenPopupMessage
@@ -401,6 +419,7 @@ type MessageResponses = {
   GET_GITHUB_MENTION_CANDIDATES: GetGithubMentionCandidatesResponse
   GET_NOTES_VISIBLE: boolean
   SET_NOTES_VISIBLE: boolean
+  LOAD_ALL_NOTES: number
   SESSION_CHANGED: void
   SESSION_EXPIRED: void
   OPEN_POPUP: void
@@ -490,10 +509,14 @@ export function createUpsertNoteMessage(
   }
 }
 
-export function createQueryNotesMessage(pageUrl: string): QueryNotesMessage {
+export function createQueryNotesMessage(
+  pageUrl: string,
+  includeAllAuthors?: boolean,
+): QueryNotesMessage {
   return {
     type: 'QUERY_NOTES',
     pageUrl,
+    ...(includeAllAuthors ? { includeAllAuthors } : {}),
   }
 }
 
@@ -594,6 +617,12 @@ export function createSetNotesVisibleMessage(visible: boolean): SetNotesVisibleM
   return {
     type: 'SET_NOTES_VISIBLE',
     visible,
+  }
+}
+
+export function createLoadAllNotesMessage(): LoadAllNotesMessage {
+  return {
+    type: 'LOAD_ALL_NOTES',
   }
 }
 
