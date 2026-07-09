@@ -29,7 +29,7 @@ import { createMustardState } from '@/ui/content/mustard-state'
 import { showMustardToast } from './mustard-toast'
 import type { MustardNote } from '@/shared/model/MustardNote'
 import type { MustardComment } from '@/shared/model/MustardComment'
-import { Observable } from '@fettstorch/jule'
+import { Observable, synchronize } from '@fettstorch/jule'
 import { createApp, watch } from 'vue'
 
 const NOTES_MINIMIZED_KEY = 'mustard-notes-minimized'
@@ -194,6 +194,26 @@ export default defineContentScript({
       fetchProfilesForNotes(notes)
       if (options?.withComments) fetchCommentsAndNotificationsForNotes(notes)
     }
+
+    /**
+     * Issue one QUERY_NOTES and apply its response, serialized across all
+     * callers. `synchronize` runs invocations FIFO, so each query's apply
+     * completes before the next begins — the most recently issued query always
+     * wins. This prevents an earlier in-flight follow-only response from landing
+     * after (and clobbering) a later query, e.g. the one-shot "show all notes"
+     * load being overwritten by a slow page-load / SESSION_CHANGED query.
+     * Returns the resulting on-screen note count.
+     */
+    const runNotesQuery = synchronize(
+      async (
+        pageUrl: string,
+        options?: { includeAllAuthors?: boolean; withComments?: boolean },
+      ): Promise<number> => {
+        const dtos = await sendMessage(createQueryNotesMessage(pageUrl, options?.includeAllAuthors))
+        applyNotesResponse(dtos, { withComments: options?.withComments })
+        return mustardState.notes.length
+      },
+    )
 
     /**
      * Apply a local-only notes response: the background returns just the local
@@ -375,12 +395,7 @@ export default defineContentScript({
       mustardState.commentsLoadState = {}
       mustardState.expandedCommentNoteIds = {}
       mustardState.unreadByNoteId = {}
-      sendMessage(createQueryNotesMessage(newUrl))
-        .then((dtos) => {
-          console.debug('mustard [content-script] received notes for new URL:', dtos)
-          applyNotesResponse(dtos, { withComments: true })
-        })
-        .catch(() => {})
+      runNotesQuery(newUrl, { withComments: true }).catch(() => {})
     }
 
     window.addEventListener('popstate', handleUrlChange)
@@ -515,10 +530,12 @@ export default defineContentScript({
           if (withToast) showLoadAllNotesToast('Log in to Mustard to see all notes on this page')
           return Promise.resolve(0)
         }
-        return sendMessage(createQueryNotesMessage(getCurrentPageUrl(), true))
-          .then((dtos) => {
-            applyNotesResponse(dtos, { withComments: true })
-            const count = mustardState.notes.length
+        return (async (): Promise<number> => {
+          try {
+            const count = await runNotesQuery(getCurrentPageUrl(), {
+              includeAllAuthors: true,
+              withComments: true,
+            })
             if (withToast) {
               showLoadAllNotesToast(
                 count > 0
@@ -527,8 +544,10 @@ export default defineContentScript({
               )
             }
             return count
-          })
-          .catch(() => 0)
+          } catch {
+            return 0
+          }
+        })()
       }
       if (message.type === 'OPEN_NOTE_EDITOR') {
         openNoteEditor(lastContextMenuData)
@@ -548,12 +567,7 @@ export default defineContentScript({
         // Session change can change which notes are visible (follows differ),
         // so clear per-note client state to avoid stale dots / comments.
         mustardState.unreadByNoteId = {}
-        sendMessage(createQueryNotesMessage(getCurrentPageUrl()))
-          .then((dtos) => {
-            console.debug('mustard [content-script] received notes after session change:', dtos)
-            applyNotesResponse(dtos, { withComments: true })
-          })
-          .catch(() => {})
+        runNotesQuery(getCurrentPageUrl(), { withComments: true }).catch(() => {})
         return
       }
       if (message.type === 'NOTIFICATIONS_CHANGED') {
@@ -625,12 +639,8 @@ export default defineContentScript({
     })
 
     // Query notes for the current page
-    sendMessage(createQueryNotesMessage(getCurrentPageUrl()))
-      .then((dtos) => {
-        console.debug('mustard [content-script] received notes:', dtos)
-        applyNotesResponse(dtos, { withComments: true })
-        maybeApplyPendingFocus()
-      })
+    runNotesQuery(getCurrentPageUrl(), { withComments: true })
+      .then(() => maybeApplyPendingFocus())
       .catch(() => {})
 
     function showSessionExpiredBanner() {
