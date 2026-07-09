@@ -1,4 +1,3 @@
-import mustardIconUrl from '@/assets/icons/mustard_bottle_smile_48.png'
 import {
   createQueryNotesMessage,
   createGetAtprotoSessionMessage,
@@ -27,6 +26,7 @@ import { DtoMustardNote } from '@/shared/dto/DtoMustardNote'
 import { DtoMustardComment } from '@/shared/dto/DtoMustardComment'
 import MustardContent from '@/ui/content/MustardContent.vue'
 import { createMustardState } from '@/ui/content/mustard-state'
+import { showMustardToast } from './mustard-toast'
 import type { MustardNote } from '@/shared/model/MustardNote'
 import type { MustardComment } from '@/shared/model/MustardComment'
 import { Observable } from '@fettstorch/jule'
@@ -634,72 +634,30 @@ export default defineContentScript({
       .catch(() => {})
 
     function showSessionExpiredBanner() {
-      if (document.getElementById('mustard-session-expired-banner')) return
-      const banner = document.createElement('div')
-      banner.id = 'mustard-session-expired-banner'
-      banner.style.cssText =
-        'position:fixed;top:0;left:50%;transform:translateX(-50%);background:#ffb800;color:#3d2200;' +
-        'padding:8px 20px;border-radius:0 0 10px 10px;font-family:monospace;font-size:13px;font-weight:600;' +
-        'z-index:2147483647;box-shadow:0 2px 8px rgba(0,0,0,0.25);cursor:pointer;display:flex;align-items:center;gap:8px'
-      const icon = document.createElement('img')
-      icon.src = mustardIconUrl
-      icon.style.cssText = 'width:24px;height:24px;flex-shrink:0'
-      const text = document.createElement('span')
-      text.textContent = 'Mustard session expired — open the Mustard extension menu to re-login'
-      banner.appendChild(icon)
-      banner.appendChild(text)
-      banner.onclick = () => {
-        banner.remove()
-        sendMessage({ type: 'OPEN_POPUP' }).catch(() => {})
-      }
-      document.body.appendChild(banner)
+      showMustardToast({
+        id: 'mustard-session-expired-banner',
+        text: 'Mustard session expired — open the Mustard extension menu to re-login',
+        onClick: (dismiss) => {
+          dismiss()
+          sendMessage({ type: 'OPEN_POPUP' }).catch(() => {})
+        },
+      })
     }
 
     function showUpdateRequiredBanner() {
-      if (document.getElementById('mustard-update-required-banner')) return
-      const banner = document.createElement('div')
-      banner.id = 'mustard-update-required-banner'
-      banner.style.cssText =
-        'position:fixed;top:0;left:50%;transform:translateX(-50%);background:#ffb800;color:#3d2200;' +
-        'padding:8px 20px;border-radius:0 0 10px 10px;font-family:monospace;font-size:13px;font-weight:600;' +
-        'z-index:2147483647;box-shadow:0 2px 8px rgba(0,0,0,0.25);cursor:pointer;display:flex;align-items:center;gap:8px'
-      const icon = document.createElement('img')
-      icon.src = mustardIconUrl
-      icon.style.cssText = 'width:24px;height:24px;flex-shrink:0'
-      const text = document.createElement('span')
-      text.textContent =
-        'Big changes! Mustard needs an update to keep working — click here to update, or do it from your browser’s extensions page. You might also need to re-login from the Mustard menu afterwards.'
-      banner.appendChild(icon)
-      banner.appendChild(text)
-      banner.onclick = () => {
-        sendMessage(createRequestUpdateMessage()).catch(() => {})
-      }
-      document.body.appendChild(banner)
+      showMustardToast({
+        id: 'mustard-update-required-banner',
+        text: 'Big changes! Mustard needs an update to keep working — click here to update, or do it from your browser’s extensions page. You might also need to re-login from the Mustard menu afterwards.',
+        onClick: () => {
+          sendMessage(createRequestUpdateMessage()).catch(() => {})
+        },
+      })
     }
 
     // Transient, auto-dismissing feedback for the "show all notes" keyboard
-    // shortcut (the popup — which normally renders this — isn't open). Bottom
-    // center so it doesn't collide with the top banners. Re-shown = replaced.
-    let loadAllNotesToastTimer: ReturnType<typeof setTimeout> | undefined
+    // shortcut (the popup — which normally renders this — isn't open).
     function showLoadAllNotesToast(text: string) {
-      document.getElementById('mustard-load-all-toast')?.remove()
-      if (loadAllNotesToastTimer) clearTimeout(loadAllNotesToastTimer)
-      const toast = document.createElement('div')
-      toast.id = 'mustard-load-all-toast'
-      toast.style.cssText =
-        'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#ffb800;color:#3d2200;' +
-        'padding:10px 18px;border-radius:10px;font-family:monospace;font-size:13px;font-weight:600;' +
-        'z-index:2147483647;box-shadow:0 2px 8px rgba(0,0,0,0.25);display:flex;align-items:center;gap:8px;' +
-        'max-width:min(90vw,420px)'
-      const icon = document.createElement('img')
-      icon.src = mustardIconUrl
-      icon.style.cssText = 'width:24px;height:24px;flex-shrink:0'
-      const label = document.createElement('span')
-      label.textContent = text
-      toast.appendChild(icon)
-      toast.appendChild(label)
-      document.body.appendChild(toast)
-      loadAllNotesToastTimer = setTimeout(() => toast.remove(), 4000)
+      showMustardToast({ id: 'mustard-load-all-toast', text, autoDismissMs: 4000 })
     }
 
     // Single host element for all Mustard UI
