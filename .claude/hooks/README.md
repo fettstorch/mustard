@@ -19,28 +19,28 @@ When implementing a `Stop` hook, understanding how Claude Code and Cursor handle
 ### Key Insights
 
 1. **stdout is reserved for JSON communication**
-    - Any unstructured text on stdout (like debug logs) will be parsed as JSON, causing parse errors
-    - All logging must go to stderr via `>&2`
+   - Any unstructured text on stdout (like debug logs) will be parsed as JSON, causing parse errors
+   - All logging must go to stderr via `>&2`
 
 2. **Success path**
-    - Exit 0 with no stdout is the safest approach for both systems
-    - Both treat "exit 0 + empty stdout" as "allow"
-    - Never output JSON on the success path unless explicitly needed
+   - Exit 0 with no stdout is the safest approach for both systems
+   - Both treat "exit 0 + empty stdout" as "allow"
+   - Never output JSON on the success path unless explicitly needed
 
 3. **Failure paths**
-    - For blocking errors (setup failures, missing tools), use **exit 2** with error message on stderr
-    - For build/verification failures, use **exit 0** with blocking JSON on stdout
-    - Exit 1 is non-blocking in both systems — use it only for truly non-critical errors
+   - For blocking errors (setup failures, missing tools), use **exit 2** with error message on stderr
+   - For build/verification failures, use **exit 0** with blocking JSON on stdout
+   - Exit 1 is non-blocking in both systems — use it only for truly non-critical errors
 
 4. **Dual-format JSON**
-    - Claude Code reads `decision` and `reason` fields
-    - Cursor reads `followup_message` field
-    - Both fields can coexist in the same JSON object for compatibility
+   - Claude Code reads `decision` and `reason` fields
+   - Cursor reads `followup_message` field
+   - Both fields can coexist in the same JSON object for compatibility
 
 5. **Exit Code Semantics**
-    - **exit 0**: "Hook succeeded, parse stdout for JSON decisions"
-    - **exit 2**: "Blocking error; feed stderr back to Claude/user and prevent action"
-    - **exit 1, 3+**: "Non-blocking error; action proceeds"
+   - **exit 0**: "Hook succeeded, parse stdout for JSON decisions"
+   - **exit 2**: "Blocking error; feed stderr back to Claude/user and prevent action"
+   - **exit 1, 3+**: "Non-blocking error; action proceeds"
 
 ## References
 

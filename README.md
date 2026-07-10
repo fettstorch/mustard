@@ -28,7 +28,7 @@ The name "mustard" comes from the German saying _"seinen Senf dazu geben"_ (to a
   unlink providers from the options page; unlinking the last identity deletes the
   account and all its content.
 - Uses each linked provider's **follow graph** — people you follow on Bluesky
-  *or* GitHub can see your published mustard (per-provider follow resolution
+  _or_ GitHub can see your published mustard (per-provider follow resolution
   degrades independently, so one dead token never hides everything).
 - **Mentions** (`@`): only people who are Mustard users are mentionable — Bluesky
   mutuals and GitHub follows who have signed up.
@@ -151,17 +151,17 @@ flowchart LR
 
 The extension reads two env vars at build time via Vite:
 
-| Variable | Description |
-|---|---|
-| `VITE_SUPABASE_URL` | Full Supabase project URL |
+| Variable                 | Description                                                           |
+| ------------------------ | --------------------------------------------------------------------- |
+| `VITE_SUPABASE_URL`      | Full Supabase project URL                                             |
 | `VITE_SUPABASE_ANON_KEY` | Supabase anon/public key (safe to commit — RLS policies protect data) |
 
 WXT/Vite automatically picks the right file based on the command:
 
-| File | Used by |
-|---|---|
-| `.env.development` | `nr dev:local` — points to local Supabase instance |
-| `.env.production` | `nr dev` and `nr build` — points to hosted Supabase project |
+| File               | Used by                                                     |
+| ------------------ | ----------------------------------------------------------- |
+| `.env.development` | `nr dev:local` — points to local Supabase instance          |
+| `.env.production`  | `nr dev` and `nr build` — points to hosted Supabase project |
 
 ### Setup
 

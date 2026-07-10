@@ -15,7 +15,7 @@ project_id = "mustard"
 
 [api]
 enabled = true
-port = 54321  # local API URL: http://localhost:54321
+port = 54321 # local API URL: http://localhost:54321
 schemas = ["public", "graphql_public"]
 extra_search_path = ["public", "extensions"]
 max_rows = 1000
@@ -24,12 +24,12 @@ max_rows = 1000
 enabled = false
 
 [db]
-port = 54322         # connect directly: postgresql://postgres:postgres@localhost:54322/postgres
-shadow_port = 54320  # used internally by `supabase db diff`
+port = 54322 # connect directly: postgresql://postgres:postgres@localhost:54322/postgres
+shadow_port = 54320 # used internally by `supabase db diff`
 major_version = 17
 
 [db.pooler]
-enabled = false  # PgBouncer — not needed for local dev
+enabled = false # PgBouncer — not needed for local dev
 
 [db.migrations]
 enabled = true
@@ -37,10 +37,10 @@ schema_paths = []
 
 [db.seed]
 enabled = true
-sql_paths = []  # no seed file yet; add paths here when needed
+sql_paths = [] # no seed file yet; add paths here when needed
 
 [realtime]
-enabled = true  # keeping on to match prod; Mustard doesn't use it yet
+enabled = true # keeping on to match prod; Mustard doesn't use it yet
 
 # Studio: local web UI — open http://localhost:54323 to browse tables, run SQL, etc.
 [studio]
@@ -79,8 +79,8 @@ enable_confirmations = false
 # Edge Functions (Deno runtime)
 [edge_runtime]
 enabled = true
-policy = "per_worker"  # hot-reloads edge functions on save (use "oneshot" if you hit issues)
-inspector_port = 8083  # Deno debugger port
+policy = "per_worker" # hot-reloads edge functions on save (use "oneshot" if you hit issues)
+inspector_port = 8083 # Deno debugger port
 
 # Exchanges an AT Protocol DID for a Supabase JWT.
 # verify_jwt = false: caller only has the anon key, not a user JWT yet.
@@ -90,6 +90,6 @@ verify_jwt = false
 entrypoint = "./functions/auth-bridge/index.ts"
 
 [analytics]
-enabled = false  # Logflare — disabled locally to keep things simple
+enabled = false # Logflare — disabled locally to keep things simple
 port = 54327
 backend = "postgres"

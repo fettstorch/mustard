@@ -110,7 +110,7 @@ export function createNativeNotifications(deps: NativeNotificationsDeps): Native
 
       const seenSet = new Set(seen)
       const fresh = notifications.filter((n) => !seenSet.has(n.id))
-      const targets = { ...((store[TARGETS_KEY] as Record<string, NativeNotifTarget>) ?? {}) }
+      const targets = { ...(store[TARGETS_KEY] as Record<string, NativeNotifTarget>) }
       const fired = new Set<string>()
 
       let staggered = false

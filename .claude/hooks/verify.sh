@@ -154,102 +154,44 @@ fi
 log_info "Detected uncommitted changes, running build verification"
 
 # =============================================================================
-# Step 1: Knip + Lint (auto-fix cascade)
+# Step 1: Auto-fix cascade (mutating)
 # =============================================================================
-# Knip runs first to remove unused exports, then eslint runs to apply fixes.
-# Both must complete before we check for remaining issues.
+# Knip runs first to remove unused exports, then eslint:fix applies code fixes,
+# then prettier writes formatting. All three are mutating — must run before the
+# read-only check in Step 2.
 
 echo "" >&2
 log "Running ${YELLOW}npm run knip:fix${RESET}..."
-
-# Run knip --fix to auto-remove unused exports/dependencies
 npm run knip:fix > /dev/null 2>&1
 
-# -----------------------------------------------------------------------------
-# Step 1.1: ESLint auto-fix
-# -----------------------------------------------------------------------------
+log "Running ${YELLOW}npm run lint:fix${RESET}..."
+npm run lint:fix > /dev/null 2>&1
 
-log "Running ${YELLOW}npm run lint${RESET}..."
-
-# Run eslint --fix: auto-fixes issues and reports only unfixable ones
-LINT_OUTPUT=$(npm run lint 2>&1)
-LINT_EXIT=$?
-
-if [ "$LINT_EXIT" -ne 0 ]; then
-  log_error "eslint found unfixable errors"
-else
-  log_success "eslint PASSED"
-fi
-
-# -----------------------------------------------------------------------------
-# Step 1.2: Check for remaining knip issues
-# -----------------------------------------------------------------------------
-# knip --fix always exits 1 if it found issues, even if all were fixed.
-# So we run plain knip to check if unfixable issues remain.
-
-log "Running ${YELLOW}npm run knip${RESET}..."
-
-KNIP_OUTPUT=$(npm run knip 2>&1)
-KNIP_EXIT=$?
-
-if [ "$KNIP_EXIT" -ne 0 ]; then
-  log_error "knip found unfixable issues"
-else
-  log_success "knip PASSED"
-fi
-
-# -----------------------------------------------------------------------------
-# Step 1.3: Report combined knip + lint failures
-# -----------------------------------------------------------------------------
-
-if [ "$KNIP_EXIT" -ne 0 ] || [ "$LINT_EXIT" -ne 0 ]; then
-  echo "" >&2
-  MESSAGE="Verification failed. Auto-fix was applied, but these issues remain:\n\n"
-
-  if [ "$KNIP_EXIT" -ne 0 ]; then
-    MESSAGE="${MESSAGE}## Knip Errors\n\n\`\`\`\n$KNIP_OUTPUT\n\`\`\`\n\n"
-  fi
-
-  if [ "$LINT_EXIT" -ne 0 ]; then
-    MESSAGE="${MESSAGE}## ESLint Errors\n\n\`\`\`\n$LINT_OUTPUT\n\`\`\`\n\n"
-  fi
-
-  output_failure "$MESSAGE"
-
-  log "Hook complete."
-  exit 0
-fi
+log "Running ${YELLOW}npm run format${RESET}..."
+npm run format > /dev/null 2>&1
+log_success "Auto-fix cascade complete"
 
 # =============================================================================
-# Step 2: Format (prettier) - fire and forget
+# Step 2: Read-only check (type-check + lint + format:check + knip + test + builds)
 # =============================================================================
-# Run prettier in background to auto-format files. We don't block on this since:
-#   - It's fast but we don't need to wait for it
-#   - CI will catch any formatting issues that slip through
-#   - This keeps the hook fast for iteration speed
-
-log "Running ${YELLOW}npm run format${RESET} (background)..."
-npm run format > /dev/null 2>&1 &
-
-# =============================================================================
-# Step 3: Build (TypeScript type-check + Vite build)
-# =============================================================================
+# This is the same `check` command CI runs, so local and CI always agree.
+# Playwright E2E is intentionally excluded — it requires a pre-built extension
+# and is too slow for a stop hook. Run `nr test:e2e` manually or let CI do it.
 
 echo "" >&2
-log "Running ${YELLOW}npm run build${RESET}..."
+log "Running ${YELLOW}npm run check${RESET}..."
 
-# Run build (type-check + build-only in parallel via run-p)
-CHECK_OUTPUT=$(npm run build 2>&1)
+CHECK_OUTPUT=$(npm run check 2>&1)
 CHECK_EXIT=$?
 
 if [ "$CHECK_EXIT" -ne 0 ]; then
-  log_error "build FAILED (exit code: $CHECK_EXIT)"
+  log_error "check FAILED (exit code: $CHECK_EXIT)"
   echo "" >&2
 
-  MESSAGE="Verification failed. Please fix these errors and then stop:\n\n## Build Errors\n\n\`\`\`\n$CHECK_OUTPUT\n\`\`\`\n\n"
+  MESSAGE="Verification failed. Please fix these errors and then stop:\n\n## Check Errors\n\n\`\`\`\n$CHECK_OUTPUT\n\`\`\`\n\n"
   output_failure "$MESSAGE"
 else
-  log_success "build PASSED"
+  log_success "check PASSED"
   echo "" >&2
   log_success "Verification PASSED"
   # Exit 0 with no stdout — both Claude Code and Cursor treat this as "allow"

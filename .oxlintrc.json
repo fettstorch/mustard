@@ -1,5 +1,6 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "ignorePatterns": [".wxt/", "dist/", "node_modules/"],
   "rules": {
     "typescript/no-namespace": "off",
     "no-unused-vars": [
@@ -8,6 +9,7 @@
         "argsIgnorePattern": "^_",
         "varsIgnorePattern": "^_"
       }
-    ]
+    ],
+    "no-empty-pattern": "off"
   }
 }

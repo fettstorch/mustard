@@ -119,5 +119,4 @@ export default defineConfig({
       assetsInlineLimit: 65536,
     },
   }),
-
 })
