@@ -109,6 +109,10 @@ Then run:
 nr test:e2e:auth
 ```
 
+> **Always use `nr test:e2e:auth`, not `npx playwright test --config playwright.auth.config.ts` directly.**  
+> The script rebuilds the extension with `--mode e2e` first, baking in the local Supabase URL.  
+> Running Playwright directly skips the build and silently tests a stale or wrong-mode bundle.
+
 ### Test users
 
 | Name       | Role                                             | Handle             |
