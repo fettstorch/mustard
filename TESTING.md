@@ -13,6 +13,7 @@
 | **Firefox build** | `nr build:firefox` | Firefox variant bundles cleanly                               |
 | **Firefox lint**  | `nr lint:firefox`  | Mozilla package checks find no blocking errors                |
 | **E2E smoke**     | `nr test:e2e`      | Extension loads in real Chromium, popup + content script work |
+| **E2E auth**      | `nr test:e2e:auth` | Login-gated flows work against local Supabase                 |
 
 Run everything in one shot (except E2E):
 
@@ -72,17 +73,43 @@ and gitignored. On CI failure, `playwright-report` is uploaded for seven days.
 Locally, inspect the report with:
 
 ```sh
-npx playwright show-report
+nlx playwright show-report
 ```
 
-## Phase 2 (not yet implemented): Authenticated E2E
+## Authenticated E2E (local Supabase)
 
-The plan for adding authenticated E2E without automating real provider login pages:
+The authenticated suite never contacts production, GitHub, or Bluesky:
 
-1. **Start local Supabase** — `supabase start && supabase functions serve`
-2. **Seed a test user** — insert a row into `auth.users` + `public.accounts` with a known UUID
-3. **Mint a local-only JWT** — sign with the local Supabase JWT secret (visible in `supabase status`)
-4. **Seed extension storage** — before the test, inject the JWT into `browser.storage.local` via `context.addInitScript` or a Playwright fixture
-5. **Run authenticated flows** — QUERY_NOTES, UPSERT_NOTE (remote), publish, comment
+```mermaid
+flowchart LR
+  Seed[Seed local user] --> JWT[Mint local JWT]
+  JWT --> Storage[Seed extension storage]
+  Storage --> Extension[Run real extension]
+  Extension --> Local[Local PostgREST + Edge Functions]
+```
 
-This approach never touches production and never automates OAuth redirects on bsky.social or github.com.
+Start the local stack and Edge Functions in separate terminals:
+
+```sh
+supabase start
+supabase functions serve --env-file supabase/functions/.env.e2e
+```
+
+Then run:
+
+```sh
+nr test:e2e:auth
+```
+
+The command builds with `.env.e2e`, which points exclusively to
+`http://localhost:54321`. Global setup creates a deterministic GitHub-only
+Mustard account, identity, and warm follow cache. The Playwright fixture
+injects `mustard_session` and `supabase_jwt` into extension storage.
+
+Tests verify:
+
+- the popup recognizes the seeded user without provider login
+- publishing writes a remote note through RLS
+- reloading fetches that note through `get-index-v2`
+
+Global teardown removes the test user and its notes.
