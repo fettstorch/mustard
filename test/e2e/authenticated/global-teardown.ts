@@ -1,5 +1,5 @@
-import { cleanupAuthE2eData } from './local-supabase'
+import { cleanupAllE2eUsers } from './local-supabase'
 
 export default async function globalTeardown(): Promise<void> {
-  await cleanupAuthE2eData()
+  await cleanupAllE2eUsers()
 }

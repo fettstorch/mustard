@@ -1,7 +1,7 @@
-import { getLocalSupabaseStatus, seedAuthE2eData, verifyLocalFunctions } from './local-supabase'
+import { getLocalSupabaseStatus, seedAllE2eUsers, verifyLocalFunctions } from './local-supabase'
 
 export default async function globalSetup(): Promise<void> {
   const status = getLocalSupabaseStatus()
-  await seedAuthE2eData(status)
+  await seedAllE2eUsers(status)
   await verifyLocalFunctions(status)
 }

@@ -32,13 +32,17 @@ nr test:watch  # watch mode while developing
 
 Test files live under `test/`, mirroring the source path they cover:
 
-- `src/shared/version.ts` — semver comparison + outdated guard
-- `src/shared/remote-mutation.ts` — which messages mutate remote state
-- `src/background/business/service/MustardNotesServiceLocal.ts` — create / query / update / delete / index persistence
+| Source file                                                   | Test file                                            | What it covers                                                    |
+| ------------------------------------------------------------- | ---------------------------------------------------- | ----------------------------------------------------------------- |
+| `src/shared/version.ts`                                       | `test/shared/version.test.ts`                        | Semver comparison, outdated guard                                 |
+| `src/shared/remote-mutation.ts`                               | `test/shared/remote-mutation.test.ts`                | Which messages mutate remote state                                |
+| `src/shared/mentions.ts`                                      | `test/shared/mentions.test.ts`                       | Sentinel regex, mention extraction, deduplication, shortAccountId |
+| `src/background/business/service/MustardNotesServiceLocal.ts` | `test/background/…/MustardNotesServiceLocal.test.ts` | Create / query / update / delete / index persistence              |
 
 ## Extension E2E smoke tests (Playwright + Chromium)
 
-Loads the **built** extension from `dist/chrome` in a persistent Chromium context.
+Loads the **built** extension from `dist/chrome` in a persistent Chromium context using
+`channel: 'chromium'` (headless; no Xvfb required in CI).
 The tests serve their deterministic fixture page through Vite; they never contact
 the Mustard backend or an OAuth provider.
 
@@ -53,7 +57,7 @@ Tests:
 - **`test/e2e/popup.spec.ts`** — popup renders Bluesky/GitHub login tabs, tab switching works
 - **`test/e2e/local-note.spec.ts`** — content script injects, captures a synthetic context-menu anchor, saves a local note, and restores it after reload
 
-> **No auth required.** The smoke suite never talks to Supabase, Bluesky, or GitHub. Local note storage uses `browser.storage.local` which works in the real extension context.
+> **No auth required.** The smoke suite never talks to Supabase, Bluesky, or GitHub.
 
 ## Firefox package checks
 
@@ -68,7 +72,8 @@ warnings without treating them as release blockers.
 ### Failure artifacts
 
 Playwright writes `playwright-report/` and `test-results/`; both are generated
-and gitignored. On CI failure, `playwright-report` is uploaded for seven days.
+and gitignored. On CI failure, smoke artifacts are uploaded as `playwright-report-smoke`
+and auth artifacts as `playwright-report-auth` for seven days.
 
 Locally, inspect the report with:
 
@@ -82,11 +87,14 @@ The authenticated suite never contacts production, GitHub, or Bluesky:
 
 ```mermaid
 flowchart LR
-  Seed[Seed local user] --> JWT[Mint local JWT]
+  Seed[Seed 4 test users] --> JWT[Mint local JWTs]
   JWT --> Storage[Seed extension storage]
   Storage --> Extension[Run real extension]
   Extension --> Local[Local PostgREST + Edge Functions]
+  Local --> Assert[Assert via DB + UI]
 ```
+
+### Prerequisites
 
 Start the local stack and Edge Functions in separate terminals:
 
@@ -101,15 +109,48 @@ Then run:
 nr test:e2e:auth
 ```
 
-The command builds with `.env.e2e`, which points exclusively to
-`http://localhost:54321`. Global setup creates a deterministic GitHub-only
-Mustard account, identity, and warm follow cache. The Playwright fixture
-injects `mustard_session` and `supabase_jwt` into extension storage.
+### Test users
 
-Tests verify:
+| Name       | Role                                             | Handle             |
+| ---------- | ------------------------------------------------ | ------------------ |
+| `viewer`   | Primary test user; the logged-in extension user  | `mustard-e2e`      |
+| `author`   | Publishes notes the viewer should see            | `mustard-author`   |
+| `reposter` | Bridges author's notes to the viewer via reposts | `mustard-reposter` |
+| `stranger` | Follows nobody — negative control                | `mustard-stranger` |
 
-- the popup recognizes the seeded user without provider login
-- publishing writes a remote note through RLS
-- reloading fetches that note through `get-index-v2`
+All four accounts are seeded by `globalSetup` and removed by `globalTeardown`.
+Tests that need specific DB state seed and clean it per-test via helpers in
+`test/e2e/authenticated/local-supabase.ts`.
 
-Global teardown removes the test user and its notes.
+### Test files
+
+| File                        | What it covers                                                                                                  |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `authenticated.spec.ts`     | Popup recognises seeded session; publishes a remote note; reloads and restores it                               |
+| `social-visibility.spec.ts` | Follow-graph visibility, repost bridge, unrepost revocation, repostersByNoteId                                  |
+| `engagement.spec.ts`        | Comment notification trigger, self-comment exclusion, cascade delete, mention notifications, author popup badge |
+
+### Anon key
+
+The local anon key varies by Supabase CLI version. `.env.e2e` ships a default
+value for local development. In CI, the key is extracted from `supabase status`
+after `supabase start` and injected as `VITE_SUPABASE_ANON_KEY` — Vite picks up
+process-env variables that are prefixed with `VITE_` regardless of `.env` files.
+
+### CI jobs
+
+```mermaid
+flowchart LR
+  quality --> smoke[extension-e2e]
+  quality --> auth[extension-e2e-auth]
+  smoke --> |headless Chromium| pass1[✓]
+  auth --> supabase[supabase start]
+  supabase --> fn[functions serve]
+  fn --> run[nr test:e2e:auth]
+  run --> pass2[✓]
+```
+
+All three jobs run in parallel (smoke and auth both need `quality`). The auth job
+installs the Supabase CLI, starts a full local stack, launches Edge Functions in
+the background, and runs the authenticated suite. It always calls `supabase stop`
+in the `always()` step to avoid Docker resource leaks.

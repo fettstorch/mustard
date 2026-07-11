@@ -13,7 +13,7 @@ export const test = base.extend<AuthenticatedFixture>({
         serviceWorker = await context.waitForEvent('serviceworker')
       }
 
-      const token = createAuthE2eJwt()
+      const token = createAuthE2eJwt(AUTH_E2E_USER.userId)
       await serviceWorker.evaluate(
         async ({ user, jwt, expiresAt }) => {
           const extension = globalThis as typeof globalThis & {

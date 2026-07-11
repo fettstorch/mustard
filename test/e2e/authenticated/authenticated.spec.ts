@@ -55,8 +55,11 @@ test('publishes a remote note and restores it after reload', async ({ context, p
   await confirm.click()
 
   await expect(editor).not.toBeVisible({ timeout: 8_000 })
-  await expect(mustard.getByText(noteContent)).toBeVisible()
+  // The editor's DOM persists hidden alongside the rendered preview; .first() picks the visible card.
+  await expect(mustard.getByText(noteContent).first()).toBeVisible()
 
   await page.reload()
-  await expect(page.locator('#mustard-host').getByText(noteContent)).toBeVisible({ timeout: 8_000 })
+  await expect(page.locator('#mustard-host').getByText(noteContent).first()).toBeVisible({
+    timeout: 8_000,
+  })
 })
