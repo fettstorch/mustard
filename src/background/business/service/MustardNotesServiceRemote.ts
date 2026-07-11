@@ -6,6 +6,7 @@ import { getSupabaseJwt } from '@/background/auth/SupabaseAuth'
 import { MustardIndex as MustardIndexClass } from '@/shared/model/MustardIndex'
 import { LIMITS } from '@/shared/constants'
 import { deriveMentions } from '@/shared/mentions'
+import { retryable } from '@fettstorch/jule'
 
 // Versioned endpoint. The client sends its Supabase JWT (minted server-side by
 // the auth-bridge edge function at login, refreshed there on expiry) to
@@ -166,21 +167,26 @@ async function getCachedIndexPayload(userId?: string): Promise<IndexCachePayload
   }
 
   try {
-    const response = await fetch(GET_INDEX_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${jwt}`,
-      },
-      body: JSON.stringify({ userId }),
+    const data = await retryable(async ({ retry, tryCount }) => {
+      const response = await fetch(GET_INDEX_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${jwt}`,
+        },
+        body: JSON.stringify({ userId }),
+      })
+
+      if (!response.ok) {
+        const isTransient =
+          response.status === 408 || response.status === 429 || response.status >= 500
+        if (isTransient && tryCount < 3) retry({ backoffMs: 250 * tryCount })
+        const error = (await response.json().catch(() => ({}))) as Record<string, string>
+        throw new Error(`get-index failed: ${error.error ?? response.statusText}`)
+      }
+
+      return response.json() as Promise<GetIndexResponse>
     })
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({}))
-      throw new Error(`get-index failed: ${error.error || response.statusText}`)
-    }
-
-    const data: GetIndexResponse = await response.json()
 
     const stored: StoredIndexCache = {
       userId,
