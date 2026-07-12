@@ -10,7 +10,7 @@ GRANT INSERT, DELETE ON TABLE reposts TO authenticated;
 GRANT SELECT, DELETE ON TABLE notifications TO authenticated;
 
 -- Trusted Edge Functions and authenticated E2E setup.
-GRANT ALL PRIVILEGES ON TABLE
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE
   notes,
   oauth_login_state,
   oauth_session,
