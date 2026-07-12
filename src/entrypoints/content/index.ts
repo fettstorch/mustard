@@ -762,20 +762,25 @@ export default defineContentScript({
 
       if (message.type === 'DELETE_NOTE') {
         const isLocalDelete = message.authorId === 'local'
-        // Free per-note state immediately for the deleted note (best-effort).
-        delete mustardState.comments[message.noteId]
-        delete mustardState.commentsLoadState[message.noteId]
-        delete mustardState.expandedCommentNoteIds[message.noteId]
-        delete mustardState.unreadByNoteId[message.noteId]
         sendMessage(message)
           .then((dtos) => {
             console.debug('mustard [content-script] received notes after delete:', dtos)
             if (isLocalDelete) applyLocalNotesResponse(dtos)
             else applyNotesResponse(dtos)
-            clearPendingNoteIds()
+            // The deletion is now confirmed, so discard the removed note's
+            // per-note UI state and unlock only this note.
+            delete mustardState.comments[message.noteId]
+            delete mustardState.commentsLoadState[message.noteId]
+            delete mustardState.expandedCommentNoteIds[message.noteId]
+            delete mustardState.unreadByNoteId[message.noteId]
+            delete mustardState.pendingNoteIds[message.noteId]
           })
           .catch((err) => {
             console.error('mustard [content-script] DELETE_NOTE failed:', err)
+            // Keep the note and its thread visible: the server did not delete it.
+            // Unlock only this note so the user can retry without affecting an
+            // unrelated operation that may still be pending.
+            delete mustardState.pendingNoteIds[message.noteId]
           })
       }
 

@@ -35,6 +35,11 @@ coverage
 # Vitest
 __screenshots__/
 
+# Playwright
+playwright-report/
+test-results/
+blob-report/
+
 # Supabase local dev (keep functions, ignore temp files)
 supabase/.temp/
 paseo.json

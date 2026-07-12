@@ -63,9 +63,9 @@ supabase secrets set \
 The extension reads its backend URL/key from build-time env vars (no source
 edits). Set them in `.env.production` (and `.env.development` for local):
 
-| Variable | Where to find it |
-|---|---|
-| `VITE_SUPABASE_URL` | Project Settings → API → Project URL |
+| Variable                 | Where to find it                                            |
+| ------------------------ | ----------------------------------------------------------- |
+| `VITE_SUPABASE_URL`      | Project Settings → API → Project URL                        |
 | `VITE_SUPABASE_ANON_KEY` | Project Settings → API → Project API keys → `anon` `public` |
 
 Then build: `nr build` (Chrome) / `nr build:firefox`.

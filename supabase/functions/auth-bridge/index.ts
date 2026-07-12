@@ -47,10 +47,7 @@ class HttpError extends Error {
 // ─── Supabase client (service_role, bypasses RLS) ────────────────────────────
 
 function getSupabase() {
-  return createClient(
-    Deno.env.get('SUPABASE_URL')!,
-    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
-  )
+  return createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
 }
 
 // ─── Supabase JWT ────────────────────────────────────────────────────────────
@@ -141,10 +138,7 @@ async function linkIdentity(
       // The caller is trying to attach, to their account, an identity that is
       // already linked to a DIFFERENT Mustard user. Reject — never silently
       // steal an identity from another account.
-      throw new HttpError(
-        'This account is already linked to a different Mustard user.',
-        409,
-      )
+      throw new HttpError('This account is already linked to a different Mustard user.', 409)
     }
     // Plain re-login, or re-linking to the same account it already belongs to
     // (idempotent). Keep its current owner.
@@ -157,20 +151,18 @@ async function linkIdentity(
     // (DID/GitHub id). Provider ids live only in `identities`, so the account can
     // link/unlink providers while its user_id stays stable. Let Postgres mint the
     // UUID (users.id DEFAULT gen_random_uuid()) and read it back.
-    const { data: created, error } = await supabase
-      .from('users')
-      .insert({})
-      .select('id')
-      .single()
+    const { data: created, error } = await supabase.from('users').insert({}).select('id').single()
     if (error || !created) throw new Error(`Failed to create user: ${error?.message}`)
     targetUserId = created.id as string
   }
 
   // Upsert the identity (handle may have changed since last login).
-  const { error: identityError } = await supabase.from('identities').upsert(
-    { user_id: targetUserId, provider, provider_account_id: providerAccountId, handle },
-    { onConflict: 'provider,provider_account_id' },
-  )
+  const { error: identityError } = await supabase
+    .from('identities')
+    .upsert(
+      { user_id: targetUserId, provider, provider_account_id: providerAccountId, handle },
+      { onConflict: 'provider,provider_account_id' },
+    )
   if (identityError) throw new Error(`Failed to upsert identity: ${identityError.message}`)
 
   return targetUserId
@@ -200,7 +192,10 @@ async function handleListIdentities(body: { currentJwt?: string }): Promise<Resp
 // deletes the whole account, including all of the user's content (the content
 // tables key off the user id but are not FK'd to `users`, so they don't cascade
 // and must be deleted explicitly).
-async function handleDisconnect(body: { currentJwt?: string; provider?: string }): Promise<Response> {
+async function handleDisconnect(body: {
+  currentJwt?: string
+  provider?: string
+}): Promise<Response> {
   const { currentJwt, provider } = body
   if (!currentJwt) return errorResponse('currentJwt is required', 400)
   if (!provider) return errorResponse('provider is required', 400)
@@ -295,9 +290,10 @@ async function fetchIdentitiesIn(
   })
 }
 
-async function handleResolveIdentities(
-  body: { currentJwt?: string; userIds?: string[] },
-): Promise<Response> {
+async function handleResolveIdentities(body: {
+  currentJwt?: string
+  userIds?: string[]
+}): Promise<Response> {
   const { currentJwt, userIds } = body
   if (!currentJwt) return errorResponse('currentJwt is required', 400)
   if (!(await verifyJwtSub(currentJwt))) return errorResponse('Invalid JWT', 403)
@@ -325,9 +321,11 @@ async function handleResolveIdentities(
 // ids from `@[p:github:…]` mention sentinels), return their `identities` rows so
 // the client can render a mention as @login linking to the github profile. Only
 // account ids that belong to a Mustard user resolve (others simply aren't returned).
-async function handleResolveAccounts(
-  body: { currentJwt?: string; provider?: string; accountIds?: string[] },
-): Promise<Response> {
+async function handleResolveAccounts(body: {
+  currentJwt?: string
+  provider?: string
+  accountIds?: string[]
+}): Promise<Response> {
   const { currentJwt, provider, accountIds } = body
   if (!currentJwt) return errorResponse('currentJwt is required', 400)
   if (!(await verifyJwtSub(currentJwt))) return errorResponse('Invalid JWT', 403)
@@ -443,7 +441,9 @@ async function resolvePds(did: string): Promise<string> {
   const resp = await fetch(didDocUrl)
   if (!resp.ok) throw new Error(`Failed to resolve DID document for ${did}: ${resp.statusText}`)
   const doc: DidDocument = await resp.json()
-  const pds = doc.service?.find((s) => s.id === '#atproto_pds' || s.type === 'AtprotoPersonalDataServer')
+  const pds = doc.service?.find(
+    (s) => s.id === '#atproto_pds' || s.type === 'AtprotoPersonalDataServer',
+  )
   if (!pds) throw new Error('No PDS service found in DID document')
   return pds.serviceEndpoint
 }
@@ -471,7 +471,10 @@ async function discoverAuthServer(pdsUrl: string): Promise<AuthServerMeta> {
 
 async function generateDpopKeyPair() {
   const { privateKey, publicKey } = await jose.generateKeyPair('ES256', { extractable: true })
-  return { privateJwk: await jose.exportJWK(privateKey), publicJwk: await jose.exportJWK(publicKey) }
+  return {
+    privateJwk: await jose.exportJWK(privateKey),
+    publicJwk: await jose.exportJWK(publicKey),
+  }
 }
 
 async function createDpopProof(
@@ -483,16 +486,28 @@ async function createDpopProof(
 ): Promise<string> {
   const key = await jose.importJWK(privateJwk, 'ES256')
   const now = Math.floor(Date.now() / 1000)
-  const payload: Record<string, unknown> = { jti: crypto.randomUUID(), htm: method, htu: url, iat: now, exp: now + 30 }
+  const payload: Record<string, unknown> = {
+    jti: crypto.randomUUID(),
+    htm: method,
+    htu: url,
+    iat: now,
+    exp: now + 30,
+  }
   if (nonce) payload.nonce = nonce
   return new jose.SignJWT(payload as jose.JWTPayload)
     .setProtectedHeader({ typ: 'dpop+jwt', alg: 'ES256', jwk: publicJwk })
     .sign(key)
 }
 
-function isDpopNonceError(status: number, headers: Headers, body: Record<string, unknown>): boolean {
+function isDpopNonceError(
+  status: number,
+  headers: Headers,
+  body: Record<string, unknown>,
+): boolean {
   if (status !== 400 && status !== 401) return false
-  return headers.get('WWW-Authenticate')?.includes('use_dpop_nonce') || body?.error === 'use_dpop_nonce'
+  return (
+    headers.get('WWW-Authenticate')?.includes('use_dpop_nonce') || body?.error === 'use_dpop_nonce'
+  )
 }
 
 async function authServerPost(
@@ -512,7 +527,10 @@ async function authServerPost(
     const respBody = await resp.json()
     if (isDpopNonceError(resp.status, resp.headers, respBody)) {
       const newNonce = resp.headers.get('DPoP-Nonce')
-      if (newNonce && attempt === 0) { nonce = newNonce; continue }
+      if (newNonce && attempt === 0) {
+        nonce = newNonce
+        continue
+      }
     }
     return { status: resp.status, body: respBody }
   }
@@ -524,12 +542,17 @@ function generateCodeVerifier(): string {
 }
 
 async function generateCodeChallenge(verifier: string): Promise<string> {
-  return jose.base64url.encode(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier))))
+  return jose.base64url.encode(
+    new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier))),
+  )
 }
 
 // ─── ATProto action handlers ─────────────────────────────────────────────────
 
-async function handleAtprotoInitiate(body: { handle: string; redirect_uri: string }): Promise<Response> {
+async function handleAtprotoInitiate(body: {
+  handle: string
+  redirect_uri: string
+}): Promise<Response> {
   const { handle, redirect_uri } = body
   if (!handle) return errorResponse('handle is required', 400)
   if (!redirect_uri) return errorResponse('redirect_uri is required', 400)
@@ -548,23 +571,36 @@ async function handleAtprotoInitiate(body: { handle: string; redirect_uri: strin
   const { status, body: parResp } = await authServerPost(
     asMeta.pushed_authorization_request_endpoint,
     {
-      client_id: ATPROTO_CLIENT_ID, response_type: 'code',
-      code_challenge: codeChallenge, code_challenge_method: 'S256',
-      state, redirect_uri, scope: ATPROTO_SCOPE, login_hint: handle,
+      client_id: ATPROTO_CLIENT_ID,
+      response_type: 'code',
+      code_challenge: codeChallenge,
+      code_challenge_method: 'S256',
+      state,
+      redirect_uri,
+      scope: ATPROTO_SCOPE,
+      login_hint: handle,
     },
-    privateJwk, publicJwk,
+    privateJwk,
+    publicJwk,
   )
   if (!parResp.request_uri) {
     console.error('[auth-bridge] PAR failed:', status, parResp)
-    return errorResponse(`PAR failed: ${parResp.error_description || parResp.error || 'unknown'}`, 502)
+    return errorResponse(
+      `PAR failed: ${parResp.error_description || parResp.error || 'unknown'}`,
+      502,
+    )
   }
 
   const supabase = getSupabase()
   const { error } = await supabase.from('oauth_login_state').insert({
-    state, code_verifier: codeVerifier,
-    dpop_jwk: privateJwk, dpop_pub_jwk: publicJwk,
-    as_issuer: asMeta.issuer, token_endpoint: asMeta.token_endpoint,
-    redirect_uri, provider: 'atproto',
+    state,
+    code_verifier: codeVerifier,
+    dpop_jwk: privateJwk,
+    dpop_pub_jwk: publicJwk,
+    as_issuer: asMeta.issuer,
+    token_endpoint: asMeta.token_endpoint,
+    redirect_uri,
+    provider: 'atproto',
     expires_at: new Date(Date.now() + STATE_TTL_SECONDS * 1000).toISOString(),
   })
   if (error) throw new Error(`Failed to store login state: ${error.message}`)
@@ -576,7 +612,10 @@ async function handleAtprotoInitiate(body: { handle: string; redirect_uri: strin
 }
 
 async function handleAtprotoCallback(body: {
-  code: string; state: string; iss: string; currentJwt?: string
+  code: string
+  state: string
+  iss: string
+  currentJwt?: string
 }): Promise<Response> {
   const { code, state, iss, currentJwt } = body
   if (!code || !state || !iss) return errorResponse('code, state, and iss are required', 400)
@@ -585,7 +624,10 @@ async function handleAtprotoCallback(body: {
   const supabase = getSupabase()
 
   const { data: loginState, error: lookupError } = await supabase
-    .from('oauth_login_state').select('*').eq('state', state).single()
+    .from('oauth_login_state')
+    .select('*')
+    .eq('state', state)
+    .single()
   if (lookupError || !loginState) return errorResponse('Invalid or expired state', 400)
   if (new Date(loginState.expires_at) < new Date()) {
     await supabase.from('oauth_login_state').delete().eq('state', state)
@@ -595,22 +637,34 @@ async function handleAtprotoCallback(body: {
 
   const { status, body: tokenResp } = await authServerPost(
     loginState.token_endpoint,
-    { grant_type: 'authorization_code', code, code_verifier: loginState.code_verifier, redirect_uri: loginState.redirect_uri, client_id: ATPROTO_CLIENT_ID },
-    loginState.dpop_jwk, loginState.dpop_pub_jwk,
+    {
+      grant_type: 'authorization_code',
+      code,
+      code_verifier: loginState.code_verifier,
+      redirect_uri: loginState.redirect_uri,
+      client_id: ATPROTO_CLIENT_ID,
+    },
+    loginState.dpop_jwk,
+    loginState.dpop_pub_jwk,
   )
   if (!tokenResp.access_token) {
     console.error('[auth-bridge] Token exchange failed:', status, tokenResp)
-    return errorResponse(`Token exchange failed: ${tokenResp.error_description || tokenResp.error || 'unknown'}`, 502)
+    return errorResponse(
+      `Token exchange failed: ${tokenResp.error_description || tokenResp.error || 'unknown'}`,
+      502,
+    )
   }
 
   const did = tokenResp.sub as string
   if (!did?.startsWith('did:')) return errorResponse('Invalid sub in token response', 502)
   const grantedScope = tokenResp.scope as string
-  if (!grantedScope?.includes('atproto')) return errorResponse('Token response missing atproto scope', 502)
+  if (!grantedScope?.includes('atproto'))
+    return errorResponse('Token response missing atproto scope', 502)
 
   // Identity verification: DID → PDS → AS must match the issuer we talked to
   const verifyAs = await discoverAuthServer(await resolvePds(did))
-  if (verifyAs.issuer !== iss) return errorResponse('Identity verification failed: AS mismatch', 403)
+  if (verifyAs.issuer !== iss)
+    return errorResponse('Identity verification failed: AS mismatch', 403)
 
   const tokenExpiresAt = tokenResp.expires_in
     ? new Date(Date.now() + (tokenResp.expires_in as number) * 1000).toISOString()
@@ -626,7 +680,7 @@ async function handleAtprotoCallback(body: {
     provider: 'atproto',
     provider_account_id: did,
     user_id: userId,
-    did,                          // kept for backward-compat until Phase 2 cleanup
+    did, // kept for backward-compat until Phase 2 cleanup
     dpop_jwk: loginState.dpop_jwk,
     dpop_pub_jwk: loginState.dpop_pub_jwk,
     access_token: tokenResp.access_token,
@@ -684,8 +738,10 @@ async function handleGithubInitiate(body: { redirect_uri: string }): Promise<Res
 
   const supabase = getSupabase()
   const { error } = await supabase.from('oauth_login_state').insert({
-    state, code_verifier: codeVerifier,
-    provider: 'github', redirect_uri,
+    state,
+    code_verifier: codeVerifier,
+    provider: 'github',
+    redirect_uri,
     expires_at: new Date(Date.now() + STATE_TTL_SECONDS * 1000).toISOString(),
   })
   if (error) throw new Error(`Failed to store login state: ${error.message}`)
@@ -710,7 +766,9 @@ async function handleGithubInitiate(body: { redirect_uri: string }): Promise<Res
 }
 
 async function handleGithubCallback(body: {
-  code: string; state: string; currentJwt?: string
+  code: string
+  state: string
+  currentJwt?: string
 }): Promise<Response> {
   const { code, state, currentJwt } = body
   if (!code || !state) return errorResponse('code and state are required', 400)
@@ -719,18 +777,23 @@ async function handleGithubCallback(body: {
   const supabase = getSupabase()
 
   const { data: loginState, error: lookupError } = await supabase
-    .from('oauth_login_state').select('*').eq('state', state).single()
+    .from('oauth_login_state')
+    .select('*')
+    .eq('state', state)
+    .single()
   if (lookupError || !loginState) return errorResponse('Invalid or expired state', 400)
   if (new Date(loginState.expires_at) < new Date()) {
     await supabase.from('oauth_login_state').delete().eq('state', state)
     return errorResponse('Login state expired', 400)
   }
-  if (loginState.provider !== 'github') return errorResponse('State was not created for GitHub', 400)
+  if (loginState.provider !== 'github')
+    return errorResponse('State was not created for GitHub', 400)
 
   // Use the same OAuth App (chrome vs firefox) that initiate used — keyed off
   // the redirect_uri we stored in the login state.
   const { clientId, clientSecret } = githubCreds(loginState.redirect_uri as string)
-  if (!clientId || !clientSecret) return errorResponse('GitHub credentials not configured for this browser', 500)
+  if (!clientId || !clientSecret)
+    return errorResponse('GitHub credentials not configured for this browser', 500)
 
   // Exchange code for access token. GitHub's documented contract is
   // x-www-form-urlencoded request params; the Accept header only selects the
@@ -747,11 +810,15 @@ async function handleGithubCallback(body: {
       redirect_uri: loginState.redirect_uri,
     }),
   })
-  if (!tokenResp.ok) return errorResponse(`GitHub token exchange failed: ${tokenResp.statusText}`, 502)
+  if (!tokenResp.ok)
+    return errorResponse(`GitHub token exchange failed: ${tokenResp.statusText}`, 502)
   const tokenData = await tokenResp.json()
   if (!tokenData.access_token) {
     console.error('[auth-bridge] GitHub token exchange failed:', tokenData)
-    return errorResponse(`GitHub token exchange failed: ${tokenData.error_description || tokenData.error || 'unknown'}`, 502)
+    return errorResponse(
+      `GitHub token exchange failed: ${tokenData.error_description || tokenData.error || 'unknown'}`,
+      502,
+    )
   }
 
   // Verify identity: fetch the authenticated GitHub user
@@ -832,8 +899,13 @@ async function refreshAtprotoToken(
 
   const { status, body: tokenResp } = await authServerPost(
     session.token_endpoint,
-    { grant_type: 'refresh_token', refresh_token: session.refresh_token, client_id: ATPROTO_CLIENT_ID },
-    session.dpop_jwk, session.dpop_pub_jwk,
+    {
+      grant_type: 'refresh_token',
+      refresh_token: session.refresh_token,
+      client_id: ATPROTO_CLIENT_ID,
+    },
+    session.dpop_jwk,
+    session.dpop_pub_jwk,
   )
   if (!tokenResp.access_token) {
     console.error('[auth-bridge] Token refresh failed:', status, tokenResp)
@@ -851,12 +923,16 @@ async function refreshAtprotoToken(
     ? new Date(Date.now() + (tokenResp.expires_in as number) * 1000).toISOString()
     : null
 
-  await supabase.from('oauth_session').update({
-    access_token: tokenResp.access_token,
-    refresh_token: (tokenResp.refresh_token as string) || session.refresh_token,
-    token_expires_at: tokenExpiresAt,
-    updated_at: new Date().toISOString(),
-  }).eq('provider', 'atproto').eq('provider_account_id', session.provider_account_id)
+  await supabase
+    .from('oauth_session')
+    .update({
+      access_token: tokenResp.access_token,
+      refresh_token: (tokenResp.refresh_token as string) || session.refresh_token,
+      token_expires_at: tokenExpiresAt,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('provider', 'atproto')
+    .eq('provider_account_id', session.provider_account_id)
 
   return { ok: true }
 }
@@ -873,10 +949,9 @@ async function handleRefresh(body: { userId?: string; expired_jwt: string }): Pr
   // ONLY path allowed to accept an expired JWT — hence the large tolerance. All
   // privileged mutations go through verifyJwtSub, which requires it unexpired.
   try {
-    const { payload } = await jose.jwtVerify(
-      expired_jwt, new TextEncoder().encode(jwtSecret),
-      { clockTolerance: 365 * 24 * 60 * 60 },
-    )
+    const { payload } = await jose.jwtVerify(expired_jwt, new TextEncoder().encode(jwtSecret), {
+      clockTolerance: 365 * 24 * 60 * 60,
+    })
     if (payload.sub !== userId) return errorResponse('JWT subject mismatch', 403)
   } catch {
     return errorResponse('Invalid JWT', 403)
@@ -890,10 +965,7 @@ async function handleRefresh(body: { userId?: string; expired_jwt: string }): Pr
   // We refresh atproto best-effort to keep follow-fetching working, but a dead
   // atproto session must NOT lock out an account that still has another working
   // provider (e.g. github, whose classic OAuth token doesn't expire).
-  const { data: sessions } = await supabase
-    .from('oauth_session')
-    .select('*')
-    .eq('user_id', userId)
+  const { data: sessions } = await supabase.from('oauth_session').select('*').eq('user_id', userId)
 
   const rows = (sessions ?? []) as OAuthSessionRow[]
   if (rows.length === 0) return errorResponse('No session found', 404)
@@ -903,8 +975,11 @@ async function handleRefresh(body: { userId?: string; expired_jwt: string }): Pr
     const refreshed = await refreshAtprotoToken(supabase, atprotoSession)
     if (!refreshed.ok) {
       // Drop the dead atproto session so it stops being retried.
-      await supabase.from('oauth_session').delete()
-        .eq('provider', 'atproto').eq('provider_account_id', atprotoSession.provider_account_id)
+      await supabase
+        .from('oauth_session')
+        .delete()
+        .eq('provider', 'atproto')
+        .eq('provider_account_id', atprotoSession.provider_account_id)
       // Only fatal when atproto was the sole linked provider; otherwise fall
       // through and mint the JWT from the remaining identity.
       const hasFallback = rows.some((s) => s.provider !== 'atproto')

@@ -1,0 +1,161 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Cancel in-progress runs for the same branch when a new commit is pushed
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: Quality
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify generated .wxt/ types are up to date
+        run: |
+          npm run postinstall
+          git diff --exit-code -- .wxt/ || (echo "::error::Generated .wxt/ types are out of sync — run 'npm run postinstall' locally and commit the result." && exit 1)
+
+      - name: Type check
+        run: npm run type-check
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Format check
+        run: npm run format:check
+
+      - name: Knip (unused exports / files)
+        run: npm run knip
+
+      - name: Unit tests
+        run: npm run test
+
+      - name: Build Chrome
+        run: npm run build
+
+      - name: Build Firefox
+        run: npm run build:firefox
+
+      - name: Firefox package lint
+        run: npm run lint:firefox
+
+  extension-e2e:
+    name: Extension E2E (Chromium)
+    runs-on: ubuntu-latest
+    needs: quality
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build extension for E2E
+        run: npm run build:e2e
+
+      - name: Install Playwright Chromium
+        run: npx playwright install chromium --with-deps
+
+      - name: Run E2E smoke tests
+        run: npm run test:e2e
+
+      - name: Upload failure report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-smoke
+          path: playwright-report/
+          retention-days: 7
+
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-smoke
+          path: test-results/
+          retention-days: 7
+
+  extension-e2e-auth:
+    name: Extension E2E (Auth / Local Supabase)
+    runs-on: ubuntu-latest
+    needs: quality
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Start local Supabase
+        run: supabase start
+
+      - name: Export local Supabase anon key
+        # The anon key varies by CLI version; inject it as a process-env override
+        # so Vite picks it up during the auth E2E build (takes precedence over .env.e2e).
+        run: |
+          ANON_KEY=$(supabase status -o env | grep '^ANON_KEY=' | sed 's/ANON_KEY="\(.*\)"/\1/')
+          echo "VITE_SUPABASE_ANON_KEY=${ANON_KEY}" >> "$GITHUB_ENV"
+
+      - name: Start Edge Functions
+        run: |
+          supabase functions serve --env-file supabase/functions/.env.e2e &
+          echo "Edge Functions started in background (PID $!)"
+
+      - name: Install Playwright Chromium
+        run: npx playwright install chromium --with-deps
+
+      - name: Build extension for auth E2E
+        run: npm run build:e2e:auth
+
+      - name: Run authenticated E2E tests
+        run: npx playwright test --config playwright.auth.config.ts
+
+      - name: Stop Supabase
+        if: always()
+        run: supabase stop --no-backup
+
+      - name: Upload failure report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-auth
+          path: playwright-report/
+          retention-days: 7
+
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-auth
+          path: test-results/
+          retention-days: 7
