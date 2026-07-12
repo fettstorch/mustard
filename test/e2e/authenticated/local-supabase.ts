@@ -78,8 +78,10 @@ async function seedUser(admin: SupabaseClient, user: TestUser): Promise<void> {
 }
 
 async function deleteUser(admin: SupabaseClient, userId: string): Promise<void> {
-  // CASCADE on notes/identities/follows_cache/etc. handles the rest
-  await admin.from('users').delete().eq('id', userId)
+  // Mirror production account deletion so content tables whose text user IDs
+  // are not foreign-keyed to users are cleaned too.
+  const { error } = await admin.rpc('delete_account', { p_user_id: userId })
+  if (error) throw new Error(`Could not clean up user ${userId}: ${error.message}`)
 }
 
 // ─── Legacy single-user helpers (used by global-setup / existing smoke tests) ─
