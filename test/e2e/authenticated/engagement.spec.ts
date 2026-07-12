@@ -112,21 +112,9 @@ test.describe('popup notification badge', () => {
 
     // The popup "My Mustard Notes" tab shows unread count when there are notifications
     await expect(popup.getByRole('button', { name: 'Logout' })).toBeVisible()
-    // The unread badge or notification indicator should be visible
-    const notifBadge = popup.locator(
-      '[data-testid="unread-count"], .notification-badge, .unread-badge',
-    )
-    // If no testid exists, check for the numeric badge text anywhere in the popup
-    const hasUnread = (await notifBadge.count()) > 0
-    if (!hasUnread) {
-      // Fallback: verify via the DB that the notification exists
-      const admin = adminClient(getLocalSupabaseStatus())
-      const { data } = await admin
-        .from('notifications')
-        .select('id')
-        .eq('recipient_id', author.userId)
-      expect(data!.length).toBeGreaterThan(0)
-    }
+    const unreadPill = popup.locator('.my-pages-unread-pill')
+    await expect(unreadPill).toBeVisible()
+    await expect(unreadPill).toContainText('1 unread')
 
     await popup.close()
     // Restore viewer session for any subsequent tests
