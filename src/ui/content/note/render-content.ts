@@ -1,4 +1,5 @@
 import MarkdownIt from 'markdown-it'
+import { highlightCode } from './code-highlighting'
 import { makeMentionSentinelRegex, shortAccountId } from '@/shared/mentions'
 import {
   BSKY_PROFILE_URL_PREFIX,
@@ -10,6 +11,9 @@ const md = new MarkdownIt({
   html: false, // XSS prevention: don't render raw HTML
   linkify: true, // auto-convert bare URLs to links
   breaks: true, // newlines become <br>
+  // highlight.js returns escaped markup. Returning an empty string for an
+  // unsupported explicit language delegates to markdown-it's safe escaping.
+  highlight: highlightCode,
 })
 
 // Add target="_blank" and security attrs to links. Mentions (links to a

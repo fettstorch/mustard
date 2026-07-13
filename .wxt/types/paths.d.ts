@@ -9,6 +9,7 @@ declare module "wxt/browser" {
     | "/content-scripts/content.js"
     | "/edit_pen_48.png"
     | "/gear_128.png"
+    | "/LICENSES/catppuccin-highlightjs-MIT.txt"
     | "/mustard_bottle_smile_128.png"
     | "/mustard_bottle_smile_16.png"
     | "/mustard_bottle_smile_32.png"

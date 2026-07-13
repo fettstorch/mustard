@@ -1,4 +1,5 @@
 import StarterKit from '@tiptap/starter-kit'
+import { CodeBlockLowlight } from '@tiptap/extension-code-block-lowlight'
 import { Image } from '@tiptap/extension-image'
 import { Placeholder } from '@tiptap/extensions'
 import { Markdown } from '@tiptap/markdown'
@@ -6,6 +7,7 @@ import type { Extensions } from '@tiptap/core'
 import { ImageUrlAutoConvert } from './image-url-auto-convert'
 import { GiphySlash } from './giphy-slash'
 import { createMentionExtension } from './mention-node'
+import { lowlight } from '../note/code-highlighting'
 import type { MentionCandidate } from '@/shared/model/MentionCandidate'
 
 /**
@@ -21,7 +23,14 @@ export function createEditorExtensions(opts: {
   getCandidates: () => MentionCandidate[]
 }): Extensions {
   return [
-    StarterKit.configure({}),
+    StarterKit.configure({
+      // Replaced with the syntax-highlighting variant below.
+      codeBlock: false,
+    }),
+    CodeBlockLowlight.configure({
+      lowlight,
+      enableTabIndentation: true,
+    }),
     Image.configure({
       inline: false,
       HTMLAttributes: {
