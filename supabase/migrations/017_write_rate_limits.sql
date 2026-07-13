@@ -181,12 +181,12 @@ CREATE TRIGGER trg_rate_limit_comment_insert
 
 ALTER TABLE public.notes
   ADD CONSTRAINT notes_mentions_max_5
-  CHECK (pg_catalog.cardinality(mentions) <= 5),
+  CHECK (pg_catalog.cardinality(mentions) <= 5) NOT VALID,
   ADD CONSTRAINT notes_mentions_unique
   CHECK (private.text_array_is_unique(mentions)) NOT VALID;
 
 ALTER TABLE public.comments
   ADD CONSTRAINT comments_mentions_max_5
-  CHECK (pg_catalog.cardinality(mentions) <= 5),
+  CHECK (pg_catalog.cardinality(mentions) <= 5) NOT VALID,
   ADD CONSTRAINT comments_mentions_unique
   CHECK (private.text_array_is_unique(mentions)) NOT VALID;
