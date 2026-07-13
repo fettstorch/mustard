@@ -3,6 +3,7 @@ import type { MustardCommentsService } from './MustardCommentsService'
 import { supabase } from '@/background/supabase-client'
 import { LIMITS } from '@/shared/constants'
 import { deriveMentions } from '@/shared/mentions'
+import { RateLimitError } from '@/shared/errors'
 
 interface DbComment {
   id: string
@@ -76,9 +77,10 @@ export class MustardCommentsServiceRemote implements MustardCommentsService {
         throw new Error(`Failed to update comment: ${error.message}`)
       }
     } else {
-      const { error } = await supabase.from('comments').insert(row)
-      if (error) {
-        throw new Error(`Failed to insert comment: ${error.message}`)
+      const result = await supabase.from('comments').insert(row)
+      if (result.error) {
+        if (result.status === 429) throw new RateLimitError()
+        throw new Error(`Failed to insert comment: ${result.error.message}`)
       }
     }
   }
