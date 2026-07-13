@@ -20,6 +20,21 @@ CREATE TABLE private.write_events (
 CREATE INDEX write_events_lookup
   ON private.write_events (account_id, action, created_at DESC);
 
+-- CHECK constraints cannot contain aggregate subqueries directly. This helper
+-- is immutable because its result depends only on the supplied array. If its
+-- behavior changes, drop and re-add the constraints that reference it.
+CREATE OR REPLACE FUNCTION private.text_array_is_unique(p_values TEXT[])
+RETURNS BOOLEAN
+LANGUAGE SQL
+IMMUTABLE
+PARALLEL SAFE
+STRICT
+SET search_path = ''
+AS $$
+  SELECT pg_catalog.cardinality(p_values) = pg_catalog.count(DISTINCT element)
+  FROM pg_catalog.unnest(p_values) AS element;
+$$;
+
 CREATE OR REPLACE FUNCTION private.check_write_rate_limit(
   p_account_id UUID,
   p_action     TEXT
@@ -114,16 +129,7 @@ SET search_path = ''
 AS $$
 DECLARE
   jwt_role TEXT;
-  distinct_mentions INT;
 BEGIN
-  -- Keep each notification fan-out small and reject duplicate recipients.
-  SELECT COUNT(DISTINCT mention) INTO distinct_mentions
-  FROM pg_catalog.unnest(NEW.mentions) AS mention;
-
-  IF distinct_mentions <> pg_catalog.cardinality(NEW.mentions) THEN
-    RAISE EXCEPTION 'Note mentions must be unique' USING ERRCODE = '23514';
-  END IF;
-
   jwt_role := NULLIF(
     pg_catalog.current_setting('request.jwt.claims', true),
     ''
@@ -145,15 +151,7 @@ SET search_path = ''
 AS $$
 DECLARE
   jwt_role TEXT;
-  distinct_mentions INT;
 BEGIN
-  SELECT COUNT(DISTINCT mention) INTO distinct_mentions
-  FROM pg_catalog.unnest(NEW.mentions) AS mention;
-
-  IF distinct_mentions <> pg_catalog.cardinality(NEW.mentions) THEN
-    RAISE EXCEPTION 'Comment mentions must be unique' USING ERRCODE = '23514';
-  END IF;
-
   jwt_role := NULLIF(
     pg_catalog.current_setting('request.jwt.claims', true),
     ''
@@ -183,8 +181,12 @@ CREATE TRIGGER trg_rate_limit_comment_insert
 
 ALTER TABLE public.notes
   ADD CONSTRAINT notes_mentions_max_5
-  CHECK (pg_catalog.cardinality(mentions) <= 5);
+  CHECK (pg_catalog.cardinality(mentions) <= 5),
+  ADD CONSTRAINT notes_mentions_unique
+  CHECK (private.text_array_is_unique(mentions)) NOT VALID;
 
 ALTER TABLE public.comments
   ADD CONSTRAINT comments_mentions_max_5
-  CHECK (pg_catalog.cardinality(mentions) <= 5);
+  CHECK (pg_catalog.cardinality(mentions) <= 5),
+  ADD CONSTRAINT comments_mentions_unique
+  CHECK (private.text_array_is_unique(mentions)) NOT VALID;

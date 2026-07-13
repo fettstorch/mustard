@@ -154,6 +154,26 @@ test.describe('mention constraints', () => {
     expect(error).not.toBeNull()
   })
 
+  test('rejects duplicate recipients for service-role writes', async () => {
+    const status = getLocalSupabaseStatus()
+    const admin = adminClient(status)
+
+    const { error: noteError } = await admin.from('notes').insert({
+      ...noteRow('service-role duplicate mentions'),
+      mentions: ['a', 'a'],
+    })
+    expect(noteError?.message).toContain('notes_mentions_unique')
+
+    const noteId = await seedNote(userId, PAGE_URL, 'comment mention target', status)
+    const { error: commentError } = await admin.from('comments').insert({
+      note_id: noteId,
+      author_id: userId,
+      content: 'service-role duplicate mentions',
+      mentions: ['a', 'a'],
+    })
+    expect(commentError?.message).toContain('comments_mentions_unique')
+  })
+
   test('allows 5 distinct mention recipients', async () => {
     const client = authedClient(userId)
     const { error } = await client.from('notes').insert({
