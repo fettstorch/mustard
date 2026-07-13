@@ -1,20 +1,26 @@
 import { createLowlight } from 'lowlight'
 import hljs from 'highlight.js/lib/core'
 import bash from 'highlight.js/lib/languages/bash'
+import cpp from 'highlight.js/lib/languages/cpp'
 import css from 'highlight.js/lib/languages/css'
+import haskell from 'highlight.js/lib/languages/haskell'
 import javascript from 'highlight.js/lib/languages/javascript'
 import json from 'highlight.js/lib/languages/json'
 import python from 'highlight.js/lib/languages/python'
+import rust from 'highlight.js/lib/languages/rust'
 import sql from 'highlight.js/lib/languages/sql'
 import typescript from 'highlight.js/lib/languages/typescript'
 import xml from 'highlight.js/lib/languages/xml'
 
 const languages = {
   bash,
+  cpp,
   css,
+  haskell,
   javascript,
   json,
   python,
+  rust,
   sql,
   typescript,
   xml,
@@ -22,7 +28,10 @@ const languages = {
 
 const aliases = {
   bash: ['sh', 'shell', 'zsh'],
+  cpp: ['c++', 'cc', 'cxx', 'h++', 'hh', 'hpp', 'hxx'],
+  haskell: ['hs'],
   javascript: ['js', 'jsx', 'mjs', 'cjs'],
+  rust: ['rs'],
   typescript: ['ts', 'tsx', 'mts', 'cts'],
   xml: ['html', 'svg'],
 }
