@@ -9,6 +9,7 @@ import {
   createRequestUpdateMessage,
   sendMessage,
   type Message,
+  RATE_LIMIT_ERROR_CODE,
 } from '@/shared/messaging'
 import { isRemoteMutationMessage } from '@/shared/remote-mutation'
 import type { MustardNoteAnchorData } from '@/shared/model/MustardNoteAnchorData'
@@ -720,14 +721,6 @@ export default defineContentScript({
       },
     )
 
-    // Detects rate-limit errors that crossed the extension-messaging boundary.
-    // Checks the `.name` property (a plain string, cloned reliably) rather than
-    // using `instanceof` (which would fail across background / content-script
-    // contexts).
-    function isRateLimitError(err: unknown): boolean {
-      return err instanceof Error && err.name === 'RateLimitError'
-    }
-
     // content-script acts as message relay between the vue app and the service
     // worker. `sendMessage` strips Vue reactive Proxies before sending (Firefox's
     // structuredClone rejects them) and types the response by message type.
@@ -751,7 +744,21 @@ export default defineContentScript({
             ? insertOptimisticNote(message.data)
             : undefined
         sendMessage(message)
-          .then((dtos) => {
+          .then((response) => {
+            if (!response.ok) {
+              if (optimisticId) removeOptimisticNote(optimisticId)
+              clearPendingNoteIds()
+              if (response.errorCode === RATE_LIMIT_ERROR_CODE) {
+                showMustardToast({
+                  id: 'mustard-rate-limit',
+                  text: "You've published a lot recently — please wait a moment and try again.",
+                  autoDismissMs: 6000,
+                })
+              }
+              return
+            }
+
+            const dtos = response.data
             console.debug('mustard [content-script] received notes after upsert:', dtos)
             // Local saves swap only local notes. A remote publish returns just
             // the newly-created note (no index re-query) — merge it in place,
@@ -765,13 +772,6 @@ export default defineContentScript({
             // Roll back the optimistic note so a failed publish leaves no ghost.
             if (optimisticId) removeOptimisticNote(optimisticId)
             clearPendingNoteIds()
-            if (isRateLimitError(err)) {
-              showMustardToast({
-                id: 'mustard-rate-limit',
-                text: "You've published a lot recently — please wait a moment and try again.",
-                autoDismissMs: 6000,
-              })
-            }
           })
       }
 
@@ -814,7 +814,19 @@ export default defineContentScript({
       if (message.type === 'UPSERT_COMMENT') {
         mustardState.pendingCommentForNoteIds[message.noteId] = true
         sendMessage(message)
-          .then((dtos) => {
+          .then((response) => {
+            if (!response.ok) {
+              if (response.errorCode === RATE_LIMIT_ERROR_CODE) {
+                showMustardToast({
+                  id: 'mustard-rate-limit',
+                  text: "You've posted a lot of comments recently — please wait a moment and try again.",
+                  autoDismissMs: 6000,
+                })
+              }
+              return
+            }
+
+            const dtos = response.data
             console.debug('mustard [content-script] received comments after upsert:', dtos)
             const comments = (dtos ?? []).map(DtoMustardComment.fromDto)
             mustardState.comments[message.noteId] = comments
@@ -826,13 +838,6 @@ export default defineContentScript({
           })
           .catch((err) => {
             console.error('mustard [content-script] UPSERT_COMMENT failed:', err)
-            if (isRateLimitError(err)) {
-              showMustardToast({
-                id: 'mustard-rate-limit',
-                text: "You've posted a lot of comments recently — please wait a moment and try again.",
-                autoDismissMs: 6000,
-              })
-            }
           })
           .finally(() => {
             delete mustardState.pendingCommentForNoteIds[message.noteId]
