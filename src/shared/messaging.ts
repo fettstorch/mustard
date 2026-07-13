@@ -410,9 +410,15 @@ export type Message =
  *
  * `void` entries are fire-and-forget (broadcasts / one-way notifications).
  */
+export const RATE_LIMIT_ERROR_CODE = 'MUSTARD_RATE_LIMIT' as const
+
+export type WriteResponse<T> =
+  | { ok: true; data: T }
+  | { ok: false; errorCode: typeof RATE_LIMIT_ERROR_CODE }
+
 type MessageResponses = {
   OPEN_NOTE_EDITOR: void
-  UPSERT_NOTE: DtoMustardNote[]
+  UPSERT_NOTE: WriteResponse<DtoMustardNote[]>
   QUERY_NOTES: DtoMustardNote[]
   DELETE_NOTE: DtoMustardNote[]
   SET_REPOST: DtoMustardNote[]
@@ -433,7 +439,7 @@ type MessageResponses = {
   GET_APP_STATUS: AppStatusResponse
   REQUEST_UPDATE: void
   QUERY_COMMENTS: QueryCommentsResponse
-  UPSERT_COMMENT: DtoMustardComment[]
+  UPSERT_COMMENT: WriteResponse<DtoMustardComment[]>
   DELETE_COMMENT: DtoMustardComment[]
   QUERY_NOTIFICATIONS_FOR_NOTES: QueryNotificationsForNotesResponse
   MARK_NOTIFICATIONS_SEEN_FOR_NOTE: null

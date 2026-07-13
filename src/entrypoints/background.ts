@@ -8,12 +8,15 @@ import {
   type ResponseFor,
   type QueryCommentsResponse,
   type QueryNotificationsForNotesResponse,
+  type WriteResponse,
+  RATE_LIMIT_ERROR_CODE,
 } from '@/shared/messaging'
 import { mustardNotesManager } from '@/background/business/MustardNotesManager'
 import { mustardCommentsManager } from '@/background/business/MustardCommentsManager'
 import { mustardNotificationsManager } from '@/background/business/MustardNotificationsManager'
 import { DtoMustardNote } from '@/shared/dto/DtoMustardNote'
 import { DtoMustardComment } from '@/shared/dto/DtoMustardComment'
+import { RateLimitError } from '@/shared/errors'
 import {
   createNativeNotifications,
   clearNativeNotificationState,
@@ -342,51 +345,63 @@ export default defineBackground(() => {
     ) => ResponseFor<K> | Promise<ResponseFor<K>>
   }
 
+  async function handleRateLimitedWrite<T>(operation: () => Promise<T>): Promise<WriteResponse<T>> {
+    try {
+      return { ok: true, data: await operation() }
+    } catch (error) {
+      if (error instanceof RateLimitError) {
+        return { ok: false, errorCode: RATE_LIMIT_ERROR_CODE }
+      }
+      throw error
+    }
+  }
+
   const handlers: MessageHandlers = {
-    UPSERT_NOTE: async (message) => {
-      const session = await getSession()
-      const target = message.target
-      const pageUrl = message.data.anchorData.pageUrl
+    UPSERT_NOTE: (message) =>
+      handleRateLimitedWrite(async () => {
+        const session = await getSession()
+        const target = message.target
+        const pageUrl = message.data.anchorData.pageUrl
 
-      let authorId: string
-      if (target === 'local') {
-        authorId = 'local'
-      } else {
-        if (!session) {
-          console.error('Cannot publish note - user not logged in')
-          return []
+        let authorId: string
+        if (target === 'local') {
+          authorId = 'local'
+        } else {
+          if (!session) {
+            console.error('Cannot publish note - user not logged in')
+            return []
+          }
+          authorId = session.userId
         }
-        authorId = session.userId
-      }
 
-      const note = DtoMustardNote.fromDto({
-        id: target === 'local' ? crypto.randomUUID() : null,
-        authorId,
-        content: message.data.content,
-        anchorData: message.data.anchorData,
-        updatedAt: message.data.updatedAt,
-      })
+        const note = DtoMustardNote.fromDto({
+          id: target === 'local' ? crypto.randomUUID() : null,
+          authorId,
+          content: message.data.content,
+          anchorData: message.data.anchorData,
+          updatedAt: message.data.updatedAt,
+        })
 
-      const created = await mustardNotesManager.upsertNote(note, target)
+        const created = await mustardNotesManager.upsertNote(note, target)
 
-      if (target === 'local') {
-        const localNotes = await mustardNotesManager.queryLocalNotesFor(pageUrl)
-        return localNotes.map(DtoMustardNote.toDto)
-      }
+        if (target === 'local') {
+          const localNotes = await mustardNotesManager.queryLocalNotesFor(pageUrl)
+          return localNotes.map(DtoMustardNote.toDto)
+        }
 
-      // Remote publish. Bust the index cache so the NEXT natural query is fresh,
-      // but DON'T re-query the index here — that round-trip (follow-graph
-      // resolution + per-page fetches) is the multi-second wall. `upsertNote`
-      // already returned the created row with its server id, so we hand back
-      // just that note and let the content script merge it in immediately.
-      await invalidateRemoteIndexCache()
+        // Remote publish. Bust the index cache so the NEXT natural query is fresh,
+        // but DON'T re-query the index here — that round-trip (follow-graph
+        // resolution + per-page fetches) is the multi-second wall. `upsertNote`
+        // already returned the created row with its server id, so we hand back
+        // just that note and let the content script merge it in immediately.
+        await invalidateRemoteIndexCache()
 
-      if (message.localNoteIdToDelete) {
-        await mustardNotesManager.deleteNote(message.localNoteIdToDelete, pageUrl, 'local')
-      }
+        if (message.localNoteIdToDelete) {
+          await mustardNotesManager.deleteNote(message.localNoteIdToDelete, pageUrl, 'local')
+        }
 
-      return created ? [DtoMustardNote.toDto(created)] : []
-    },
+        return created ? [DtoMustardNote.toDto(created)] : []
+      }),
 
     QUERY_NOTES: async (message) => {
       const session = await getSession()
@@ -653,29 +668,30 @@ export default defineBackground(() => {
       }
     },
 
-    UPSERT_COMMENT: async (message) => {
-      const session = await getSession()
-      if (!session) {
-        throw new Error('Cannot create comment - user not logged in')
-      }
+    UPSERT_COMMENT: (message) =>
+      handleRateLimitedWrite(async () => {
+        const session = await getSession()
+        if (!session) {
+          throw new Error('Cannot create comment - user not logged in')
+        }
 
-      await mustardCommentsManager.upsertComment({
-        id: '', // not used by the insert path; service ignores empty string
-        noteId: message.noteId,
-        authorId: session.userId,
-        content: message.content,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      })
+        await mustardCommentsManager.upsertComment({
+          id: '', // not used by the insert path; service ignores empty string
+          noteId: message.noteId,
+          authorId: session.userId,
+          content: message.content,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        })
 
-      // A new comment notifies the note's *author* (not the commenter), so this
-      // user's own badge/overview is unaffected — only the cached index needs
-      // busting so the author picks it up on their next query.
-      await invalidateRemoteIndexCache()
+        // A new comment notifies the note's *author* (not the commenter), so this
+        // user's own badge/overview is unaffected — only the cached index needs
+        // busting so the author picks it up on their next query.
+        await invalidateRemoteIndexCache()
 
-      const fresh = await mustardCommentsManager.queryCommentsForNote(message.noteId)
-      return fresh.map(DtoMustardComment.toDto)
-    },
+        const fresh = await mustardCommentsManager.queryCommentsForNote(message.noteId)
+        return fresh.map(DtoMustardComment.toDto)
+      }),
 
     DELETE_COMMENT: async (message) => {
       await mustardCommentsManager.deleteComment(message.commentId)

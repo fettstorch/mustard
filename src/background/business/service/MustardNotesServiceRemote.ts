@@ -7,6 +7,7 @@ import { MustardIndex as MustardIndexClass } from '@/shared/model/MustardIndex'
 import { LIMITS } from '@/shared/constants'
 import { deriveMentions } from '@/shared/mentions'
 import { retryable } from '@fettstorch/jule'
+import { RateLimitError } from '@/shared/errors'
 
 // Versioned endpoint. The client sends its Supabase JWT (minted server-side by
 // the auth-bridge edge function at login, refreshed there on expiry) to
@@ -329,28 +330,28 @@ class MustardNotesServiceRemote implements MustardNotesService {
     if (note.id) {
       // Update existing note. `.select().single()` returns the updated row so
       // callers can merge it directly instead of re-querying the whole index.
-      const { data, error } = await supabase
+      const updateResult = await supabase
         .from('notes')
         .update(dbNote)
         .eq('id', note.id)
         .select()
         .single()
 
-      if (error) {
-        throw new Error(`Failed to update note: ${error.message}`)
+      if (updateResult.error) {
+        throwNoteError('update', updateResult.status, updateResult.error.message)
       }
       // Reposters aren't part of the write payload; preserve what the caller knew.
-      return dbNoteToMustardNote(data as DbNote, note.reposterIds)
+      return dbNoteToMustardNote(updateResult.data as DbNote, note.reposterIds)
     }
 
     // Insert new note. `.select().single()` hands back the server-generated id
     // so the UI can render the real note immediately (no index round-trip).
-    const { data, error } = await supabase.from('notes').insert(dbNote).select().single()
+    const insertResult = await supabase.from('notes').insert(dbNote).select().single()
 
-    if (error) {
-      throw new Error(`Failed to insert note: ${error.message}`)
+    if (insertResult.error) {
+      throwNoteError('insert', insertResult.status, insertResult.error.message)
     }
-    return dbNoteToMustardNote(data as DbNote)
+    return dbNoteToMustardNote(insertResult.data as DbNote)
   }
 
   async deleteNote(noteId: string, _pageUrl: string): Promise<void> {
@@ -405,6 +406,11 @@ class MustardNotesServiceRemote implements MustardNotesService {
  * each `new`-ing its own object.
  */
 export const mustardNotesServiceRemote = new MustardNotesServiceRemote()
+
+function throwNoteError(op: string, status: number, message: string): never {
+  if (status === 429) throw new RateLimitError()
+  throw new Error(`Failed to ${op} note: ${message}`)
+}
 
 // Helper to convert database row to MustardNote
 function dbNoteToMustardNote(dbNote: DbNote, reposterIds: string[] = []): MustardNote {

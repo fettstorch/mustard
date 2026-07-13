@@ -8,6 +8,8 @@ import {
   type TestUser,
 } from './auth-test-data'
 
+export type { SupabaseClient }
+
 export type LocalStatus = {
   API_URL: string
   ANON_KEY: string
@@ -250,6 +252,18 @@ export async function fetchIndex(
     mentionedNoteIds: string[]
     repostersByNoteId: Record<string, string[]>
   }>
+}
+
+/**
+ * A supabase-js client that authenticates as the given user (role = authenticated).
+ * Writes via this client trigger all BEFORE INSERT triggers including rate limits.
+ */
+export function authedClient(userId: string, status = getLocalSupabaseStatus()): SupabaseClient {
+  const { jwt } = createAuthE2eJwt(userId)
+  return createClient(status.API_URL, status.ANON_KEY, {
+    auth: { autoRefreshToken: false, persistSession: false },
+    global: { headers: { Authorization: `Bearer ${jwt}` } },
+  })
 }
 
 // ─── Function-readiness check ─────────────────────────────────────────────────
