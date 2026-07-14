@@ -117,6 +117,11 @@
 #mustard-host .mustard-comment-content pre,
 #mustard-host .ProseMirror pre {
   box-sizing: border-box;
+  /* The surrounding note is width: fit-content. Keep unwrapped code out of its
+   * intrinsic width calculation so long lines scroll instead of widening it. */
+  contain: inline-size;
+  width: 100%;
+  min-width: 0;
   max-width: 100%;
   margin: 6px 0;
   padding: 10px 12px;

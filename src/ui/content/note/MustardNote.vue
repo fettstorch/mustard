@@ -528,7 +528,7 @@ watch(unreadCount, (count) => {
 /* --- Content styles --- */
 
 .mustard-note-content {
-  min-width: var(--mustard-note-content-width);
+  min-width: min(var(--mustard-note-content-width), var(--mustard-note-content-max-width));
   max-width: var(--mustard-note-content-max-width);
   word-break: break-word;
 }
@@ -616,7 +616,7 @@ watch(unreadCount, (count) => {
   display: grid;
   grid-template-rows: 0fr;
   grid-template-columns: minmax(0, 1fr);
-  min-width: var(--mustard-note-content-width);
+  min-width: min(var(--mustard-note-content-width), var(--mustard-note-content-max-width));
   transition:
     grid-template-rows 0.2s ease,
     opacity 0.15s ease;
