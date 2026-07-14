@@ -25,9 +25,12 @@ export const CodeBlockLowlightWithHardBreakFence = CodeBlockLowlight.extend({
       },
       handler: ({ state, range, match }) => {
         const $fence = state.doc.resolve(range.from)
+        const $fenceEnd = state.doc.resolve(range.to)
         const paragraph = $fence.parent
 
-        if (!paragraph.isTextblock || paragraph.type.spec.code) return null
+        if (!paragraph.isTextblock || paragraph.type.spec.code || $fenceEnd.parent !== paragraph) {
+          return null
+        }
 
         let hardBreakOffset: number | undefined
         paragraph.forEach((node, offset) => {
@@ -43,7 +46,12 @@ export const CodeBlockLowlightWithHardBreakFence = CodeBlockLowlight.extend({
 
         const precedingParagraph = paragraph.type.create(paragraph.attrs, precedingContent)
         const codeBlock = this.type.create({ language: match.data?.language ?? null })
-        const replacement = Fragment.fromArray([precedingParagraph, codeBlock])
+        const replacementNodes = [precedingParagraph, codeBlock]
+        const trailingContent = paragraph.content.cut($fenceEnd.parentOffset)
+        if (trailingContent.size) {
+          replacementNodes.push(paragraph.type.create(paragraph.attrs, trailingContent))
+        }
+        const replacement = Fragment.fromArray(replacementNodes)
         const paragraphPosition = $fence.before()
         const container = $fence.node(-1)
         const paragraphIndex = $fence.index(-1)

@@ -59,7 +59,7 @@ test.describe('Content script smoke', () => {
     })
   })
 
-  test('creates a fenced code block after a hard break and contains it in a narrow note', async ({
+  test('creates a contained code block after a hard break without losing following text', async ({
     context,
   }) => {
     const page = await context.newPage()
@@ -96,11 +96,18 @@ test.describe('Content script smoke', () => {
     const editor = mustard.locator('.tiptap[contenteditable="true"]')
     await expect(saveButton).toBeVisible({ timeout: 8_000 })
     await editor.click()
-    await page.keyboard.type('Short note')
+    const trailingText = 'trailing text'
+    await page.keyboard.type(`Short note ${trailingText}`)
+    for (let i = 0; i < trailingText.length; i++) {
+      await page.keyboard.press('ArrowLeft')
+    }
+    const caretOffset = await editor.evaluate(() => getSelection()?.anchorOffset)
+    expect(caretOffset).toBe('Short note '.length)
     await page.keyboard.press('Shift+Enter')
     await page.keyboard.type('```ts')
     await page.keyboard.press('Space')
     await expect(editor.locator('pre')).toBeVisible()
+    await expect(editor.getByText(trailingText, { exact: true })).toBeVisible()
     await page.keyboard.type(
       'const extremelyLongIdentifierThatMustOnlyScrollInsideTheCodeBlock = 1234567890',
     )
@@ -108,6 +115,7 @@ test.describe('Content script smoke', () => {
 
     const savedNote = mustard.locator('.mustard-note').filter({ hasText: 'Short note' })
     await expect(savedNote).toBeVisible()
+    await expect(savedNote.getByText(trailingText, { exact: true })).toBeVisible()
     const codeBlock = savedNote.locator('.mustard-note-content pre')
     await expect(codeBlock).toBeVisible()
     const widths = await codeBlock.evaluate((pre) => {
