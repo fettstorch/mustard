@@ -98,11 +98,22 @@ test.describe('Content script smoke', () => {
     await editor.click()
     const trailingText = 'trailing text'
     await page.keyboard.type(`Short note ${trailingText}`)
-    for (let i = 0; i < trailingText.length; i++) {
-      await page.keyboard.press('ArrowLeft')
-    }
-    const caretOffset = await editor.evaluate(() => getSelection()?.anchorOffset)
-    expect(caretOffset).toBe('Short note '.length)
+    const caretOffset = 'Short note '.length
+    await editor.evaluate((element, offset) => {
+      const textNode = element.querySelector('p')?.firstChild
+      if (!(textNode instanceof Text)) throw new Error('Editor paragraph has no text node')
+
+      const range = document.createRange()
+      range.setStart(textNode, offset)
+      range.collapse(true)
+
+      const selection = getSelection()
+      if (!selection) throw new Error('Document has no selection')
+      selection.removeAllRanges()
+      selection.addRange(range)
+      document.dispatchEvent(new Event('selectionchange'))
+    }, caretOffset)
+    expect(await editor.evaluate(() => getSelection()?.anchorOffset)).toBe(caretOffset)
     await page.keyboard.press('Shift+Enter')
     await page.keyboard.type('```ts')
     await page.keyboard.press('Space')
