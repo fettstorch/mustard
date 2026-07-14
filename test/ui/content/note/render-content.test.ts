@@ -23,6 +23,16 @@ describe('renderContent code blocks', () => {
     expect(rendered).toContain('hljs-keyword')
   })
 
+  it('highlights a TypeScript fenced block following prose', () => {
+    const markdown = ['Some text', '```ts', 'const answer: number = 42', '```'].join('\n')
+
+    const rendered = renderContent(markdown)
+
+    expect(rendered).toContain('<p>Some text</p>')
+    expect(rendered).toContain('<pre><code class="language-ts">')
+    expect(rendered).toContain('hljs-keyword')
+  })
+
   it('safely renders an unsupported language without highlighting', () => {
     const markdown = ['```unknown', '<script>alert("nope")</script>', '```'].join('\n')
 

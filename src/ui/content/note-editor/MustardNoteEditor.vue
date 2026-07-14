@@ -168,7 +168,7 @@ function handlePublish() {
 
 <style scoped>
 :deep(.ProseMirror) {
-  min-width: var(--mustard-note-content-width);
+  min-width: min(var(--mustard-note-content-width), var(--mustard-note-content-max-width));
   max-width: var(--mustard-note-content-max-width);
   caret-color: var(--mustard-border);
   outline: none;

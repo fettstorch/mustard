@@ -1,9 +1,9 @@
 import StarterKit from '@tiptap/starter-kit'
-import { CodeBlockLowlight } from '@tiptap/extension-code-block-lowlight'
 import { Image } from '@tiptap/extension-image'
 import { Placeholder } from '@tiptap/extensions'
 import { Markdown } from '@tiptap/markdown'
 import type { Extensions } from '@tiptap/core'
+import { CodeBlockLowlightWithHardBreakFence } from './code-block-extension'
 import { ImageUrlAutoConvert } from './image-url-auto-convert'
 import { GiphySlash } from './giphy-slash'
 import { createMentionExtension } from './mention-node'
@@ -27,7 +27,7 @@ export function createEditorExtensions(opts: {
       // Replaced with the syntax-highlighting variant below.
       codeBlock: false,
     }),
-    CodeBlockLowlight.configure({
+    CodeBlockLowlightWithHardBreakFence.configure({
       lowlight,
       enableTabIndentation: true,
     }),
