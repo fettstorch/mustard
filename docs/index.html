@@ -66,10 +66,15 @@
       }
 
       .extension-hint {
-        display: flex;
+        display: none;
         flex-direction: column;
         align-items: flex-end;
         gap: 2px;
+        transform: translateX(-70px);
+      }
+
+      html[data-mustard-installed][data-mustard-session='disconnected'] .extension-hint {
+        display: flex;
       }
 
       .extension-hint-text {
@@ -120,6 +125,18 @@
         justify-content: center;
         gap: 10px;
         margin-top: 24px;
+      }
+
+      html[data-mustard-installed] .hero-cta {
+        display: none;
+      }
+
+      .hero-installed-message {
+        display: none;
+      }
+
+      html[data-mustard-installed][data-mustard-session='disconnected'] .hero-installed-message {
+        display: block;
       }
 
       .hero-cta a {
@@ -588,7 +605,7 @@
     </style>
   </head>
 
-  <body>
+  <body data-mustard-landing-page>
     <header class="site-header">
       <img class="site-header-logo" src="mustard_bottle_smile_512.png" alt="Mustard" />
       <div class="extension-hint">
@@ -606,6 +623,10 @@
         Add your opinion to any webpage — right-click anywhere and select
         <strong>"Add Mustard"</strong> to leave your first published mustard for your friends to
         see!
+      </p>
+      <p class="hero-installed-message">
+        Mustard is most fun with friends. Connect Bluesky or GitHub from the Mustard popup so people
+        who follow you can see your published mustard on the same webpages.
       </p>
       <div class="hero-cta">
         <a
