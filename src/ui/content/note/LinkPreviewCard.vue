@@ -21,8 +21,6 @@ const domain = computed(() => {
   }
 })
 
-const label = computed(() => props.preview.siteName || domain.value)
-
 async function loadThumbnail() {
   const path = props.preview.thumbnailPath
   if (!isVisible || !path || imageDataUrl.value) return
@@ -73,6 +71,7 @@ onUnmounted(() => {
     <a
       ref="cardRef"
       class="mustard-link-preview"
+      :class="{ 'mustard-link-preview--with-image': imageDataUrl }"
       :href="href"
       target="_blank"
       rel="noopener noreferrer"
@@ -87,13 +86,17 @@ onUnmounted(() => {
         draggable="false"
         @dragstart.prevent
       />
-      <span class="mustard-link-preview-copy">
-        <span class="mustard-link-preview-site">{{ label }}</span>
+      <span
+        class="mustard-link-preview-copy"
+        :class="{
+          'mustard-link-preview-copy--title-only': preview.title && !preview.description,
+          'mustard-link-preview-copy--description-only': !preview.title && preview.description,
+        }"
+      >
         <span v-if="preview.title" class="mustard-link-preview-title">{{ preview.title }}</span>
         <span v-if="preview.description" class="mustard-link-preview-description">
           {{ preview.description }}
         </span>
-        <span class="mustard-link-preview-domain">{{ domain }}</span>
       </span>
     </a>
     <button
@@ -125,7 +128,6 @@ onUnmounted(() => {
   overflow: hidden;
   color: inherit !important;
   text-decoration: none !important;
-  border: 1px solid var(--mustard-border-subtle);
   border-radius: 7px;
   background: var(--mustard-glass-strong);
   cursor: pointer;
@@ -135,10 +137,14 @@ onUnmounted(() => {
   background: var(--mustard-glass-strong);
 }
 
+.mustard-link-preview--with-image {
+  height: 72px;
+}
+
 .mustard-link-preview-image {
-  flex: 0 0 66px;
-  width: 66px;
-  height: 66px;
+  flex: 0 0 72px;
+  width: 72px;
+  height: 72px;
   object-fit: cover;
   border: 0;
 }
@@ -147,9 +153,11 @@ onUnmounted(() => {
   display: flex;
   flex: 1;
   flex-direction: column;
+  justify-content: center;
   min-width: 0;
+  overflow: hidden;
   gap: 2px;
-  padding: 6px 8px;
+  padding: 5px 8px;
 }
 
 .dismissible .mustard-link-preview-copy {
@@ -184,21 +192,11 @@ onUnmounted(() => {
   outline: 1px solid var(--mustard-border-faded);
 }
 
-.mustard-link-preview-site,
-.mustard-link-preview-domain {
-  overflow: hidden;
-  font-size: 0.62em;
-  line-height: 1.2;
-  opacity: 0.6;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .mustard-link-preview-title {
   display: -webkit-box;
   overflow: hidden;
   color: inherit;
-  font-size: 0.82em;
+  font-size: 0.7em;
   font-weight: 700;
   line-height: 1.25;
   -webkit-box-orient: vertical;
@@ -213,5 +211,10 @@ onUnmounted(() => {
   opacity: 0.8;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
+}
+
+.mustard-link-preview-copy--title-only .mustard-link-preview-title,
+.mustard-link-preview-copy--description-only .mustard-link-preview-description {
+  -webkit-line-clamp: 4;
 }
 </style>

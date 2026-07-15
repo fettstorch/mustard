@@ -114,11 +114,19 @@ test.describe('Content script smoke', () => {
     const editorPreview = mustard.locator('.mustard-note-editor .mustard-link-preview')
     await expect(editorPreview.getByText('A preview title')).toBeVisible({ timeout: 8_000 })
     await expect(editorPreview.locator('img')).toBeVisible()
+    await expect(editorPreview).toHaveCSS('height', '72px')
+    await expect(editorPreview).toHaveCSS('border-top-width', '0px')
+    await expect(editorPreview.locator('.mustard-link-preview-site')).toHaveCount(0)
+    await expect(editorPreview.locator('.mustard-link-preview-domain')).toHaveCount(0)
 
     await saveButton.click()
     const savedPreview = mustard.locator('.mustard-note .mustard-link-preview')
     await expect(savedPreview.getByText('A preview title')).toBeVisible({ timeout: 8_000 })
     await expect(savedPreview.locator('img')).toBeVisible()
+    await expect(savedPreview).toHaveCSS('height', '72px')
+    await expect(savedPreview).toHaveCSS('border-top-width', '0px')
+    await expect(savedPreview.locator('.mustard-link-preview-site')).toHaveCount(0)
+    await expect(savedPreview.locator('.mustard-link-preview-domain')).toHaveCount(0)
 
     // A dismissal is an authoring choice, not just a temporary visual hide.
     // Reopen the editor, dismiss an otherwise valid preview, and verify the
