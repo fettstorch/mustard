@@ -55,7 +55,7 @@ flowchart TB
         direction LR
         ChromeStorage[("browser.storage.local")]
         EdgeFns["Edge Functions<br/>auth-bridge (multi-provider) •<br/>get-index-v2 (strict JWT) • get-index (legacy)"]
-        DB[("Postgres<br/>users • identities •<br/>notes • comments • notifications •<br/>oauth_* • app_config")]
+        DB[("Postgres + Storage<br/>users • identities •<br/>notes • comments • notifications •<br/>oauth_* • app_config •<br/>link-preview-thumbnails")]
         BSkyAPI["bsky.social API"]
         GHAPI["GitHub REST API"]
     end

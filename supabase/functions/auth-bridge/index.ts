@@ -9,6 +9,7 @@ const HANDLE_RESOLVER = 'https://bsky.social'
 const PLC_DIRECTORY = 'https://plc.directory'
 const STATE_TTL_SECONDS = 600
 const SUPABASE_JWT_TTL_SECONDS = 180 * 24 * 60 * 60
+const LINK_PREVIEW_BUCKET = 'link-preview-thumbnails'
 
 // Mustard user_ids are UUIDs. Used to reject provider ids (DIDs etc.) that must
 // never be treated as user_ids.
@@ -48,6 +49,30 @@ class HttpError extends Error {
 
 function getSupabase() {
   return createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
+}
+
+/** Best-effort cleanup after the account/content transaction has committed. */
+async function deleteLinkPreviewThumbnails(
+  supabase: ReturnType<typeof getSupabase>,
+  userId: string,
+): Promise<void> {
+  const paths: string[] = []
+  const pageSize = 100
+  for (let offset = 0; ; offset += pageSize) {
+    const { data, error } = await supabase.storage
+      .from(LINK_PREVIEW_BUCKET)
+      .list(userId, { limit: pageSize, offset })
+    if (error) throw new Error(`Failed to list link preview thumbnails: ${error.message}`)
+    const page = data ?? []
+    paths.push(...page.map((item) => `${userId}/${item.name}`))
+    if (page.length < pageSize) break
+  }
+  for (let start = 0; start < paths.length; start += pageSize) {
+    const { error } = await supabase.storage
+      .from(LINK_PREVIEW_BUCKET)
+      .remove(paths.slice(start, start + pageSize))
+    if (error) throw new Error(`Failed to delete link preview thumbnails: ${error.message}`)
+  }
 }
 
 // ─── Supabase JWT ────────────────────────────────────────────────────────────
@@ -226,6 +251,13 @@ async function handleDisconnect(body: {
     // users delete inside it cascades identities + oauth_session.
     const { error } = await supabase.rpc('delete_account', { p_user_id: userId })
     if (error) throw new Error(`Failed to delete account: ${error.message}`)
+    try {
+      await deleteLinkPreviewThumbnails(supabase, userId)
+    } catch (error) {
+      // Content deletion is authoritative and already committed. Do not turn a
+      // storage-cleanup failure into a misleading "account deletion failed".
+      console.warn(`[auth-bridge] disconnect: thumbnail cleanup failed for ${userId}`, error)
+    }
     console.log(`[auth-bridge] disconnect: deleted account ${userId} (last identity)`)
     return jsonResponse({ accountDeleted: true })
   }
