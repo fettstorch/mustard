@@ -20,6 +20,9 @@ const domain = computed(() => {
     return 'Link'
   }
 })
+const description = computed(
+  () => props.preview.description || props.preview.siteName || domain.value,
+)
 
 async function loadThumbnail() {
   const path = props.preview.thumbnailPath
@@ -89,14 +92,11 @@ onUnmounted(() => {
       <span
         class="mustard-link-preview-copy"
         :class="{
-          'mustard-link-preview-copy--title-only': preview.title && !preview.description,
-          'mustard-link-preview-copy--description-only': !preview.title && preview.description,
+          'mustard-link-preview-copy--description-only': !preview.title,
         }"
       >
         <span v-if="preview.title" class="mustard-link-preview-title">{{ preview.title }}</span>
-        <span v-if="preview.description" class="mustard-link-preview-description">
-          {{ preview.description }}
-        </span>
+        <span class="mustard-link-preview-description">{{ description }}</span>
       </span>
     </a>
     <button
@@ -108,7 +108,7 @@ onUnmounted(() => {
       @mousedown.stop.prevent
       @click.stop.prevent="emit('dismiss')"
     >
-      ×
+      <span class="mustard-link-preview-dismiss-icon">×</span>
     </button>
   </span>
 </template>
@@ -192,6 +192,10 @@ onUnmounted(() => {
   outline: 1px solid var(--mustard-border-faded);
 }
 
+.mustard-link-preview-dismiss-icon {
+  transform: translateY(-1px);
+}
+
 .mustard-link-preview-title {
   display: -webkit-box;
   overflow: hidden;
@@ -213,7 +217,6 @@ onUnmounted(() => {
   -webkit-line-clamp: 2;
 }
 
-.mustard-link-preview-copy--title-only .mustard-link-preview-title,
 .mustard-link-preview-copy--description-only .mustard-link-preview-description {
   -webkit-line-clamp: 4;
 }

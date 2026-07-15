@@ -74,7 +74,7 @@ test.describe('Content script smoke', () => {
         contentType: 'text/html',
         body: [
           '<meta property="og:title" content="A preview title">',
-          '<meta property="og:description" content="A preview description">',
+          '<meta property="og:site_name" content="A preview site">',
           '<meta property="og:image" content="https://preview.example/og.png">',
         ].join(''),
       })
@@ -113,6 +113,7 @@ test.describe('Content script smoke', () => {
 
     const editorPreview = mustard.locator('.mustard-note-editor .mustard-link-preview')
     await expect(editorPreview.getByText('A preview title')).toBeVisible({ timeout: 8_000 })
+    await expect(editorPreview.getByText('A preview site')).toBeVisible()
     await expect(editorPreview.locator('img')).toBeVisible()
     await expect(editorPreview).toHaveCSS('height', '72px')
     await expect(editorPreview).toHaveCSS('border-top-width', '0px')
@@ -122,6 +123,7 @@ test.describe('Content script smoke', () => {
     await saveButton.click()
     const savedPreview = mustard.locator('.mustard-note .mustard-link-preview')
     await expect(savedPreview.getByText('A preview title')).toBeVisible({ timeout: 8_000 })
+    await expect(savedPreview.getByText('A preview site')).toBeVisible()
     await expect(savedPreview.locator('img')).toBeVisible()
     await expect(savedPreview).toHaveCSS('height', '72px')
     await expect(savedPreview).toHaveCSS('border-top-width', '0px')
