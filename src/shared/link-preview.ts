@@ -11,7 +11,10 @@ export function extractFirstLinkUrl(content: string): string | undefined {
   for (const match of content.matchAll(LINK_TOKEN)) {
     const matched = match[0]
     const isBareDomain = !/^https?:\/\//i.test(matched)
-    if (isBareDomain && match.index && content[match.index - 1] === '@') continue
+    const matchStart = match.index ?? 0
+    const before = content[matchStart - 1]
+    const after = content[matchStart + matched.length]
+    if (isBareDomain && (before === '@' || after === '@')) continue
 
     // Punctuation at the end of prose is not normally part of the URL. Keep a
     // balanced closing parenthesis, which is common in Wikipedia-style URLs.

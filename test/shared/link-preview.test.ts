@@ -27,6 +27,13 @@ describe('extractFirstLinkUrl', () => {
     )
   })
 
+  it('skips every bare-domain match inside an email address', () => {
+    expect(extractFirstLinkUrl('Email first.last@example.com.')).toBeUndefined()
+    expect(extractFirstLinkUrl('Email first.last@example.com, then visit mustardnotes.com.')).toBe(
+      'https://mustardnotes.com/',
+    )
+  })
+
   it('rejects non-web schemes', () => {
     expect(extractFirstLinkUrl('javascript:alert(1)')).toBeUndefined()
     expect(normalizeHttpUrl('ftp://example.com')).toBeUndefined()
