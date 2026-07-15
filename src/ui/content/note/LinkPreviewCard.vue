@@ -168,8 +168,8 @@ onUnmounted(() => {
   all: unset;
   position: absolute;
   z-index: 1;
-  top: 12px;
-  right: 5px;
+  top: 4px;
+  right: 4px;
   box-sizing: border-box;
   display: grid;
   width: 17px;

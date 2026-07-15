@@ -154,8 +154,11 @@ test.describe('Content script smoke', () => {
     await editor.click()
     await page.keyboard.type('https://preview.example/dismissed')
     await expect(editorPreview.getByText('A preview title')).toBeVisible({ timeout: 8_000 })
+    const dismissButton = mustard.getByTitle('Remove link preview')
+    await expect(dismissButton).toHaveCSS('top', '4px')
+    await expect(dismissButton).toHaveCSS('right', '4px')
 
-    await mustard.getByTitle('Remove link preview').click()
+    await dismissButton.click()
     await expect(editorPreview).toHaveCount(0)
     await page.waitForTimeout(800)
     await expect(editorPreview).toHaveCount(0)
