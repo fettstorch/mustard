@@ -49,24 +49,34 @@ describe('LinkPreviewUnfurlServiceRemote', () => {
     expect(fetch).not.toHaveBeenCalled()
   })
 
-  it('accepts an ordinary redirect and keeps the authored URL on the card', async () => {
+  it('fetches a direct page and keeps the authored URL on the card', async () => {
     const response = new Response(
       '<meta property="og:title" content="Mustard"><meta property="og:image" content="/og.jpg">',
       { headers: { 'content-type': 'text/html' } },
     )
-    Object.defineProperty(response, 'url', { value: 'https://fettstorch.github.io/mustard/' })
-    Object.defineProperty(response, 'redirected', { value: true })
+    Object.defineProperty(response, 'url', { value: 'https://mustardnotes.com/' })
     const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(response)
     vi.stubGlobal('fetch', fetch)
 
     await expect(unfurlLinkPreview('Look at https://mustardnotes.com')).resolves.toEqual({
       url: 'https://mustardnotes.com/',
       title: 'Mustard',
-      imageUrl: 'https://fettstorch.github.io/og.jpg',
+      imageUrl: 'https://mustardnotes.com/og.jpg',
     })
     expect(fetch).toHaveBeenCalledWith(
       'https://mustardnotes.com/',
-      expect.objectContaining({ credentials: 'omit', redirect: 'follow' }),
+      expect.objectContaining({ credentials: 'omit', redirect: 'error' }),
+    )
+  })
+
+  it('does not follow redirects', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>().mockRejectedValue(new TypeError('redirect'))
+    vi.stubGlobal('fetch', fetch)
+
+    await expect(unfurlLinkPreview('https://redirecting.example/article')).resolves.toBeUndefined()
+    expect(fetch).toHaveBeenCalledWith(
+      'https://redirecting.example/article',
+      expect.objectContaining({ redirect: 'error' }),
     )
   })
 

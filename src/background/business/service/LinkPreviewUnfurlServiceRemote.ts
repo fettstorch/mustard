@@ -258,10 +258,10 @@ function isPrivateIpv4Address(host: string): boolean {
 }
 
 /**
- * Browser Fetch intentionally hides `Location` on `redirect: 'manual'`
- * responses, so an extension cannot safely walk a redirect chain itself. Keep
- * this author-initiated and credential-free, let Fetch follow ordinary web
- * redirects, then reject an unsafe final target before reading its body.
+ * Browser Fetch hides `Location` on `redirect: 'manual'` responses, so an
+ * extension cannot safely validate each redirect hop itself. Reject redirects
+ * before their destination is contacted rather than discovering an unsafe final
+ * URL after Fetch has already requested it.
  */
 async function fetchWithSafeFinalUrl<T>(
   url: string,
@@ -275,7 +275,7 @@ async function fetchWithSafeFinalUrl<T>(
     const response = await fetch(url, {
       headers: { Accept: accept },
       credentials: 'omit',
-      redirect: 'follow',
+      redirect: 'error',
       referrerPolicy: 'no-referrer',
       signal: controller.signal,
     })
