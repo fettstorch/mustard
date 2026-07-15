@@ -91,6 +91,45 @@ in several ways:
   nested elements — use `:deep()` with `!important` where needed (e.g. markdown
   heading colors).
 
+### Link previews / Open Graph cards
+
+- Never fetch an arbitrary preview URL from a content script: in MV3 it is
+  subject to the page's CORS policy even when the extension has host
+  permissions. Fetch in the background/extension context (or a backend) and
+  relay only a small, sanitized metadata DTO to the content script.
+- A direct `og:image` `<img>` in the injected note UI is also subject to the
+  host page's `img-src` CSP, so it will fail on strict sites. Render a
+  CSP-independent asset (for example, a bounded data URI produced by the
+  extension, or an image served through a permitted/proxied path) and always
+  provide a no-image card fallback.
+- A backend unfurler accepts attacker-controlled URLs. It needs strict `http` /
+  `https` parsing, a small timeout/body cap, redirect-by-redirect validation,
+  private/link-local/loopback address blocking, and rate limiting; metadata and
+  images are untrusted display data, never HTML to inject. Browser `fetch()`
+  cannot implement redirect-by-redirect validation: `redirect: 'manual'`
+  produces an opaque redirect with no exposed status or `Location`. An
+  author-initiated extension fetch may use `follow` with omitted credentials and
+  validate the final URL; use a backend with controlled egress when strict
+  redirect-chain enforcement is required.
+- Published previews must not make a follower's extension fetch the author's
+  stored `og:image` URL. Mustard resizes the source in the author's background,
+  uploads a WebP of at most 20 KB to the `link-preview-thumbnails` Supabase
+  Storage bucket, and stores only its validated `thumbnailPath`. The path is
+  immutable and content-addressed (`authorId/sha256.webp`), so one author's
+  notes share identical thumbnails. Storage RLS requires an owned note to
+  reference the exact path before upload and prevents deletion while any note
+  still references it. Cards progressively request the trusted path from the
+  background when visible; note queries return metadata immediately and never
+  wait for image downloads.
+- For editor URL unfurling, debounce the **normalized first URL**, not the whole
+  note body. Use jule `getDebouncer()` when Vue unmount must cancel the pending
+  timer; `debounced()` has no `clear()` handle. A short-TTL jule `cached()` async
+  loader coalesces editor/save requests for the same URL.
+- Link-preview dismissal is an authoring decision, not merely hidden UI state.
+  Carry `linkPreviewDismissed` across the content-script → background message so
+  save-time unfurling cannot recreate it, and persist the flag on local notes so
+  publishing that draft later preserves the user's choice.
+
 ## Stable extension identity (needed for OAuth redirect URIs)
 
 - **Chrome**: unpacked ID is path-derived (or key-derived if `key` is set). Paste

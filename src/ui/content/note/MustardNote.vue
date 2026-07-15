@@ -9,6 +9,7 @@ import AuthorAvatar from './AuthorAvatar.vue'
 import RepostAvatarStack from './RepostAvatarStack.vue'
 import CommentToggle from './CommentToggle.vue'
 import MustardCommentThread from './MustardCommentThread.vue'
+import LinkPreviewCard from './LinkPreviewCard.vue'
 import { renderContent } from './render-content'
 import { providerProfileUrl } from '@/shared/providers'
 import { LIMITS } from '@/shared/constants'
@@ -332,6 +333,7 @@ watch(unreadCount, (count) => {
             v-html="renderedContent"
             @mousedown="onContentMousedown"
           />
+          <LinkPreviewCard v-if="note.linkPreview" :preview="note.linkPreview" />
           <div v-if="shouldShowCharacterCount" class="character-count over-limit">
             {{ characterCountText }}
           </div>
