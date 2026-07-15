@@ -21,6 +21,17 @@ describe('LinkPreviewUnfurlServiceRemote', () => {
     expect(fetch).not.toHaveBeenCalled()
   })
 
+  it('rejects local hostnames with a trailing DNS dot', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>()
+    vi.stubGlobal('fetch', fetch)
+
+    await expect(unfurlLinkPreview('http://localhost./')).resolves.toBeUndefined()
+    await expect(unfurlLinkPreview('http://printer.local./')).resolves.toBeUndefined()
+    await expect(unfurlLinkPreview('http://printer.internal./')).resolves.toBeUndefined()
+
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
   it('allows public DNS names beginning with IPv6 private-range prefixes', async () => {
     const fetch = vi.fn<typeof globalThis.fetch>().mockImplementation(async (url) => {
       const response = new Response('<meta property="og:title" content="Public">', {

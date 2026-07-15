@@ -196,7 +196,10 @@ function isSafePreviewUrl(value: string): boolean {
   if (!normalized) return false
   const url = new URL(normalized)
   if (url.port && url.port !== '80' && url.port !== '443') return false
-  const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, '')
+  const host = url.hostname
+    .toLowerCase()
+    .replace(/^\[|\]$/g, '')
+    .replace(/\.$/, '')
   if (
     host === 'localhost' ||
     host.endsWith('.localhost') ||
