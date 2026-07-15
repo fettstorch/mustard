@@ -202,6 +202,9 @@ function isSafePreviewUrl(value: string): boolean {
 }
 
 function isPrivateIpAddress(host: string): boolean {
+  const mappedIpv4 = ipv4MappedIpv6ToIpv4(host)
+  if (mappedIpv4) return isPrivateIpv4Address(mappedIpv4)
+
   if (
     host === '::1' ||
     host === '::' ||
@@ -211,6 +214,21 @@ function isPrivateIpAddress(host: string): boolean {
   ) {
     return true
   }
+
+  return isPrivateIpv4Address(host)
+}
+
+/** Convert `::ffff:7f00:1`-style IPv4-mapped IPv6 hosts to dotted IPv4. */
+function ipv4MappedIpv6ToIpv4(host: string): string | undefined {
+  const mapped = host.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i)
+  if (!mapped?.[1] || !mapped[2]) return undefined
+
+  const high = Number.parseInt(mapped[1], 16)
+  const low = Number.parseInt(mapped[2], 16)
+  return `${high >>> 8}.${high & 0xff}.${low >>> 8}.${low & 0xff}`
+}
+
+function isPrivateIpv4Address(host: string): boolean {
   const parts = host.split('.')
   if (parts.length !== 4 || parts.some((part) => !/^\d+$/.test(part))) return false
   const octets = parts.map(Number)

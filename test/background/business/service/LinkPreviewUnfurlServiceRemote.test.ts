@@ -9,6 +9,17 @@ afterEach(() => {
 })
 
 describe('LinkPreviewUnfurlServiceRemote', () => {
+  it('rejects IPv4-mapped IPv6 addresses for loopback and private networks', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>()
+    vi.stubGlobal('fetch', fetch)
+
+    await expect(unfurlLinkPreview('http://[::ffff:7f00:1]/')).resolves.toBeUndefined()
+    await expect(unfurlLinkPreview('http://[::ffff:a00:1]/')).resolves.toBeUndefined()
+    await expect(unfurlLinkPreview('http://[::ffff:c0a8:1]/')).resolves.toBeUndefined()
+
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
   it('accepts an ordinary redirect and keeps the authored URL on the card', async () => {
     const response = new Response(
       '<meta property="og:title" content="Mustard"><meta property="og:image" content="/og.jpg">',
