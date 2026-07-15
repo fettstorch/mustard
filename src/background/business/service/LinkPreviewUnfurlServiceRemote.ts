@@ -42,18 +42,23 @@ export async function unfurlLinkPreview(content: string): Promise<LinkPreview | 
 const loadRemoteMetadata = cached(
   async (linkUrl: string): Promise<LinkPreview | undefined> => {
     try {
-      const response = await fetchWithSafeFinalUrl(linkUrl, 'text/html,application/xhtml+xml')
-      if (!response || !response.ok) return undefined
-      const contentType = response.headers.get('content-type')?.toLowerCase() ?? ''
-      if (
-        contentType &&
-        !contentType.includes('text/html') &&
-        !contentType.includes('application/xhtml+xml')
-      ) {
-        return undefined
-      }
-      const html = await readTextWithinLimit(response, MAX_HTML_BYTES)
-      return html ? extractLinkPreview(html, linkUrl, response.url || linkUrl) : undefined
+      return await fetchWithSafeFinalUrl(
+        linkUrl,
+        'text/html,application/xhtml+xml',
+        async (response) => {
+          if (!response.ok) return undefined
+          const contentType = response.headers.get('content-type')?.toLowerCase() ?? ''
+          if (
+            contentType &&
+            !contentType.includes('text/html') &&
+            !contentType.includes('application/xhtml+xml')
+          ) {
+            return undefined
+          }
+          const html = await readTextWithinLimit(response, MAX_HTML_BYTES)
+          return html ? extractLinkPreview(html, linkUrl, response.url || linkUrl) : undefined
+        },
+      )
     } catch (error) {
       console.debug('mustard [link-preview] metadata fetch failed:', error)
       return undefined
@@ -91,20 +96,22 @@ async function hydrateLinkPreviewImage(preview?: LinkPreview): Promise<LinkPrevi
 const loadSourceThumbnail = cached(
   async (imageUrl: string): Promise<string | undefined> => {
     try {
-      const response = await fetchWithSafeFinalUrl(
+      return await fetchWithSafeFinalUrl(
         imageUrl,
         'image/avif,image/webp,image/png,image/jpeg,image/gif',
+        async (response) => {
+          if (!response.ok) return undefined
+          const mimeType =
+            (response.headers.get('content-type') ?? '').split(';')[0]?.toLowerCase() ?? ''
+          if (
+            !['image/avif', 'image/webp', 'image/png', 'image/jpeg', 'image/gif'].includes(mimeType)
+          ) {
+            return undefined
+          }
+          const bytes = await readBytesWithinLimit(response, MAX_IMAGE_SOURCE_BYTES)
+          return bytes ? createThumbnailDataUrl(bytes, mimeType) : undefined
+        },
       )
-      if (!response?.ok) return undefined
-      const mimeType =
-        (response.headers.get('content-type') ?? '').split(';')[0]?.toLowerCase() ?? ''
-      if (
-        !['image/avif', 'image/webp', 'image/png', 'image/jpeg', 'image/gif'].includes(mimeType)
-      ) {
-        return undefined
-      }
-      const bytes = await readBytesWithinLimit(response, MAX_IMAGE_SOURCE_BYTES)
-      return bytes ? createThumbnailDataUrl(bytes, mimeType) : undefined
     } catch (error) {
       console.debug('mustard [link-preview] image fetch failed:', error)
       return undefined
@@ -251,7 +258,11 @@ function isPrivateIpv4Address(host: string): boolean {
  * this author-initiated and credential-free, let Fetch follow ordinary web
  * redirects, then reject an unsafe final target before reading its body.
  */
-async function fetchWithSafeFinalUrl(url: string, accept: string): Promise<Response | undefined> {
+async function fetchWithSafeFinalUrl<T>(
+  url: string,
+  accept: string,
+  consume: (response: Response) => Promise<T>,
+): Promise<T | undefined> {
   if (!isSafePreviewUrl(url)) return undefined
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), PREVIEW_TIMEOUT_MS)
@@ -263,7 +274,7 @@ async function fetchWithSafeFinalUrl(url: string, accept: string): Promise<Respo
       referrerPolicy: 'no-referrer',
       signal: controller.signal,
     })
-    return response.url && isSafePreviewUrl(response.url) ? response : undefined
+    return response.url && isSafePreviewUrl(response.url) ? await consume(response) : undefined
   } finally {
     clearTimeout(timeout)
   }

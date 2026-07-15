@@ -5,6 +5,7 @@ import {
 } from '../../../../src/background/business/service/LinkPreviewUnfurlServiceRemote'
 
 afterEach(() => {
+  vi.useRealTimers()
   vi.unstubAllGlobals()
 })
 
@@ -39,6 +40,29 @@ describe('LinkPreviewUnfurlServiceRemote', () => {
       'https://mustardnotes.com/',
       expect.objectContaining({ credentials: 'omit', redirect: 'follow' }),
     )
+  })
+
+  it('times out while a metadata response body is stalled', async () => {
+    vi.useFakeTimers()
+    let controller: ReadableStreamDefaultController<Uint8Array> | undefined
+    const stream = new ReadableStream<Uint8Array>({
+      start(streamController) {
+        controller = streamController
+      },
+    })
+    const response = new Response(stream, { headers: { 'content-type': 'text/html' } })
+    Object.defineProperty(response, 'url', { value: 'https://stalled.example/article' })
+    const fetch = vi.fn<typeof globalThis.fetch>().mockImplementation((_url, init) => {
+      const signal = init?.signal
+      signal?.addEventListener('abort', () => controller?.error(signal.reason), { once: true })
+      return Promise.resolve(response)
+    })
+    vi.stubGlobal('fetch', fetch)
+
+    const preview = unfurlLinkPreview('https://stalled.example/article')
+    await vi.advanceTimersByTimeAsync(4_000)
+
+    await expect(preview).resolves.toBeUndefined()
   })
 
   it('coalesces repeated metadata requests for the same normalized URL', async () => {
