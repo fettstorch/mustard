@@ -21,6 +21,34 @@ describe('LinkPreviewUnfurlServiceRemote', () => {
     expect(fetch).not.toHaveBeenCalled()
   })
 
+  it('allows public DNS names beginning with IPv6 private-range prefixes', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>().mockImplementation(async (url) => {
+      const response = new Response('<meta property="og:title" content="Public">', {
+        headers: { 'content-type': 'text/html' },
+      })
+      Object.defineProperty(response, 'url', { value: String(url) })
+      return response
+    })
+    vi.stubGlobal('fetch', fetch)
+
+    await expect(unfurlLinkPreview('https://fda.gov/')).resolves.toMatchObject({ title: 'Public' })
+    await expect(unfurlLinkPreview('https://fcbarcelona.com/')).resolves.toMatchObject({
+      title: 'Public',
+    })
+    expect(fetch).toHaveBeenCalledTimes(2)
+  })
+
+  it('rejects the complete IPv6 link-local range', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>()
+    vi.stubGlobal('fetch', fetch)
+
+    await expect(unfurlLinkPreview('http://[fe80::1]/')).resolves.toBeUndefined()
+    await expect(unfurlLinkPreview('http://[fe81::1]/')).resolves.toBeUndefined()
+    await expect(unfurlLinkPreview('http://[febf::1]/')).resolves.toBeUndefined()
+
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
   it('accepts an ordinary redirect and keeps the authored URL on the card', async () => {
     const response = new Response(
       '<meta property="og:title" content="Mustard"><meta property="og:image" content="/og.jpg">',

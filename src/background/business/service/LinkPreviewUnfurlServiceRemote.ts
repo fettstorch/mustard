@@ -212,17 +212,22 @@ function isPrivateIpAddress(host: string): boolean {
   const mappedIpv4 = ipv4MappedIpv6ToIpv4(host)
   if (mappedIpv4) return isPrivateIpv4Address(mappedIpv4)
 
-  if (
-    host === '::1' ||
-    host === '::' ||
-    host.startsWith('fe80:') ||
-    host.startsWith('fc') ||
-    host.startsWith('fd')
-  ) {
-    return true
-  }
+  return isIpv6Literal(host) ? isPrivateIpv6Address(host) : isPrivateIpv4Address(host)
+}
 
-  return isPrivateIpv4Address(host)
+function isIpv6Literal(host: string): boolean {
+  // `URL.hostname` only preserves colons for a parsed IPv6 literal. DNS names
+  // cannot contain one, so this keeps prefix checks away from hosts like fda.gov.
+  return host.includes(':')
+}
+
+function isPrivateIpv6Address(host: string): boolean {
+  if (host === '::1' || host === '::') return true
+  const firstHextet = Number.parseInt(host.split(':')[0] ?? '', 16)
+  if (!Number.isFinite(firstHextet)) return false
+
+  // Unique-local is fc00::/7 and link-local is fe80::/10.
+  return (firstHextet & 0xfe00) === 0xfc00 || (firstHextet & 0xffc0) === 0xfe80
 }
 
 /** Convert `::ffff:7f00:1`-style IPv4-mapped IPv6 hosts to dotted IPv4. */
