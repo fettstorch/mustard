@@ -54,4 +54,14 @@ describe('extractLinkPreview', () => {
 
     expect(preview).toEqual({ url: 'https://example.com/', title: 'An ordinary page' })
   })
+
+  it('preserves a long signed Open Graph image URL', () => {
+    const imageUrl = `https://cdn.example.com/preview.webp?signature=${'a'.repeat(400)}`
+    const preview = extractLinkPreview(
+      `<meta property="og:image" content="${imageUrl}">`,
+      'https://example.com/',
+    )
+
+    expect(preview).toEqual({ url: 'https://example.com/', imageUrl })
+  })
 })

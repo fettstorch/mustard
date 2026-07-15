@@ -59,8 +59,7 @@ export function extractLinkPreview(
     const attributes = parseAttributes(tag[0])
     const key = (attributes.property ?? attributes.name ?? '').toLowerCase()
     const value = attributes.content
-    if (key && value && !metadata.has(key))
-      metadata.set(key, cleanText(value, MAX_DESCRIPTION_LENGTH))
+    if (key && value && !metadata.has(key)) metadata.set(key, cleanMetadataValue(value))
   }
 
   const title =
@@ -96,12 +95,19 @@ function parseAttributes(tag: string): Record<string, string> {
 }
 
 function cleanText(value: string, maxLength: number): string {
-  return decodeEntities(value)
+  return cleanMetadataValue(value)
     .replace(/<[^>]*>/g, '')
-    .replace(/\p{Cc}/gu, ' ')
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, maxLength)
+}
+
+/** Decode meta values without applying display-text limits to URLs. */
+function cleanMetadataValue(value: string): string {
+  return decodeEntities(value)
+    .replace(/\p{Cc}/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
 function decodeEntities(value: string): string {
