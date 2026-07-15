@@ -1,5 +1,9 @@
 import * as jose from 'https://deno.land/x/jose@v5.2.0/index.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
+import {
+  cleanupUnreferencedLinkPreviewThumbnail,
+  isLinkPreviewThumbnailPath,
+} from '../_shared/link-preview-thumbnails.ts'
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -9,7 +13,6 @@ const HANDLE_RESOLVER = 'https://bsky.social'
 const PLC_DIRECTORY = 'https://plc.directory'
 const STATE_TTL_SECONDS = 600
 const SUPABASE_JWT_TTL_SECONDS = 180 * 24 * 60 * 60
-const LINK_PREVIEW_BUCKET = 'link-preview-thumbnails'
 
 // Mustard user_ids are UUIDs. Used to reject provider ids (DIDs etc.) that must
 // never be treated as user_ids.
@@ -51,28 +54,28 @@ function getSupabase() {
   return createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
 }
 
-/** Best-effort cleanup after the account/content transaction has committed. */
-async function deleteLinkPreviewThumbnails(
+/** Capture shared thumbnail paths before account content is deleted. */
+async function listLinkPreviewThumbnailPaths(
   supabase: ReturnType<typeof getSupabase>,
   userId: string,
-): Promise<void> {
-  const paths: string[] = []
-  const pageSize = 100
+): Promise<string[]> {
+  const paths = new Set<string>()
+  const pageSize = 500
   for (let offset = 0; ; offset += pageSize) {
-    const { data, error } = await supabase.storage
-      .from(LINK_PREVIEW_BUCKET)
-      .list(userId, { limit: pageSize, offset })
-    if (error) throw new Error(`Failed to list link preview thumbnails: ${error.message}`)
+    const { data, error } = await supabase
+      .from('notes')
+      .select('link_preview')
+      .eq('author_id', userId)
+      .range(offset, offset + pageSize - 1)
+    if (error) throw new Error(`Failed to list account thumbnail references: ${error.message}`)
     const page = data ?? []
-    paths.push(...page.map((item) => `${userId}/${item.name}`))
+    for (const row of page) {
+      const preview = row.link_preview as { thumbnailPath?: unknown } | null
+      if (isLinkPreviewThumbnailPath(preview?.thumbnailPath)) paths.add(preview.thumbnailPath)
+    }
     if (page.length < pageSize) break
   }
-  for (let start = 0; start < paths.length; start += pageSize) {
-    const { error } = await supabase.storage
-      .from(LINK_PREVIEW_BUCKET)
-      .remove(paths.slice(start, start + pageSize))
-    if (error) throw new Error(`Failed to delete link preview thumbnails: ${error.message}`)
-  }
+  return [...paths]
 }
 
 // ─── Supabase JWT ────────────────────────────────────────────────────────────
@@ -246,13 +249,16 @@ async function handleDisconnect(body: {
   const isLastIdentity = (count ?? 0) <= 1
 
   if (isLastIdentity) {
+    const thumbnailPaths = await listLinkPreviewThumbnailPaths(supabase, userId)
     // Full account deletion. Done atomically in a single SECURITY DEFINER
     // function so content + user row are wiped together (or not at all). The
     // users delete inside it cascades identities + oauth_session.
     const { error } = await supabase.rpc('delete_account', { p_user_id: userId })
     if (error) throw new Error(`Failed to delete account: ${error.message}`)
     try {
-      await deleteLinkPreviewThumbnails(supabase, userId)
+      for (const path of thumbnailPaths) {
+        await cleanupUnreferencedLinkPreviewThumbnail(supabase, path)
+      }
     } catch (error) {
       // Content deletion is authoritative and already committed. Do not turn a
       // storage-cleanup failure into a misleading "account deletion failed".

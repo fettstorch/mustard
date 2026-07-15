@@ -2,8 +2,8 @@ import type { BrowserContext, Locator, Page } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { expect, test } from './authenticated.fixture'
-import { AUTH_E2E_USER } from './auth-test-data'
-import { adminClient, getLocalSupabaseStatus } from './local-supabase'
+import { AUTH_E2E_USER, createAuthE2eJwt, TEST_USERS, type TestUser } from './auth-test-data'
+import { adminClient, authedClient, getLocalSupabaseStatus } from './local-supabase'
 
 const FIXTURE_URL = 'http://127.0.0.1:4173/page.html'
 const PREVIEW_URL = 'https://preview.example/authenticated-article'
@@ -89,7 +89,87 @@ async function publishThroughRuntime(
   expect(response.data).toHaveLength(1)
 }
 
-test('publishes, stores, deduplicates, renders, and dismisses link previews', async ({
+async function setExtensionUser(popup: Page, user: TestUser): Promise<void> {
+  const token = createAuthE2eJwt(user.userId)
+  await popup.evaluate(
+    async ({ user, token }) => {
+      await chrome.storage.local.set({
+        mustard_session: { userId: user.userId, identities: [user.identity] },
+        supabase_jwt: { jwt: token.jwt, userId: user.userId, expiresAt: token.expiresAt },
+      })
+      await chrome.storage.session.clear()
+    },
+    { user, token },
+  )
+}
+
+async function cleanupThroughRemote(
+  userId: string,
+  thumbnailPath: string,
+): Promise<{ deleted: boolean }> {
+  const status = getLocalSupabaseStatus()
+  const { jwt } = createAuthE2eJwt(userId)
+  const response = await fetch(`${status.API_URL}/functions/v1/link-preview-thumbnail`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt}` },
+    body: JSON.stringify({ action: 'cleanup', path: thumbnailPath }),
+  })
+  expect(response.ok).toBe(true)
+  return response.json() as Promise<{ deleted: boolean }>
+}
+
+test('rejects direct authenticated writes to the global thumbnail namespace', async () => {
+  const status = getLocalSupabaseStatus()
+  const forbiddenPath = `global/${'0'.repeat(64)}.webp`
+  const { error } = await authedClient(AUTH_E2E_USER.userId, status)
+    .storage.from(BUCKET)
+    .upload(forbiddenPath, new Blob(['not trusted'], { type: 'image/webp' }), { upsert: false })
+  expect(error).not.toBeNull()
+
+  // Defensive cleanup in case local Storage semantics ever regress.
+  await adminClient(status).storage.from(BUCKET).remove([forbiddenPath])
+})
+
+test('rejects thumbnail bytes that do not match the referenced global hash', async () => {
+  const status = getLocalSupabaseStatus()
+  const client = authedClient(AUTH_E2E_USER.userId, status)
+  const forgedPath = `global/${'0'.repeat(64)}.webp`
+  const content = `Forged preview ${PREVIEW_URL}`
+  const { data: note, error: noteError } = await client
+    .from('notes')
+    .insert({
+      author_id: AUTH_E2E_USER.userId,
+      page_url: FIXTURE_URL,
+      content,
+      link_preview: { url: PREVIEW_URL, thumbnailPath: forgedPath },
+      relative_position_x: 50,
+      relative_position_y: 50,
+      click_position_x: 50,
+      click_position_y: 420,
+    })
+    .select('id')
+    .single()
+  expect(noteError).toBeNull()
+
+  try {
+    const { jwt } = createAuthE2eJwt(AUTH_E2E_USER.userId)
+    const fakeWebp = btoa('RIFF\u0004\u0000\u0000\u0000WEBPtiny')
+    const response = await fetch(`${status.API_URL}/functions/v1/link-preview-thumbnail`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt}` },
+      body: JSON.stringify({ action: 'ensure', path: forgedPath, imageBase64: fakeWebp }),
+    })
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toMatchObject({
+      error: 'Thumbnail hash does not match its path',
+    })
+  } finally {
+    if (note?.id) await client.from('notes').delete().eq('id', note.id)
+    await adminClient(status).storage.from(BUCKET).remove([forgedPath])
+  }
+})
+
+test('globally deduplicates, renders, and dismisses published link previews', async ({
   context,
   popupUrl,
 }) => {
@@ -118,6 +198,7 @@ test('publishes, stores, deduplicates, renders, and dismisses link previews', as
   const contents = {
     first: `First remote preview ${PREVIEW_URL}`,
     second: `Second remote preview ${PREVIEW_URL}`,
+    otherAuthor: `Other author remote preview ${PREVIEW_URL}`,
     dismissed: `Dismissed remote preview ${PREVIEW_URL}`,
   }
   const allContents = Object.values(contents)
@@ -131,39 +212,49 @@ test('publishes, stores, deduplicates, renders, and dismisses link previews', as
     await popup.goto(popupUrl)
     await publishThroughRuntime(popup, contents.second)
     await publishThroughRuntime(popup, contents.dismissed, true)
+    await setExtensionUser(popup, TEST_USERS.author)
+    await publishThroughRuntime(popup, contents.otherAuthor)
+    await setExtensionUser(popup, AUTH_E2E_USER)
     await popup.close()
 
     const { data, error } = await admin
       .from('notes')
-      .select('content, link_preview')
-      .eq('author_id', AUTH_E2E_USER.userId)
+      .select('author_id, content, link_preview')
       .in('content', allContents)
     expect(error).toBeNull()
-    expect(data).toHaveLength(3)
+    expect(data).toHaveLength(4)
 
     const rows = new Map(
-      (data as Array<{ content: string; link_preview: Record<string, unknown> | null }>).map(
-        (row) => [row.content, row.link_preview],
-      ),
+      (
+        data as Array<{
+          author_id: string
+          content: string
+          link_preview: Record<string, unknown> | null
+        }>
+      ).map((row) => [row.content, row]),
     )
-    const firstPreview = rows.get(contents.first)
-    const secondPreview = rows.get(contents.second)
+    const firstPreview = rows.get(contents.first)?.link_preview
+    const secondPreview = rows.get(contents.second)?.link_preview
+    const otherAuthorPreview = rows.get(contents.otherAuthor)?.link_preview
     expect(firstPreview).toMatchObject({
       url: PREVIEW_URL,
       title: 'Authenticated preview',
       description: 'Stored in local Supabase',
     })
     expect(secondPreview).toMatchObject(firstPreview!)
-    expect(rows.get(contents.dismissed)).toBeNull()
+    expect(otherAuthorPreview).toMatchObject(firstPreview!)
+    expect(rows.get(contents.otherAuthor)?.author_id).toBe(TEST_USERS.author.userId)
+    expect(rows.get(contents.dismissed)?.link_preview).toBeNull()
     expect(firstPreview).not.toHaveProperty('imageUrl')
     expect(firstPreview).not.toHaveProperty('imageDataUrl')
 
     const thumbnailPath = firstPreview?.thumbnailPath
-    expect(thumbnailPath).toMatch(new RegExp(`^${AUTH_E2E_USER.userId}/[0-9a-f]{64}\\.webp$`))
+    expect(thumbnailPath).toMatch(/^global\/[0-9a-f]{64}\.webp$/)
     expect(secondPreview?.thumbnailPath).toBe(thumbnailPath)
+    expect(otherAuthorPreview?.thumbnailPath).toBe(thumbnailPath)
 
     const filename = String(thumbnailPath).split('/')[1]
-    const { data: objects, error: listError } = await bucket.list(AUTH_E2E_USER.userId, {
+    const { data: objects, error: listError } = await bucket.list('global', {
       limit: 100,
       search: filename,
     })
@@ -177,14 +268,40 @@ test('publishes, stores, deduplicates, renders, and dismisses link previews', as
     expect(thumbnail?.size).toBeLessThanOrEqual(20 * 1024)
 
     await page.reload()
-    const savedCards = page.locator('#mustard-host .mustard-note .mustard-link-preview')
-    await expect(savedCards).toHaveCount(2, { timeout: 8_000 })
-    await expect(savedCards.locator('img')).toHaveCount(2)
+    for (const content of [contents.first, contents.second]) {
+      const savedCard = page
+        .locator('#mustard-host .mustard-note')
+        .filter({ hasText: content })
+        .locator('.mustard-link-preview')
+      await expect(savedCard).toHaveCount(1, { timeout: 8_000 })
+      await expect(savedCard.locator('img')).toHaveCount(1)
+    }
+
+    await admin
+      .from('notes')
+      .delete()
+      .eq('author_id', AUTH_E2E_USER.userId)
+      .in('content', [contents.first, contents.second, contents.dismissed])
+    await expect(
+      cleanupThroughRemote(AUTH_E2E_USER.userId, String(thumbnailPath)),
+    ).resolves.toEqual({ deleted: false })
+    const afterFirstAuthorCleanup = await bucket.list('global', { search: filename })
+    expect(afterFirstAuthorCleanup.data?.some((object) => object.name === filename)).toBe(true)
+
+    await admin
+      .from('notes')
+      .delete()
+      .eq('author_id', TEST_USERS.author.userId)
+      .eq('content', contents.otherAuthor)
+    await expect(
+      cleanupThroughRemote(TEST_USERS.author.userId, String(thumbnailPath)),
+    ).resolves.toEqual({ deleted: true })
+    const afterFinalCleanup = await bucket.list('global', { search: filename })
+    expect(afterFinalCleanup.data?.some((object) => object.name === filename)).toBe(false)
   } finally {
     const { data: cleanupRows } = await admin
       .from('notes')
       .select('link_preview')
-      .eq('author_id', AUTH_E2E_USER.userId)
       .in('content', allContents)
     const paths = [
       ...new Set(
@@ -198,11 +315,7 @@ test('publishes, stores, deduplicates, renders, and dismisses link previews', as
           .filter((value): value is string => !!value) ?? [],
       ),
     ]
-    await admin
-      .from('notes')
-      .delete()
-      .eq('author_id', AUTH_E2E_USER.userId)
-      .in('content', allContents)
+    await admin.from('notes').delete().in('content', allContents)
     if (paths.length > 0) await bucket.remove(paths)
     await page.close()
   }

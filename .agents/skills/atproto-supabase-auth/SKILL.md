@@ -41,9 +41,10 @@ sessions/JWTs/account linking.
   (otherwise a new account is forked) — the options page enforces this.
 - **Unlinking** (`disconnect`): removes one identity; removing the **last**
   identity deletes the whole account + all its content (delete-account RPC),
-  then best-effort removes the UUID-named folder from the trusted link-preview
-  thumbnail bucket. Storage cleanup happens after the authoritative DB
-  transaction so a cleanup outage cannot leave a half-deleted account.
+  then best-effort removes any now-unreferenced globally shared link-preview
+  thumbnails. Thumbnail paths are captured before the authoritative DB
+  transaction; cleanup happens afterward so a Storage outage cannot leave a
+  half-deleted account or remove an object referenced by another author.
 
 ## Why BFF (Backend For Frontend) is mandatory
 

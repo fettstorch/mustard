@@ -59,8 +59,8 @@ enabled = true
 file_size_limit = "50MiB"
 
 # Auth: Mustard does NOT use Supabase's built-in auth — it uses a custom JWT strategy
-# via the auth-bridge Edge Function (AT Protocol DIDs as user IDs). This section must
-# be present for the CLI but its settings are largely irrelevant to Mustard.
+# via the auth-bridge Edge Function (opaque Mustard UUIDs as JWT subjects). This
+# section must be present for the CLI but its settings are largely irrelevant.
 [auth]
 enabled = true
 site_url = "http://127.0.0.1:3000"
@@ -88,6 +88,13 @@ inspector_port = 8083 # Deno debugger port
 enabled = true
 verify_jwt = false
 entrypoint = "./functions/auth-bridge/index.ts"
+
+# Authenticated global thumbnail writes. The function also verifies Mustard's
+# custom JWT and the caller's exact note reference before using service role.
+[functions.link-preview-thumbnail]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/link-preview-thumbnail/index.ts"
 
 [analytics]
 enabled = false # Logflare — disabled locally to keep things simple

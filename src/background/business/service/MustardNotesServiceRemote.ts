@@ -14,7 +14,6 @@ import {
   deleteLinkPreviewThumbnail,
   ensureLinkPreviewThumbnailStored,
   isLinkPreviewThumbnailPath,
-  isLinkPreviewThumbnailPathForAuthor,
   prepareLinkPreviewThumbnail,
 } from './LinkPreviewThumbnailServiceRemote'
 
@@ -325,7 +324,7 @@ class MustardNotesServiceRemote implements MustardNotesService {
     }
 
     const previousThumbnailPath = note.linkPreview?.thumbnailPath
-    const preparedPreview = await prepareLinkPreviewThumbnail(note.linkPreview, note.authorId)
+    const preparedPreview = await prepareLinkPreviewThumbnail(note.linkPreview)
     const dbNote: Partial<DbNote> = {
       author_id: note.authorId,
       page_url: note.anchorData.pageUrl,
@@ -364,7 +363,7 @@ class MustardNotesServiceRemote implements MustardNotesService {
           await cleanupUnreferencedThumbnail(preparedPreview.thumbnail.path)
         }
       }
-      const currentThumbnailPath = fromDbThumbnailPath(storedRow.link_preview, note.authorId)
+      const currentThumbnailPath = fromDbThumbnailPath(storedRow.link_preview)
       await cleanupRemovedThumbnail(previousThumbnailPath, currentThumbnailPath)
       // Reposters aren't part of the write payload; preserve what the caller knew.
       return withRuntimePreview(
@@ -373,8 +372,8 @@ class MustardNotesServiceRemote implements MustardNotesService {
       )
     }
 
-    // The committed note reference authorizes the subsequent immutable object
-    // upload through Storage RLS. Identical thumbnails reuse the same path.
+    // The committed note reference authorizes the subsequent verified global
+    // upload. Identical thumbnails from any author reuse the same path.
     const insertResult = await supabase.from('notes').insert(dbNote).select().single()
 
     if (insertResult.error) {
@@ -468,7 +467,7 @@ function throwNoteError(op: string, status: number, message: string): never {
 
 // Helper to convert database row to MustardNote
 function dbNoteToMustardNote(dbNote: DbNote, reposterIds: string[] = []): MustardNote {
-  const linkPreview = fromDbLinkPreview(dbNote.link_preview, dbNote.content, dbNote.author_id)
+  const linkPreview = fromDbLinkPreview(dbNote.link_preview, dbNote.content)
   return {
     id: dbNote.id,
     authorId: dbNote.author_id,
@@ -508,7 +507,6 @@ function toDbLinkPreviewWithoutThumbnail(preview?: LinkPreview): DbLinkPreview |
 function fromDbLinkPreview(
   value: DbLinkPreview | null | undefined,
   content: string,
-  authorId: string,
 ): LinkPreview | undefined {
   const preview = value
   const url = preview && typeof preview.url === 'string' ? normalizeHttpUrl(preview.url) : undefined
@@ -520,7 +518,7 @@ function fromDbLinkPreview(
   const title = optionalText('title', 200)
   const description = optionalText('description', 300)
   const siteName = optionalText('siteName', 80)
-  const thumbnailPath = fromDbThumbnailPath(preview, authorId)
+  const thumbnailPath = fromDbThumbnailPath(preview)
   return {
     url: url.slice(0, LIMITS.PAGE_URL_MAX_LENGTH),
     ...(title ? { title } : {}),
@@ -530,13 +528,10 @@ function fromDbLinkPreview(
   }
 }
 
-function fromDbThumbnailPath(
-  preview: DbLinkPreview | null | undefined,
-  authorId?: string,
-): string | undefined {
+function fromDbThumbnailPath(preview: DbLinkPreview | null | undefined): string | undefined {
   const path = preview?.thumbnailPath
   if (typeof path !== 'string' || !isLinkPreviewThumbnailPath(path)) return undefined
-  return !authorId || isLinkPreviewThumbnailPathForAuthor(path, authorId) ? path : undefined
+  return path
 }
 
 function withRuntimePreview(note: MustardNote, preview?: LinkPreview): MustardNote {
@@ -574,14 +569,9 @@ async function clearThumbnailReference(row: DbNote, preview?: LinkPreview): Prom
   return row
 }
 
-/** Delete an immutable object only after its final note reference is gone. */
+/** Ask the trusted remote service to delete the object if its final reference is gone. */
 async function cleanupUnreferencedThumbnail(path: string): Promise<void> {
-  const { count, error } = await supabase
-    .from('notes')
-    .select('id', { count: 'exact', head: true })
-    .eq('link_preview->>thumbnailPath', path)
-  if (error) throw new Error(`Failed to count thumbnail references: ${error.message}`)
-  if (count === 0) await deleteLinkPreviewThumbnail(path)
+  await deleteLinkPreviewThumbnail(path)
 }
 
 /** Clear the cached index. Call on login/logout/mutations to ensure fresh data. */

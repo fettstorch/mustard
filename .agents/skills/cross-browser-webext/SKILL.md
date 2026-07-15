@@ -115,12 +115,14 @@ in several ways:
   stored `og:image` URL. Mustard resizes the source in the author's background,
   uploads a WebP of at most 20 KB to the `link-preview-thumbnails` Supabase
   Storage bucket, and stores only its validated `thumbnailPath`. The path is
-  immutable and content-addressed (`authorId/sha256.webp`), so one author's
-  notes share identical thumbnails. Storage RLS requires an owned note to
-  reference the exact path before upload and prevents deletion while any note
-  still references it. Cards progressively request the trusted path from the
-  background when visible; note queries return metadata immediately and never
-  wait for image downloads.
+  immutable and globally content-addressed (`global/sha256.webp`), so all
+  authors share identical thumbnail bytes. Clients cannot write or delete
+  global objects directly: an authenticated Edge Function verifies the caller's
+  exact owned-note reference and recomputes the content hash before a privileged
+  upload. The same service prevents deletion while any author's note references
+  the object. Cards progressively request the trusted path from the background
+  when visible; note queries return metadata immediately and never wait for
+  image downloads.
 - For editor URL unfurling, debounce the **normalized first URL**, not the whole
   note body. Use jule `getDebouncer()` when Vue unmount must cancel the pending
   timer; `debounced()` has no `clear()` handle. A short-TTL jule `cached()` async
