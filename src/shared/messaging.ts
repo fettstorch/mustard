@@ -7,6 +7,7 @@ import type { UserProfile, UserId, LinkedIdentity, UserProfileType } from './mod
 import type { MentionTarget } from './mentions'
 import type { BskyProfile } from './model/BskyProfile'
 import type { MentionCandidate } from './model/MentionCandidate'
+import type { LinkPreview } from './model/LinkPreview'
 
 type BaseMessage = {
   type: string
@@ -44,6 +45,24 @@ export type QueryNotesMessage = Satisfies<
      * Defaults to the normal follow-filtered query when omitted.
      */
     includeAllAuthors?: boolean
+  }
+>
+
+/** Content script → service worker: unfurl the editor's first URL. */
+export type GetLinkPreviewMessage = Satisfies<
+  BaseMessage,
+  {
+    type: 'GET_LINK_PREVIEW'
+    url: string
+  }
+>
+
+/** Content script → service worker: load one trusted published thumbnail. */
+export type GetLinkPreviewImageMessage = Satisfies<
+  BaseMessage,
+  {
+    type: 'GET_LINK_PREVIEW_IMAGE'
+    thumbnailPath: string
   }
 >
 
@@ -374,6 +393,8 @@ export type Message =
   | OpenNoteEditorMessage
   | UpsertNoteMessage
   | QueryNotesMessage
+  | GetLinkPreviewMessage
+  | GetLinkPreviewImageMessage
   | DeleteNoteMessage
   | SetRepostMessage
   | AtprotoLoginMessage
@@ -420,6 +441,8 @@ type MessageResponses = {
   OPEN_NOTE_EDITOR: void
   UPSERT_NOTE: WriteResponse<DtoMustardNote[]>
   QUERY_NOTES: DtoMustardNote[]
+  GET_LINK_PREVIEW: LinkPreview | undefined
+  GET_LINK_PREVIEW_IMAGE: string | undefined
   DELETE_NOTE: DtoMustardNote[]
   SET_REPOST: DtoMustardNote[]
   ATPROTO_LOGIN: { userId: string; did?: string } | null
@@ -531,6 +554,16 @@ export function createQueryNotesMessage(
     pageUrl,
     ...(includeAllAuthors ? { includeAllAuthors } : {}),
   }
+}
+
+export function createGetLinkPreviewMessage(url: string): GetLinkPreviewMessage {
+  return { type: 'GET_LINK_PREVIEW', url }
+}
+
+export function createGetLinkPreviewImageMessage(
+  thumbnailPath: string,
+): GetLinkPreviewImageMessage {
+  return { type: 'GET_LINK_PREVIEW_IMAGE', thumbnailPath }
 }
 
 export function createDeleteNoteMessage(
