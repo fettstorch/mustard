@@ -40,7 +40,11 @@ sessions/JWTs/account linking.
   creating a new account. If the JWT is missing/expired the client must abort
   (otherwise a new account is forked) — the options page enforces this.
 - **Unlinking** (`disconnect`): removes one identity; removing the **last**
-  identity deletes the whole account + all its content (delete-account RPC).
+  identity deletes the whole account + all its content (delete-account RPC),
+  then best-effort removes any now-unreferenced globally shared link-preview
+  thumbnails. Thumbnail paths are captured before the authoritative DB
+  transaction; cleanup happens afterward so a Storage outage cannot leave a
+  half-deleted account or remove an object referenced by another author.
 
 ## Why BFF (Backend For Frontend) is mandatory
 

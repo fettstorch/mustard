@@ -48,6 +48,18 @@ describe('MustardNotesServiceLocal', () => {
     expect(notes[0]?.id).toBe('note-1')
   })
 
+  it('persists an explicitly dismissed link preview', async () => {
+    const note = makeNote({
+      content: 'https://example.com/article',
+      linkPreviewDismissed: true,
+    })
+    await service.upsertNote(note)
+
+    const notes = await service.queryNotes(note.anchorData.pageUrl)
+    expect(notes[0]?.linkPreview).toBeUndefined()
+    expect(notes[0]?.linkPreviewDismissed).toBe(true)
+  })
+
   it('updates an existing note (same id)', async () => {
     const note = makeNote()
     await service.upsertNote(note)

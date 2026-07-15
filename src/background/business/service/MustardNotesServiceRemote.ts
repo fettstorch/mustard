@@ -8,6 +8,14 @@ import { LIMITS } from '@/shared/constants'
 import { deriveMentions } from '@/shared/mentions'
 import { retryable } from '@fettstorch/jule'
 import { RateLimitError } from '@/shared/errors'
+import type { LinkPreview } from '@/shared/model/LinkPreview'
+import { extractFirstLinkUrl, normalizeHttpUrl } from '@/shared/link-preview'
+import {
+  deleteLinkPreviewThumbnail,
+  ensureLinkPreviewThumbnailStored,
+  isLinkPreviewThumbnailPath,
+  prepareLinkPreviewThumbnail,
+} from './LinkPreviewThumbnailServiceRemote'
 
 // Versioned endpoint. The client sends its Supabase JWT (minted server-side by
 // the auth-bridge edge function at login, refreshed there on expiry) to
@@ -64,6 +72,7 @@ interface DbNote {
   author_id: string
   page_url: string
   content: string
+  link_preview?: DbLinkPreview | null
   mentions: string[]
   element_selector: string | null
   relative_position_x: number
@@ -72,6 +81,8 @@ interface DbNote {
   click_position_y: number
   updated_at: string
 }
+
+type DbLinkPreview = Omit<LinkPreview, 'imageDataUrl' | 'imageUrl'>
 
 interface GetIndexResponse {
   index: Record<string, string[]>
@@ -312,10 +323,13 @@ class MustardNotesServiceRemote implements MustardNotesService {
       throw new Error(`Element selector exceeds ${LIMITS.SELECTOR_MAX_LENGTH} character limit`)
     }
 
+    const previousThumbnailPath = note.linkPreview?.thumbnailPath
+    const preparedPreview = await prepareLinkPreviewThumbnail(note.linkPreview)
     const dbNote: Partial<DbNote> = {
       author_id: note.authorId,
       page_url: note.anchorData.pageUrl,
       content: note.content,
+      link_preview: toDbLinkPreview(preparedPreview.preview),
       // Mentions are derived from content at this write boundary (content is the
       // source of truth); the column exists only for the notification trigger.
       mentions: deriveMentions(note.content),
@@ -340,25 +354,62 @@ class MustardNotesServiceRemote implements MustardNotesService {
       if (updateResult.error) {
         throwNoteError('update', updateResult.status, updateResult.error.message)
       }
+      let storedRow = updateResult.data as DbNote
+      let includeRuntimeThumbnail = false
+      if (preparedPreview.thumbnail) {
+        includeRuntimeThumbnail = await ensureLinkPreviewThumbnailStored(preparedPreview.thumbnail)
+        if (!includeRuntimeThumbnail) {
+          storedRow = await clearThumbnailReference(storedRow, preparedPreview.preview)
+          cleanupUnreferencedThumbnail(preparedPreview.thumbnail.path)
+        }
+      }
+      const currentThumbnailPath = fromDbThumbnailPath(storedRow.link_preview)
+      await cleanupRemovedThumbnail(previousThumbnailPath, currentThumbnailPath)
       // Reposters aren't part of the write payload; preserve what the caller knew.
-      return dbNoteToMustardNote(updateResult.data as DbNote, note.reposterIds)
+      return withRuntimePreview(
+        dbNoteToMustardNote(storedRow, note.reposterIds),
+        includeRuntimeThumbnail ? preparedPreview.preview : undefined,
+      )
     }
 
-    // Insert new note. `.select().single()` hands back the server-generated id
-    // so the UI can render the real note immediately (no index round-trip).
+    // The committed note reference authorizes the subsequent verified global
+    // upload. Identical thumbnails from any author reuse the same path.
     const insertResult = await supabase.from('notes').insert(dbNote).select().single()
 
     if (insertResult.error) {
       throwNoteError('insert', insertResult.status, insertResult.error.message)
     }
-    return dbNoteToMustardNote(insertResult.data as DbNote)
+    let storedRow = insertResult.data as DbNote
+    let includeRuntimeThumbnail = false
+    if (preparedPreview.thumbnail) {
+      includeRuntimeThumbnail = await ensureLinkPreviewThumbnailStored(preparedPreview.thumbnail)
+      if (!includeRuntimeThumbnail) {
+        storedRow = await clearThumbnailReference(storedRow, preparedPreview.preview)
+        cleanupUnreferencedThumbnail(preparedPreview.thumbnail.path)
+      }
+    }
+    return withRuntimePreview(
+      dbNoteToMustardNote(storedRow),
+      includeRuntimeThumbnail ? preparedPreview.preview : undefined,
+    )
   }
 
   async deleteNote(noteId: string, _pageUrl: string): Promise<void> {
+    const existing = await supabase
+      .from('notes')
+      .select('link_preview')
+      .eq('id', noteId)
+      .maybeSingle()
+    const thumbnailPath = fromDbThumbnailPath(
+      (existing.data as Pick<DbNote, 'link_preview'> | null)?.link_preview,
+    )
     const { error } = await supabase.from('notes').delete().eq('id', noteId)
 
     if (error) {
       throw new Error(`Failed to delete note: ${error.message}`)
+    }
+    if (thumbnailPath) {
+      cleanupUnreferencedThumbnail(thumbnailPath)
     }
   }
 
@@ -414,10 +465,12 @@ function throwNoteError(op: string, status: number, message: string): never {
 
 // Helper to convert database row to MustardNote
 function dbNoteToMustardNote(dbNote: DbNote, reposterIds: string[] = []): MustardNote {
+  const linkPreview = fromDbLinkPreview(dbNote.link_preview, dbNote.content)
   return {
     id: dbNote.id,
     authorId: dbNote.author_id,
     content: dbNote.content,
+    ...(linkPreview ? { linkPreview } : {}),
     reposterIds,
     anchorData: {
       pageUrl: dbNote.page_url,
@@ -433,6 +486,88 @@ function dbNoteToMustardNote(dbNote: DbNote, reposterIds: string[] = []): Mustar
     },
     updatedAt: new Date(dbNote.updated_at),
   }
+}
+
+/** Keep the image binary in extension storage, never in the public notes row. */
+function toDbLinkPreview(preview?: LinkPreview): DbLinkPreview | null {
+  if (!preview) return null
+  const { imageDataUrl: _imageDataUrl, imageUrl: _imageUrl, ...stored } = preview
+  return stored
+}
+
+function toDbLinkPreviewWithoutThumbnail(preview?: LinkPreview): DbLinkPreview | null {
+  const stored = toDbLinkPreview(preview)
+  if (!stored) return null
+  const { thumbnailPath: _thumbnailPath, ...metadata } = stored
+  return metadata
+}
+
+function fromDbLinkPreview(
+  value: DbLinkPreview | null | undefined,
+  content: string,
+): LinkPreview | undefined {
+  const preview = value
+  const url = preview && typeof preview.url === 'string' ? normalizeHttpUrl(preview.url) : undefined
+  if (!preview || !url || url !== extractFirstLinkUrl(content)) return undefined
+  const optionalText = (field: keyof DbLinkPreview, maxLength: number): string | undefined => {
+    const item = preview[field]
+    return typeof item === 'string' ? item.slice(0, maxLength) : undefined
+  }
+  const title = optionalText('title', 200)
+  const description = optionalText('description', 300)
+  const siteName = optionalText('siteName', 80)
+  const thumbnailPath = fromDbThumbnailPath(preview)
+  return {
+    url: url.slice(0, LIMITS.PAGE_URL_MAX_LENGTH),
+    ...(title ? { title } : {}),
+    ...(description ? { description } : {}),
+    ...(siteName ? { siteName } : {}),
+    ...(thumbnailPath ? { thumbnailPath } : {}),
+  }
+}
+
+function fromDbThumbnailPath(preview: DbLinkPreview | null | undefined): string | undefined {
+  const path = preview?.thumbnailPath
+  if (typeof path !== 'string' || !isLinkPreviewThumbnailPath(path)) return undefined
+  return path
+}
+
+function withRuntimePreview(note: MustardNote, preview?: LinkPreview): MustardNote {
+  if (!note.linkPreview || !preview?.imageDataUrl) return note
+  return { ...note, linkPreview: { ...note.linkPreview, imageDataUrl: preview.imageDataUrl } }
+}
+
+function cleanupRemovedThumbnail(previousPath?: string, currentPath?: string): void {
+  if (!previousPath || previousPath === currentPath) return
+  cleanupUnreferencedThumbnail(previousPath)
+}
+
+/** Remove a failed thumbnail path from the note while preserving text metadata. */
+async function clearThumbnailReference(row: DbNote, preview?: LinkPreview): Promise<DbNote> {
+  const linkPreview = toDbLinkPreviewWithoutThumbnail(preview)
+  try {
+    const result = await supabase
+      .from('notes')
+      .update({ link_preview: linkPreview })
+      .eq('id', row.id)
+      .select()
+      .single()
+    if (!result.error) return result.data as DbNote
+    console.debug(
+      'mustard [link-preview] thumbnail reference cleanup failed:',
+      result.error.message,
+    )
+  } catch (error) {
+    console.debug('mustard [link-preview] thumbnail reference cleanup failed:', error)
+  }
+  return row
+}
+
+/** Best-effort remote cleanup after a note write; never fail the completed write. */
+function cleanupUnreferencedThumbnail(path: string): void {
+  void deleteLinkPreviewThumbnail(path).catch((error) =>
+    console.debug('mustard [link-preview] thumbnail cleanup failed:', error),
+  )
 }
 
 /** Clear the cached index. Call on login/logout/mutations to ensure fresh data. */

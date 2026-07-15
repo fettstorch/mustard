@@ -1,5 +1,9 @@
 import * as jose from 'https://deno.land/x/jose@v5.2.0/index.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
+import {
+  cleanupUnreferencedLinkPreviewThumbnail,
+  isLinkPreviewThumbnailPath,
+} from '../_shared/link-preview-thumbnails.ts'
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -48,6 +52,30 @@ class HttpError extends Error {
 
 function getSupabase() {
   return createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
+}
+
+/** Capture shared thumbnail paths before account content is deleted. */
+async function listLinkPreviewThumbnailPaths(
+  supabase: ReturnType<typeof getSupabase>,
+  userId: string,
+): Promise<string[]> {
+  const paths = new Set<string>()
+  const pageSize = 500
+  for (let offset = 0; ; offset += pageSize) {
+    const { data, error } = await supabase
+      .from('notes')
+      .select('link_preview')
+      .eq('author_id', userId)
+      .range(offset, offset + pageSize - 1)
+    if (error) throw new Error(`Failed to list account thumbnail references: ${error.message}`)
+    const page = data ?? []
+    for (const row of page) {
+      const preview = row.link_preview as { thumbnailPath?: unknown } | null
+      if (isLinkPreviewThumbnailPath(preview?.thumbnailPath)) paths.add(preview.thumbnailPath)
+    }
+    if (page.length < pageSize) break
+  }
+  return [...paths]
 }
 
 // ─── Supabase JWT ────────────────────────────────────────────────────────────
@@ -221,11 +249,21 @@ async function handleDisconnect(body: {
   const isLastIdentity = (count ?? 0) <= 1
 
   if (isLastIdentity) {
+    const thumbnailPaths = await listLinkPreviewThumbnailPaths(supabase, userId)
     // Full account deletion. Done atomically in a single SECURITY DEFINER
     // function so content + user row are wiped together (or not at all). The
     // users delete inside it cascades identities + oauth_session.
     const { error } = await supabase.rpc('delete_account', { p_user_id: userId })
     if (error) throw new Error(`Failed to delete account: ${error.message}`)
+    try {
+      for (const path of thumbnailPaths) {
+        await cleanupUnreferencedLinkPreviewThumbnail(supabase, path)
+      }
+    } catch (error) {
+      // Content deletion is authoritative and already committed. Do not turn a
+      // storage-cleanup failure into a misleading "account deletion failed".
+      console.warn(`[auth-bridge] disconnect: thumbnail cleanup failed for ${userId}`, error)
+    }
     console.log(`[auth-bridge] disconnect: deleted account ${userId} (last identity)`)
     return jsonResponse({ accountDeleted: true })
   }

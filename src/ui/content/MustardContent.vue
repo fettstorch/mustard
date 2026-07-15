@@ -17,6 +17,12 @@ import { LIMITS } from '@/shared/constants'
 
 const PUBLISH_CONFIRM_DISMISSED_KEY = 'mustard-publish-confirm-dismissed'
 
+type EditorNoteSubmission = {
+  content: string
+  linkPreview?: MustardNoteType['linkPreview']
+  linkPreviewDismissed?: boolean
+}
+
 const mustardState = inject<MustardState>('mustardState')!
 const event = inject<Observable<Message>>('event')!
 
@@ -37,6 +43,8 @@ const skipPublishConfirm = ref(false)
 const pendingPublish = ref<{
   content: string
   anchorData: MustardNoteType['anchorData']
+  linkPreview?: MustardNoteType['linkPreview']
+  linkPreviewDismissed?: boolean
   localNoteIdToDelete?: string
   /** 'editor' or note ID — used to position the bubble */
   source: string
@@ -148,7 +156,7 @@ function onEditorClose() {
 }
 
 /** Editor: user clicked save button to create a local note */
-function onEditorSave(data: { content: string }) {
+function onEditorSave(data: EditorNoteSubmission) {
   if (!mustardState.editor.anchor) {
     console.warn('No anchor data found when trying to save note')
     return
@@ -158,6 +166,8 @@ function onEditorSave(data: { content: string }) {
     createUpsertNoteMessage(
       {
         content: data.content,
+        linkPreview: data.linkPreview,
+        linkPreviewDismissed: data.linkPreviewDismissed,
         anchorData: mustardState.editor.anchor,
         updatedAt: Date.now(),
       },
@@ -168,7 +178,7 @@ function onEditorSave(data: { content: string }) {
 }
 
 /** Editor: user clicked publish button to create a new remote note */
-function onEditorPublish(data: { content: string }) {
+function onEditorPublish(data: EditorNoteSubmission) {
   if (!mustardState.editor.anchor) {
     console.warn('No anchor data found when trying to publish note')
     return
@@ -177,12 +187,26 @@ function onEditorPublish(data: { content: string }) {
     console.warn(`Content exceeds ${LIMITS.CONTENT_MAX_LENGTH} character limit`)
     return
   }
-  requestPublish(data.content, mustardState.editor.anchor, undefined, 'editor')
+  requestPublish(
+    data.content,
+    mustardState.editor.anchor,
+    undefined,
+    'editor',
+    data.linkPreview,
+    data.linkPreviewDismissed,
+  )
 }
 
 /** Note: user clicked publish icon on an existing local note to upload it */
 function onNotePublish(note: MustardNoteType) {
-  requestPublish(note.content, note.anchorData, note.id ?? undefined, note.id ?? 'note')
+  requestPublish(
+    note.content,
+    note.anchorData,
+    note.id ?? undefined,
+    note.id ?? 'note',
+    note.linkPreview,
+    note.linkPreviewDismissed,
+  )
 }
 
 /** Gate publish behind a confirmation bubble (unless user dismissed it) */
@@ -191,13 +215,22 @@ function requestPublish(
   anchorData: MustardNoteType['anchorData'],
   localNoteIdToDelete?: string,
   source?: string,
+  linkPreview?: MustardNoteType['linkPreview'],
+  linkPreviewDismissed?: boolean,
 ) {
   if (skipPublishConfirm.value) {
-    publishToRemote(content, anchorData, localNoteIdToDelete)
+    publishToRemote(content, anchorData, localNoteIdToDelete, linkPreview, linkPreviewDismissed)
     if (source === 'editor') mustardState.editor.isOpen = false
     return
   }
-  pendingPublish.value = { content, anchorData, localNoteIdToDelete, source: source ?? 'editor' }
+  pendingPublish.value = {
+    content,
+    anchorData,
+    linkPreview,
+    linkPreviewDismissed,
+    localNoteIdToDelete,
+    source: source ?? 'editor',
+  }
 }
 
 function onPublishConfirm(dontShowAgain: boolean) {
@@ -206,9 +239,10 @@ function onPublishConfirm(dontShowAgain: boolean) {
     skipPublishConfirm.value = true
     browser.storage.local.set({ [PUBLISH_CONFIRM_DISMISSED_KEY]: true })
   }
-  const { content, anchorData, localNoteIdToDelete, source } = pendingPublish.value
+  const { content, anchorData, linkPreview, linkPreviewDismissed, localNoteIdToDelete, source } =
+    pendingPublish.value
   pendingPublish.value = null
-  publishToRemote(content, anchorData, localNoteIdToDelete)
+  publishToRemote(content, anchorData, localNoteIdToDelete, linkPreview, linkPreviewDismissed)
   if (source === 'editor') mustardState.editor.isOpen = false
 }
 
@@ -225,6 +259,8 @@ function publishToRemote(
   content: string,
   anchorData: MustardNoteType['anchorData'],
   localNoteIdToDelete?: string,
+  linkPreview?: MustardNoteType['linkPreview'],
+  linkPreviewDismissed?: boolean,
 ) {
   if (!mustardState.currentUserId) {
     // User not logged in - prompt them to login
@@ -241,6 +277,8 @@ function publishToRemote(
     createUpsertNoteMessage(
       {
         content,
+        linkPreview,
+        linkPreviewDismissed,
         anchorData,
         updatedAt: Date.now(),
       },

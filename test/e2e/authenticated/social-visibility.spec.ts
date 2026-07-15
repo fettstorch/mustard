@@ -11,8 +11,8 @@
  *
  * All data is seeded/torn down per test to stay deterministic.
  */
-import { test, expect } from '@playwright/test'
 import { TEST_USERS } from './auth-test-data'
+import { expect, test } from './local-supabase.fixture'
 import {
   deleteNote,
   deleteRepost,

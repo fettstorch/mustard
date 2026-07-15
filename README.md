@@ -109,12 +109,16 @@ flowchart LR
 - **PostgreSQL Database**: `users` + `identities` (the UUID account model),
   published `notes`/`comments`/`notifications`, and `oauth_*` auth state — all
   protected by RLS policies
+- **Storage**: globally content-addressed, bounded link-preview thumbnails;
+  identical WebP bytes are shared across every author's published notes
 - **Edge Functions**:
   - `auth-bridge`: multi-provider BFF OAuth (Bluesky + GitHub), mints Supabase
     JWTs and links/unlinks provider identities to a Mustard account UUID
   - `get-index-v2`: strict per-user JWT (verified with `jose`), resolves the
     viewer's Bluesky **and** GitHub follows to Mustard userIds and returns their
     notes index
+  - `link-preview-thumbnail`: verifies an owned note reference and the WebP's
+    SHA-256 before privileged global Storage uploads and reference-safe cleanup
   - `get-index`: legacy anon-key version, kept until the version guard retires
     old clients
 - **Authentication**: custom JWT strategy where the subject is an **opaque

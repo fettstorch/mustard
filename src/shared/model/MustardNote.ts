@@ -1,9 +1,14 @@
 import type { MustardNoteAnchorData } from './MustardNoteAnchorData'
+import type { LinkPreview } from './LinkPreview'
 
 export type MustardNote = {
   id: string | null // null means the note is not yet saved (either local or remote)
   authorId: string
   content: string
+  /** Snapshot of the first link in the note, if Mustard could unfurl it. */
+  linkPreview?: LinkPreview
+  /** User explicitly removed the first-link preview while authoring this note. */
+  linkPreviewDismissed?: boolean
   anchorData: MustardNoteAnchorData
   updatedAt: Date
   /**

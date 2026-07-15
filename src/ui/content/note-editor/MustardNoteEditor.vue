@@ -8,15 +8,26 @@ import { useMentionCandidates } from './use-mention-candidates'
 import type { MustardNoteAnchorData } from '@/shared/model/MustardNoteAnchorData'
 import type { MustardState } from '../mustard-state'
 import { LIMITS } from '@/shared/constants'
+import LinkPreviewCard from '../note/LinkPreviewCard.vue'
+import type { LinkPreview } from '@/shared/model/LinkPreview'
+import { extractFirstLinkUrl } from '@/shared/link-preview'
+import { createGetLinkPreviewMessage, sendMessage } from '@/shared/messaging'
+import { getDebouncer } from '@fettstorch/jule'
 
 const props = defineProps<{
   anchor: MustardNoteAnchorData | null
 }>()
 
+type EditorNoteSubmission = {
+  content: string
+  linkPreview?: LinkPreview
+  linkPreviewDismissed?: boolean
+}
+
 const emit = defineEmits<{
   (e: 'pressed-x'): void
-  (e: 'pressed-save', data: { content: string }): void
-  (e: 'pressed-publish', data: { content: string }): void
+  (e: 'pressed-save', data: EditorNoteSubmission): void
+  (e: 'pressed-publish', data: EditorNoteSubmission): void
 }>()
 
 const mustardState = inject<MustardState>('mustardState')!
@@ -34,6 +45,9 @@ const editor = useEditor({
   autofocus: true,
   onBlur({ event }) {
     handleFocusOut(event as FocusEvent)
+  },
+  onUpdate({ editor }) {
+    queueLinkPreview(editor.getMarkdown().trim())
   },
 })
 
@@ -53,6 +67,11 @@ const anchorDisplay = computed(() => {
 })
 
 const selectorExpanded = ref(false)
+const draftPreview = ref<LinkPreview>()
+const previewDebouncer = getDebouncer()
+let previewRequestId = 0
+let queuedPreviewUrl: string | undefined
+let dismissedPreviewUrl: string | undefined
 
 onMounted(async () => {
   document.addEventListener('keydown', handleKeyDown)
@@ -64,6 +83,8 @@ onMounted(async () => {
 
 onUnmounted(() => {
   document.removeEventListener('keydown', handleKeyDown)
+  previewDebouncer.clear()
+  previewRequestId++
 })
 
 function handleKeyDown(event: KeyboardEvent) {
@@ -98,16 +119,68 @@ function getEditorContent(): string {
   return editor.value.getMarkdown().trim()
 }
 
+/**
+ * The editor is a content-script surface, so ask the background to unfurl the
+ * first link. Debouncing prevents a request for every keystroke.
+ */
+function queueLinkPreview(content: string) {
+  const url = extractFirstLinkUrl(content)
+  if (url === queuedPreviewUrl) return
+  queuedPreviewUrl = url
+  const requestId = ++previewRequestId
+  previewDebouncer.clear()
+  draftPreview.value = undefined
+  if (!url) {
+    dismissedPreviewUrl = undefined
+    return
+  }
+  if (url === dismissedPreviewUrl) {
+    return
+  }
+  dismissedPreviewUrl = undefined
+  previewDebouncer.debounce(() => {
+    sendMessage(createGetLinkPreviewMessage(url))
+      .then((preview) => {
+        if (requestId === previewRequestId) draftPreview.value = preview
+      })
+      .catch((error) => console.debug('mustard [editor] link preview failed:', error))
+  }, 600)
+}
+
+function dismissLinkPreview() {
+  const url = extractFirstLinkUrl(getEditorContent())
+  if (!url || draftPreview.value?.url !== url) return
+  dismissedPreviewUrl = url
+  draftPreview.value = undefined
+  previewDebouncer.clear()
+  previewRequestId++
+}
+
+function currentLinkPreview(content: string): LinkPreview | undefined {
+  const url = extractFirstLinkUrl(content)
+  return url && draftPreview.value?.url === url ? draftPreview.value : undefined
+}
+
 function handleSave() {
   // Allow local saves even if over limit - user's local storage
-  emit('pressed-save', { content: getEditorContent() })
+  const content = getEditorContent()
+  emit('pressed-save', {
+    content,
+    linkPreview: currentLinkPreview(content),
+    ...(extractFirstLinkUrl(content) === dismissedPreviewUrl ? { linkPreviewDismissed: true } : {}),
+  })
 }
 
 function handlePublish() {
   // Outdated clients can't write to the remote DB. Block here so the editor
   // isn't optimistically closed (which would discard the user's draft).
   if (isOverLimit.value || mustardState.clientOutdated) return
-  emit('pressed-publish', { content: getEditorContent() })
+  const content = getEditorContent()
+  emit('pressed-publish', {
+    content,
+    linkPreview: currentLinkPreview(content),
+    ...(extractFirstLinkUrl(content) === dismissedPreviewUrl ? { linkPreviewDismissed: true } : {}),
+  })
 }
 </script>
 
@@ -143,6 +216,12 @@ function handlePublish() {
     <div class="character-count" :class="{ 'over-limit': isOverLimit }">
       {{ characterCountText }}
     </div>
+    <LinkPreviewCard
+      v-if="draftPreview"
+      :preview="draftPreview"
+      dismissible
+      @dismiss="dismissLinkPreview"
+    />
     <!-- Anchor info -->
     <div v-if="anchorDisplay && mustardState.showAnchorInEditor" class="anchor-info">
       <div class="anchor-row">

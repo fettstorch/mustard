@@ -54,8 +54,8 @@ flowchart TB
     subgraph Storage["Storage & External"]
         direction LR
         ChromeStorage[("browser.storage.local")]
-        EdgeFns["Edge Functions<br/>auth-bridge (multi-provider) •<br/>get-index-v2 (strict JWT) • get-index (legacy)"]
-        DB[("Postgres<br/>users • identities •<br/>notes • comments • notifications •<br/>oauth_* • app_config")]
+        EdgeFns["Edge Functions<br/>auth-bridge (multi-provider) •<br/>get-index-v2 (strict JWT) •<br/>link-preview-thumbnail (verified global writes) •<br/>get-index (legacy)"]
+        DB[("Postgres + Storage<br/>users • identities •<br/>notes • comments • notifications •<br/>oauth_* • app_config •<br/>link-preview-thumbnails")]
         BSkyAPI["bsky.social API"]
         GHAPI["GitHub REST API"]
     end
@@ -113,7 +113,9 @@ flowchart TB
   OAuth + JWT mint + identity linking — see `atproto-supabase-auth`),
   `get-index-v2` (strict per-user JWT verified with `jose`, enforces
   `payload.sub === userId` where userId is the account UUID), `get-index`
-  (legacy anon-key, kept for old clients until the version guard retires them).
+  (legacy anon-key, kept for old clients until the version guard retires them),
+  and `link-preview-thumbnail` (verifies owned note references and SHA-256 bytes
+  before privileged global Storage uploads/cleanup).
 
 ## Conventions worth knowing
 

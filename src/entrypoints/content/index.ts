@@ -37,11 +37,22 @@ const NOTES_MINIMIZED_KEY = 'mustard-notes-minimized'
 const SHOW_ANCHOR_IN_EDITOR_KEY = 'mustard-show-anchor-in-editor'
 const ALT_CLICK_ENABLED_KEY = 'mustard-alt-click-enabled'
 
+function setMustardLandingPageState(userId?: string | null): void {
+  if (!document.body.hasAttribute('data-mustard-landing-page')) return
+  const root = document.documentElement
+  root.setAttribute('data-mustard-installed', '')
+  if (userId !== undefined) {
+    root.setAttribute('data-mustard-session', userId ? 'connected' : 'disconnected')
+  }
+}
+
 export default defineContentScript({
   matches: ['<all_urls>'],
   cssInjectionMode: 'manifest',
 
   main() {
+    setMustardLandingPageState()
+
     // Vite's __vitePreload tries to load CSS for dynamic chunks using root-relative paths.
     // In a content script running on a web page these fail with 404.
     // CSS is already injected by the browser via the manifest's content_scripts.css array.
@@ -561,6 +572,7 @@ export default defineContentScript({
       if (message.type === 'SESSION_CHANGED') {
         mustardState.currentUserId = message.userId
         mustardState.connectedProviders = message.providers
+        setMustardLandingPageState(message.userId)
         if (message.userId) {
           document.getElementById('mustard-session-expired-banner')?.remove()
           fetchProfiles({ userIds: [message.userId] })
@@ -598,12 +610,15 @@ export default defineContentScript({
         mustardState.connectedProviders = [
           ...new Set(response?.identities?.map((i) => i.provider) ?? []),
         ]
+        setMustardLandingPageState(response?.userId ?? null)
         // Eagerly resolve the current user's profile so the comment editor can
         // render their avatar next to the input (and any other UI that wants it).
         if (response?.userId) fetchProfiles({ userIds: [response.userId] })
         fetchUnreadForNotes(mustardState.notes)
       })
-      .catch(() => {})
+      .catch(() => {
+        setMustardLandingPageState(null)
+      })
 
     // Load preferences from storage
     browser.storage.local

@@ -1,4 +1,6 @@
 import { expect, test } from './extension.fixture'
+import { readFile } from 'node:fs/promises'
+import path from 'node:path'
 
 const fixtureUrl = 'http://127.0.0.1:4173/page.html'
 
@@ -57,6 +59,114 @@ test.describe('Content script smoke', () => {
     await expect(page.locator('#mustard-host').getByText('E2E smoke note')).toBeVisible({
       timeout: 8_000,
     })
+  })
+
+  test('shows a CSP-safe Open Graph thumbnail in the editor and saved note', async ({
+    context,
+  }) => {
+    const png = await readFile(path.resolve('src/assets/icons/mustard_bottle_smile_48.png'))
+    await context.route('https://preview.example/**', async (route) => {
+      if (route.request().url().endsWith('/og.png')) {
+        await route.fulfill({ contentType: 'image/png', body: png })
+        return
+      }
+      await route.fulfill({
+        contentType: 'text/html',
+        body: [
+          '<meta property="og:title" content="A preview title">',
+          '<meta property="og:site_name" content="A preview site">',
+          '<meta property="og:image" content="https://preview.example/og.png">',
+        ].join(''),
+      })
+    })
+
+    const page = await context.newPage()
+    await page.goto(fixtureUrl)
+    const mustard = page.locator('#mustard-host')
+    await expect(mustard).toBeAttached({ timeout: 8_000 })
+    await page.locator('#content').dispatchEvent('contextmenu', {
+      button: 2,
+      clientX: 100,
+      clientY: 100,
+    })
+
+    let serviceWorker = context.serviceWorkers()[0]
+    if (!serviceWorker) serviceWorker = await context.waitForEvent('serviceworker')
+    await serviceWorker.evaluate(async (url: string) => {
+      const extension = globalThis as typeof globalThis & {
+        chrome: {
+          tabs: {
+            query(queryInfo: { url: string }): Promise<Array<{ id?: number }>>
+            sendMessage(tabId: number, message: { type: string }): Promise<void>
+          }
+        }
+      }
+      const [tab] = await extension.chrome.tabs.query({ url: `${url}*` })
+      if (tab?.id === undefined) throw new Error(`No tab found for ${url}`)
+      await extension.chrome.tabs.sendMessage(tab.id, { type: 'OPEN_NOTE_EDITOR' })
+    }, fixtureUrl)
+
+    const editor = mustard.locator('.tiptap[contenteditable="true"]')
+    const saveButton = mustard.locator('[title="Save this note locally"]')
+    await editor.click()
+    await page.keyboard.type('preview.example/article')
+
+    const editorPreview = mustard.locator('.mustard-note-editor .mustard-link-preview')
+    await expect(editorPreview.getByText('A preview title')).toBeVisible({ timeout: 8_000 })
+    await expect(editorPreview.getByText('A preview site')).toBeVisible()
+    await expect(editorPreview.locator('img')).toBeVisible()
+    await expect(editorPreview).toHaveCSS('height', '72px')
+    await expect(editorPreview).toHaveCSS('border-top-width', '0px')
+    await expect(editorPreview.locator('.mustard-link-preview-site')).toHaveCount(0)
+    await expect(editorPreview.locator('.mustard-link-preview-domain')).toHaveCount(0)
+
+    await saveButton.click()
+    const savedPreview = mustard.locator('.mustard-note .mustard-link-preview')
+    await expect(savedPreview.getByText('A preview title')).toBeVisible({ timeout: 8_000 })
+    await expect(savedPreview.getByText('A preview site')).toBeVisible()
+    await expect(savedPreview.locator('img')).toBeVisible()
+    await expect(savedPreview).toHaveCSS('height', '72px')
+    await expect(savedPreview).toHaveCSS('border-top-width', '0px')
+    await expect(savedPreview.locator('.mustard-link-preview-site')).toHaveCount(0)
+    await expect(savedPreview.locator('.mustard-link-preview-domain')).toHaveCount(0)
+
+    // A dismissal is an authoring choice, not just a temporary visual hide.
+    // Reopen the editor, dismiss an otherwise valid preview, and verify the
+    // background does not regenerate it while saving the local note.
+    await page.locator('#content').dispatchEvent('contextmenu', {
+      button: 2,
+      clientX: 120,
+      clientY: 120,
+    })
+    await serviceWorker.evaluate(async (url: string) => {
+      const extension = globalThis as typeof globalThis & {
+        chrome: {
+          tabs: {
+            query(queryInfo: { url: string }): Promise<Array<{ id?: number }>>
+            sendMessage(tabId: number, message: { type: string }): Promise<void>
+          }
+        }
+      }
+      const [tab] = await extension.chrome.tabs.query({ url: `${url}*` })
+      if (tab?.id === undefined) throw new Error(`No tab found for ${url}`)
+      await extension.chrome.tabs.sendMessage(tab.id, { type: 'OPEN_NOTE_EDITOR' })
+    }, fixtureUrl)
+
+    await expect(saveButton).toBeVisible({ timeout: 8_000 })
+    await editor.click()
+    await page.keyboard.type('https://preview.example/dismissed')
+    await expect(editorPreview.getByText('A preview title')).toBeVisible({ timeout: 8_000 })
+    const dismissButton = mustard.getByTitle('Remove link preview')
+    await expect(dismissButton).toHaveCSS('top', '4px')
+    await expect(dismissButton).toHaveCSS('right', '4px')
+
+    await dismissButton.click()
+    await expect(editorPreview).toHaveCount(0)
+    await page.waitForTimeout(800)
+    await expect(editorPreview).toHaveCount(0)
+
+    await saveButton.click()
+    await expect(mustard.locator('.mustard-note .mustard-link-preview')).toHaveCount(1)
   })
 
   test('creates a contained code block after a hard break without losing following text', async ({

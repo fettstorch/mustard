@@ -42,6 +42,8 @@ import { MustardProfileServiceBsky } from '@/background/business/service/Mustard
 import type { UserProfile, LinkedIdentity } from '@/shared/model/UserProfile'
 import { MustardMutualsServiceBsky } from '@/background/business/service/MustardMutualsServiceBsky'
 import { invalidateRemoteIndexCache } from '@/background/business/service/MustardNotesServiceRemote'
+import { resolveLinkPreviewForNote } from '@/background/business/service/LinkPreviewUnfurlServiceRemote'
+import { loadLinkPreviewThumbnail } from '@/background/business/service/LinkPreviewThumbnailServiceRemote'
 import {
   getAppStatus,
   isClientOutdated,
@@ -378,6 +380,10 @@ export default defineBackground(() => {
           id: target === 'local' ? crypto.randomUUID() : null,
           authorId,
           content: message.data.content,
+          linkPreview: message.data.linkPreviewDismissed
+            ? undefined
+            : await resolveLinkPreviewForNote(message.data.content, message.data.linkPreview),
+          linkPreviewDismissed: message.data.linkPreviewDismissed,
           anchorData: message.data.anchorData,
           updatedAt: message.data.updatedAt,
         })
@@ -414,6 +420,10 @@ export default defineBackground(() => {
       )
       return notes.map(DtoMustardNote.toDto)
     },
+
+    GET_LINK_PREVIEW: (message) => resolveLinkPreviewForNote(message.url),
+
+    GET_LINK_PREVIEW_IMAGE: (message) => loadLinkPreviewThumbnail(message.thumbnailPath),
 
     DELETE_NOTE: async (message) => {
       await mustardNotesManager.deleteNote(message.noteId, message.pageUrl, message.authorId)

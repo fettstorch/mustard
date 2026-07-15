@@ -20,7 +20,7 @@ test.describe('failed remote-note deletion', () => {
   })
 
   test('keeps the note and its thread usable after the server rejects deletion', async ({
-    context,
+    authenticatedContext: context,
   }) => {
     const page = await context.newPage()
     await page.goto(fixtureUrl)
