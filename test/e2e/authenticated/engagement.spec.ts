@@ -91,7 +91,7 @@ test.describe('notification trigger', () => {
 test.describe('popup notification badge', () => {
   let noteId: string
 
-  test.beforeAll(async () => {
+  test.beforeEach(async () => {
     const status = getLocalSupabaseStatus()
     await setFollows(viewer.userId, [author.userId], status)
     noteId = await seedNote(author.userId, FIXTURE_URL, 'Badge test note', status)
@@ -99,11 +99,14 @@ test.describe('popup notification badge', () => {
     await seedComment(noteId, viewer.userId, 'Badge trigger comment', status)
   })
 
-  test.afterAll(async () => {
+  test.afterEach(async () => {
     await deleteNote(noteId)
   })
 
-  test('author popup shows unread notification count', async ({ context, popupUrl }) => {
+  test('author popup shows unread notification count', async ({
+    authenticatedContext: context,
+    popupUrl,
+  }) => {
     // Switch the extension session to the author
     await loginAs(context, author)
 

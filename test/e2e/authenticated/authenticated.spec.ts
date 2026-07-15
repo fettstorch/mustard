@@ -6,7 +6,10 @@ import { loginAs } from '../extension.fixture'
 const fixtureUrl = 'http://127.0.0.1:4173/page.html'
 const noteContent = 'Authenticated E2E remote note'
 
-test('popup recognizes the seeded GitHub session', async ({ context, popupUrl }) => {
+test('popup recognizes the seeded GitHub session', async ({
+  authenticatedContext: context,
+  popupUrl,
+}) => {
   const popup = await context.newPage()
   await popup.goto(popupUrl)
 
@@ -15,7 +18,10 @@ test('popup recognizes the seeded GitHub session', async ({ context, popupUrl })
   await expect(popup.getByRole('tab', { name: 'GitHub' })).not.toBeVisible()
 })
 
-test('publishes a remote note and restores it after reload', async ({ context, popupUrl }) => {
+test('publishes a remote note and restores it after reload', async ({
+  authenticatedContext: context,
+  popupUrl,
+}) => {
   const popup = await context.newPage()
   await popup.goto(popupUrl)
   await expect(popup.getByRole('button', { name: 'Logout' })).toBeVisible()
@@ -67,7 +73,9 @@ test('publishes a remote note and restores it after reload', async ({ context, p
   })
 })
 
-test('shows feedback when publishing is rate-limited', async ({ context }) => {
+test('shows feedback when publishing is rate-limited', async ({
+  authenticatedContext: context,
+}) => {
   const user = TEST_USERS.stranger
   const client = authedClient(user.userId)
 

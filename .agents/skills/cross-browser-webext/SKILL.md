@@ -132,6 +132,18 @@ in several ways:
   save-time unfurling cannot recreate it, and persist the flag on local notes so
   publishing that draft later preserves the user's choice.
 
+### Authenticated extension E2E isolation
+
+- A fresh Playwright browser context does not isolate the local Supabase
+  database. Tests using the deterministic authenticated accounts must import
+  `authenticated.fixture` (extension UI) or `local-supabase.fixture` (database
+  only). Their automatic test-scoped fixture reseeds and removes those accounts
+  around every test so notes, follows, and notifications cannot leak between
+  tests. Extension tests request `authenticatedContext` explicitly; because it
+  is on-demand, file-level `beforeEach` data setup finishes before the extension
+  starts and can warm its remote-index cache. Keep one-off rate-limit accounts
+  self-contained with their existing transient-user hooks.
+
 ## Stable extension identity (needed for OAuth redirect URIs)
 
 - **Chrome**: unpacked ID is path-derived (or key-derived if `key` is set). Paste

@@ -170,7 +170,7 @@ test('rejects thumbnail bytes that do not match the referenced global hash', asy
 })
 
 test('globally deduplicates, renders, and dismisses published link previews', async ({
-  context,
+  authenticatedContext: context,
   popupUrl,
 }) => {
   test.setTimeout(60_000)
