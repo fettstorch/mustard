@@ -3,22 +3,29 @@ import type { LinkPreview } from './model/LinkPreview'
 const MAX_TITLE_LENGTH = 200
 const MAX_DESCRIPTION_LENGTH = 300
 const MAX_SITE_NAME_LENGTH = 80
+const LINK_TOKEN =
+  /https?:\/\/[^\s<>{}\x5b\x5d"']+|(?:[a-z\d](?:[a-z\d-]*[a-z\d])?\.)+[a-z][a-z\d-]{1,62}(?::\d+)?(?:[/?#][^\s<>{}\x5b\x5d"']*)?/gi
 
-/** Finds the first ordinary HTTP(S) URL in note markdown/plain text. */
+/** Finds the first HTTP(S) URL or bare domain in note markdown/plain text. */
 export function extractFirstLinkUrl(content: string): string | undefined {
-  const match = content.match(/https?:\/\/[^\s<>{}\x5b\x5d"']+/i)
-  if (!match) return undefined
+  for (const match of content.matchAll(LINK_TOKEN)) {
+    const matched = match[0]
+    const isBareDomain = !/^https?:\/\//i.test(matched)
+    if (isBareDomain && match.index && content[match.index - 1] === '@') continue
 
-  // Punctuation at the end of prose is not normally part of the URL. Keep a
-  // balanced closing parenthesis, which is common in Wikipedia-style URLs.
-  let candidate = match[0]
-  while (
-    /[.,!?;:]$/.test(candidate) ||
-    (candidate.endsWith(')') && !hasBalancedParens(candidate))
-  ) {
-    candidate = candidate.slice(0, -1)
+    // Punctuation at the end of prose is not normally part of the URL. Keep a
+    // balanced closing parenthesis, which is common in Wikipedia-style URLs.
+    let candidate = matched
+    while (
+      /[.,!?;:]$/.test(candidate) ||
+      (candidate.endsWith(')') && !hasBalancedParens(candidate))
+    ) {
+      candidate = candidate.slice(0, -1)
+    }
+    const url = normalizeHttpUrl(isBareDomain ? `https://${candidate}` : candidate)
+    if (url) return url
   }
-  return normalizeHttpUrl(candidate)
+  return undefined
 }
 
 function hasBalancedParens(value: string): boolean {

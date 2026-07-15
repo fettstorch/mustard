@@ -258,10 +258,10 @@ function isPrivateIpv4Address(host: string): boolean {
 }
 
 /**
- * Browser Fetch hides `Location` on `redirect: 'manual'` responses, so an
- * extension cannot safely validate each redirect hop itself. Reject redirects
- * before their destination is contacted rather than discovering an unsafe final
- * URL after Fetch has already requested it.
+ * Follow normal web redirects, but only consume a response whose final URL is
+ * still a public HTTP(S) address. Browser Fetch cannot expose each redirect hop
+ * for validation; a backend unfurler is required if that stricter model is ever
+ * needed.
  */
 async function fetchWithSafeFinalUrl<T>(
   url: string,
@@ -275,7 +275,7 @@ async function fetchWithSafeFinalUrl<T>(
     const response = await fetch(url, {
       headers: { Accept: accept },
       credentials: 'omit',
-      redirect: 'error',
+      redirect: 'follow',
       referrerPolicy: 'no-referrer',
       signal: controller.signal,
     })
@@ -289,16 +289,20 @@ async function readTextWithinLimit(
   response: Response,
   maxBytes: number,
 ): Promise<string | undefined> {
-  const bytes = await readBytesWithinLimit(response, maxBytes)
+  // Open Graph metadata belongs in the document head. Keep the transfer cap but
+  // parse that bounded prefix instead of rejecting a page solely because its
+  // body continues beyond it (for example, GitHub's homepage).
+  const bytes = await readBytesWithinLimit(response, maxBytes, true)
   return bytes ? new TextDecoder().decode(bytes) : undefined
 }
 
 async function readBytesWithinLimit(
   response: Response,
   maxBytes: number,
+  allowPartial = false,
 ): Promise<Uint8Array | undefined> {
   const contentLength = Number(response.headers.get('content-length'))
-  if (Number.isFinite(contentLength) && contentLength > maxBytes) return undefined
+  if (Number.isFinite(contentLength) && contentLength > maxBytes && !allowPartial) return undefined
   if (!response.body) return undefined
 
   const reader = response.body.getReader()
@@ -308,11 +312,15 @@ async function readBytesWithinLimit(
     while (true) {
       const { done, value } = await reader.read()
       if (done) break
-      size += value.byteLength
-      if (size > maxBytes) {
+      const remaining = maxBytes - size
+      if (value.byteLength > remaining) {
+        if (allowPartial && remaining > 0) chunks.push(value.subarray(0, remaining))
         await reader.cancel()
-        return undefined
+        if (!allowPartial) return undefined
+        size = maxBytes
+        break
       }
+      size += value.byteLength
       chunks.push(value)
     }
   } finally {

@@ -109,7 +109,7 @@ test.describe('Content script smoke', () => {
     const editor = mustard.locator('.tiptap[contenteditable="true"]')
     const saveButton = mustard.locator('[title="Save this note locally"]')
     await editor.click()
-    await page.keyboard.type('https://preview.example/article')
+    await page.keyboard.type('preview.example/article')
 
     const editorPreview = mustard.locator('.mustard-note-editor .mustard-link-preview')
     await expect(editorPreview.getByText('A preview title')).toBeVisible({ timeout: 8_000 })

@@ -6,7 +6,7 @@ import {
 } from '../../src/shared/link-preview'
 
 describe('extractFirstLinkUrl', () => {
-  it('selects the first HTTP(S) URL and removes prose punctuation', () => {
+  it('selects the first link and removes prose punctuation', () => {
     expect(extractFirstLinkUrl('Read https://example.com/article. Then reply.')).toBe(
       'https://example.com/article',
     )
@@ -15,6 +15,15 @@ describe('extractFirstLinkUrl', () => {
   it('keeps a balanced closing parenthesis in a URL', () => {
     expect(extractFirstLinkUrl('https://en.wikipedia.org/wiki/Foo_(bar)')).toBe(
       'https://en.wikipedia.org/wiki/Foo_(bar)',
+    )
+  })
+
+  it('normalizes bare domains to HTTPS without mistaking email domains for links', () => {
+    expect(extractFirstLinkUrl('Read github.com/fettstorch/mustard.')).toBe(
+      'https://github.com/fettstorch/mustard',
+    )
+    expect(extractFirstLinkUrl('Email julian@github.com, then visit github.com.')).toBe(
+      'https://github.com/',
     )
   })
 
