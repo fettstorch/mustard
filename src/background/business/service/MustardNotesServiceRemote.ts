@@ -360,7 +360,7 @@ class MustardNotesServiceRemote implements MustardNotesService {
         includeRuntimeThumbnail = await ensureLinkPreviewThumbnailStored(preparedPreview.thumbnail)
         if (!includeRuntimeThumbnail) {
           storedRow = await clearThumbnailReference(storedRow, preparedPreview.preview)
-          await cleanupUnreferencedThumbnail(preparedPreview.thumbnail.path)
+          cleanupUnreferencedThumbnail(preparedPreview.thumbnail.path)
         }
       }
       const currentThumbnailPath = fromDbThumbnailPath(storedRow.link_preview)
@@ -385,7 +385,7 @@ class MustardNotesServiceRemote implements MustardNotesService {
       includeRuntimeThumbnail = await ensureLinkPreviewThumbnailStored(preparedPreview.thumbnail)
       if (!includeRuntimeThumbnail) {
         storedRow = await clearThumbnailReference(storedRow, preparedPreview.preview)
-        await cleanupUnreferencedThumbnail(preparedPreview.thumbnail.path)
+        cleanupUnreferencedThumbnail(preparedPreview.thumbnail.path)
       }
     }
     return withRuntimePreview(
@@ -409,9 +409,7 @@ class MustardNotesServiceRemote implements MustardNotesService {
       throw new Error(`Failed to delete note: ${error.message}`)
     }
     if (thumbnailPath) {
-      cleanupUnreferencedThumbnail(thumbnailPath).catch((error) =>
-        console.debug('mustard [link-preview] thumbnail cleanup failed:', error),
-      )
+      cleanupUnreferencedThumbnail(thumbnailPath)
     }
   }
 
@@ -539,13 +537,9 @@ function withRuntimePreview(note: MustardNote, preview?: LinkPreview): MustardNo
   return { ...note, linkPreview: { ...note.linkPreview, imageDataUrl: preview.imageDataUrl } }
 }
 
-async function cleanupRemovedThumbnail(previousPath?: string, currentPath?: string): Promise<void> {
+function cleanupRemovedThumbnail(previousPath?: string, currentPath?: string): void {
   if (!previousPath || previousPath === currentPath) return
-  try {
-    await cleanupUnreferencedThumbnail(previousPath)
-  } catch (error) {
-    console.debug('mustard [link-preview] replaced-thumbnail cleanup failed:', error)
-  }
+  cleanupUnreferencedThumbnail(previousPath)
 }
 
 /** Remove a failed thumbnail path from the note while preserving text metadata. */
@@ -569,9 +563,11 @@ async function clearThumbnailReference(row: DbNote, preview?: LinkPreview): Prom
   return row
 }
 
-/** Ask the trusted remote service to delete the object if its final reference is gone. */
-async function cleanupUnreferencedThumbnail(path: string): Promise<void> {
-  await deleteLinkPreviewThumbnail(path)
+/** Best-effort remote cleanup after a note write; never fail the completed write. */
+function cleanupUnreferencedThumbnail(path: string): void {
+  void deleteLinkPreviewThumbnail(path).catch((error) =>
+    console.debug('mustard [link-preview] thumbnail cleanup failed:', error),
+  )
 }
 
 /** Clear the cached index. Call on login/logout/mutations to ensure fresh data. */
