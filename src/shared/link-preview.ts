@@ -8,12 +8,13 @@ const LINK_TOKEN =
 
 /** Finds the first HTTP(S) URL or bare domain in note markdown/plain text. */
 export function extractFirstLinkUrl(content: string): string | undefined {
-  for (const match of content.matchAll(LINK_TOKEN)) {
+  const previewableContent = maskMarkdownCode(content)
+  for (const match of previewableContent.matchAll(LINK_TOKEN)) {
     const matched = match[0]
     const isBareDomain = !/^https?:\/\//i.test(matched)
     const matchStart = match.index ?? 0
-    const before = content[matchStart - 1]
-    const after = content[matchStart + matched.length]
+    const before = previewableContent[matchStart - 1]
+    const after = previewableContent[matchStart + matched.length]
     if (isBareDomain && (before === '@' || after === '@')) continue
 
     // Punctuation at the end of prose is not normally part of the URL. Keep a
@@ -29,6 +30,96 @@ export function extractFirstLinkUrl(content: string): string | undefined {
     if (url) return url
   }
   return undefined
+}
+
+/**
+ * Preserve string offsets while excluding Markdown code from preview discovery.
+ * Code often contains dotted identifiers such as `client.invoke`, which look
+ * like bare domains to the link matcher but must never control a note preview.
+ */
+function maskMarkdownCode(content: string): string {
+  const characters = content.split('')
+  let openFence: { marker: '`' | '~'; length: number } | undefined
+
+  for (let lineStart = 0; lineStart <= content.length;) {
+    const newline = content.indexOf('\n', lineStart)
+    const lineEnd = newline === -1 ? content.length : newline
+    const line = content.slice(lineStart, lineEnd)
+
+    if (openFence) {
+      maskRange(characters, lineStart, lineEnd)
+      if (closesFencedCodeBlock(line, openFence)) openFence = undefined
+    } else {
+      const fence = opensFencedCodeBlock(line)
+      if (fence) {
+        maskRange(characters, lineStart, lineEnd)
+        openFence = fence
+      }
+    }
+
+    if (newline === -1) break
+    lineStart = newline + 1
+  }
+
+  for (let index = 0; index < characters.length; index++) {
+    if (characters[index] !== '`') continue
+    const delimiterLength = countRun(characters, index, '`')
+    const closing = findInlineCodeClosingDelimiter(
+      characters,
+      index + delimiterLength,
+      delimiterLength,
+    )
+    if (closing === undefined) {
+      index += delimiterLength - 1
+      continue
+    }
+    maskRange(characters, index, closing + delimiterLength)
+    index = closing + delimiterLength - 1
+  }
+
+  return characters.join('')
+}
+
+function opensFencedCodeBlock(line: string): { marker: '`' | '~'; length: number } | undefined {
+  const match = line.match(/^ {0,3}(`{3,}|~{3,})/)
+  if (!match?.[1]) return undefined
+  return { marker: match[1][0] as '`' | '~', length: match[1].length }
+}
+
+function closesFencedCodeBlock(
+  line: string,
+  fence: { marker: '`' | '~'; length: number },
+): boolean {
+  const indentation = line.match(/^ {0,3}/)?.[0].length ?? 0
+  if (line[indentation] !== fence.marker) return false
+  const length = countRun(line, indentation, fence.marker)
+  return length >= fence.length && line.slice(indentation + length).trim() === ''
+}
+
+function findInlineCodeClosingDelimiter(
+  characters: string[],
+  start: number,
+  delimiterLength: number,
+): number | undefined {
+  for (let index = start; index < characters.length; index++) {
+    if (characters[index] !== '`') continue
+    const length = countRun(characters, index, '`')
+    if (length === delimiterLength) return index
+    index += length - 1
+  }
+  return undefined
+}
+
+function countRun(value: string | string[], start: number, character: string): number {
+  let length = 0
+  while (value[start + length] === character) length++
+  return length
+}
+
+function maskRange(characters: string[], start: number, end: number): void {
+  for (let index = start; index < end; index++) {
+    if (characters[index] !== '\n') characters[index] = ' '
+  }
 }
 
 function hasBalancedParens(value: string): boolean {

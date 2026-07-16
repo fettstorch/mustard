@@ -169,6 +169,51 @@ test.describe('Content script smoke', () => {
     await expect(mustard.locator('.mustard-note .mustard-link-preview')).toHaveCount(1)
   })
 
+  test('uses the first prose link after a code block for a saved preview', async ({ context }) => {
+    await context.route('https://preview.example/**', async (route) => {
+      await route.fulfill({
+        contentType: 'text/html',
+        body: '<meta property="og:title" content="Preview after code">',
+      })
+    })
+
+    const page = await context.newPage()
+    await page.goto(fixtureUrl)
+    const mustard = page.locator('#mustard-host')
+    await expect(mustard).toBeAttached({ timeout: 8_000 })
+    await page.locator('#content').dispatchEvent('contextmenu', {
+      button: 2,
+      clientX: 100,
+      clientY: 100,
+    })
+
+    let serviceWorker = context.serviceWorkers()[0]
+    if (!serviceWorker) serviceWorker = await context.waitForEvent('serviceworker')
+    await serviceWorker.evaluate(async (url: string) => {
+      const [tab] = await chrome.tabs.query({ url: `${url}*` })
+      if (tab?.id === undefined) throw new Error(`No tab found for ${url}`)
+      await chrome.tabs.sendMessage(tab.id, { type: 'OPEN_NOTE_EDITOR' })
+    }, fixtureUrl)
+
+    const editor = mustard.locator('.tiptap[contenteditable="true"]')
+    const saveButton = mustard.locator('[title="Save this note locally"]')
+    await expect(editor).toBeVisible({ timeout: 8_000 })
+    await editor.click()
+    await page.keyboard.type('```ts')
+    await page.keyboard.press('Space')
+    await expect(editor.locator('pre')).toBeVisible()
+    await page.keyboard.type('foo.bar')
+    await page.keyboard.press('ArrowDown')
+    await page.keyboard.type('https://preview.example/after-code')
+
+    const editorPreview = mustard.locator('.mustard-note-editor .mustard-link-preview')
+    await expect(editorPreview.getByText('Preview after code')).toBeVisible({ timeout: 8_000 })
+
+    await saveButton.click()
+    const savedPreview = mustard.locator('.mustard-note .mustard-link-preview')
+    await expect(savedPreview.getByText('Preview after code')).toBeVisible({ timeout: 8_000 })
+  })
+
   test('creates a contained code block after a hard break without losing following text', async ({
     context,
   }) => {

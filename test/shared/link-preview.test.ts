@@ -34,6 +34,17 @@ describe('extractFirstLinkUrl', () => {
     )
   })
 
+  it('skips URLs and bare domains inside fenced and inline code', () => {
+    expect(
+      extractFirstLinkUrl(
+        ['```ts', 'foo.bar', '```', 'https://preview.example/after-code'].join('\n'),
+      ),
+    ).toBe('https://preview.example/after-code')
+    expect(extractFirstLinkUrl('Call `client.invoke()` then preview.example/article.')).toBe(
+      'https://preview.example/article',
+    )
+  })
+
   it('rejects non-web schemes', () => {
     expect(extractFirstLinkUrl('javascript:alert(1)')).toBeUndefined()
     expect(normalizeHttpUrl('ftp://example.com')).toBeUndefined()
