@@ -8,7 +8,7 @@ const LINK_TOKEN =
 
 /** Finds the first HTTP(S) URL or bare domain in note markdown/plain text. */
 export function extractFirstLinkUrl(content: string): string | undefined {
-  const previewableContent = maskMarkdownCode(content)
+  const previewableContent = maskMarkdownImages(maskMarkdownCode(content))
   for (const match of previewableContent.matchAll(LINK_TOKEN)) {
     const matched = match[0]
     const isBareDomain = !/^https?:\/\//i.test(matched)
@@ -80,6 +80,23 @@ function maskMarkdownCode(content: string): string {
   return characters.join('')
 }
 
+/** Image nodes are already the visual attachment, not a candidate card URL. */
+function maskMarkdownImages(content: string): string {
+  const characters = content.split('')
+
+  for (let index = 0; index < characters.length - 3; index++) {
+    if (characters[index] !== '!' || characters[index + 1] !== '[') continue
+    const altEnd = findMatchingDelimiter(characters, index + 1, '[', ']')
+    if (altEnd === undefined || characters[altEnd + 1] !== '(') continue
+    const imageEnd = findMatchingDelimiter(characters, altEnd + 1, '(', ')')
+    if (imageEnd === undefined) continue
+    maskRange(characters, index, imageEnd + 1)
+    index = imageEnd
+  }
+
+  return characters.join('')
+}
+
 function opensFencedCodeBlock(line: string): { marker: '`' | '~'; length: number } | undefined {
   const match = line.match(/^ {0,3}(`{3,}|~{3,})/)
   if (!match?.[1]) return undefined
@@ -106,6 +123,24 @@ function findInlineCodeClosingDelimiter(
     const length = countRun(characters, index, '`')
     if (length === delimiterLength) return index
     index += length - 1
+  }
+  return undefined
+}
+
+function findMatchingDelimiter(
+  characters: string[],
+  start: number,
+  opening: string,
+  closing: string,
+): number | undefined {
+  let depth = 0
+  for (let index = start; index < characters.length; index++) {
+    if (characters[index] === '\\') {
+      index++
+      continue
+    }
+    if (characters[index] === opening) depth++
+    if (characters[index] === closing && --depth === 0) return index
   }
   return undefined
 }

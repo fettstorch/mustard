@@ -45,6 +45,17 @@ describe('extractFirstLinkUrl', () => {
     )
   })
 
+  it('skips Markdown image sources but keeps later prose links previewable', () => {
+    expect(
+      extractFirstLinkUrl(
+        '![Giphy GIF](https://media.giphy.com/media/reaction/giphy.gif) https://example.com/article',
+      ),
+    ).toBe('https://example.com/article')
+    expect(
+      extractFirstLinkUrl('![](https://media.giphy.com/media/reaction/giphy.gif)'),
+    ).toBeUndefined()
+  })
+
   it('rejects non-web schemes', () => {
     expect(extractFirstLinkUrl('javascript:alert(1)')).toBeUndefined()
     expect(normalizeHttpUrl('ftp://example.com')).toBeUndefined()
