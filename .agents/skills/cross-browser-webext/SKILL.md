@@ -42,7 +42,7 @@ and Firefox (MV2/MV3) with WXT. Read this before touching `wxt.config.ts`,
   for its Highlights overlay, [Chrome reserves `Alt+Shift+A`](https://support.google.com/chrome/answer/157179)
   for inactive dialogs, and [Windows uses `Alt+Shift`](https://support.microsoft.com/en-gb/office/switch-between-languages-using-the-language-bar-1c2242c0-fe15-4bc3-99bc-535de6f4f258)
   itself for keyboard-layout switching. Mustard therefore removes `Shift` from
-  its Windows bindings: `Alt+M` (popup), `Alt+H` (hide/show minimized notes),
+  its Windows bindings: `Alt+M` (popup), `Alt+N` (hide/show minimized notes),
   and `Alt+G` (get all notes).
 - Express platform overrides inside each command's `suggested_key` object using
   its `windows` property; keep `default` for every other platform. Both WXT's
