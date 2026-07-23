@@ -31,6 +31,29 @@ and Firefox (MV2/MV3) with WXT. Read this before touching `wxt.config.ts`,
   `browser_specific_settings` only on firefox).
 - **Manifest icons**: `.ico` files don't work as extension icons — use `.png`.
 
+## Keyboard command defaults on Windows
+
+- Treat `commands.*.suggested_key` as a best-effort default, not a guaranteed
+  binding. Chrome leaves a command unassigned when another extension already
+  owns the combination, and operating-system or browser shortcuts take priority.
+  Read the resolved bindings with `commands.getAll()` and give users a route to
+  the browser's shortcut settings.
+- Avoid known Windows collisions: [NVIDIA uses `Alt+Shift+Z`](https://nvidia.custhelp.com/app/answers/detail/a_id/4825/)
+  for its Highlights overlay, [Chrome reserves `Alt+Shift+A`](https://support.google.com/chrome/answer/157179)
+  for inactive dialogs, and [Windows uses `Alt+Shift`](https://support.microsoft.com/en-gb/office/switch-between-languages-using-the-language-bar-1c2242c0-fe15-4bc3-99bc-535de6f4f258)
+  itself for keyboard-layout switching. Mustard keeps the mnemonic
+  `Alt+Shift` family but overrides the exact Windows bindings to `Alt+Shift+M`
+  (popup), `Alt+Shift+H` (hide/show minimized notes), and `Alt+Shift+G` (get all
+  notes). Users with a layout-switch conflict can rebind them in browser settings.
+- Express platform overrides inside each command's `suggested_key` object using
+  its `windows` property; keep `default` for every other platform. Both WXT's
+  Chrome MV3 and Firefox MV2 manifests preserve these keys.
+- Playwright's `page.keyboard.press()` sends renderer input and does not activate
+  browser-level extension commands, so it cannot functionally test a manifest
+  shortcut. On a real Windows runner, load the extension and assert the resolved
+  Windows values through `commands.getAll()`; use a manual OS-level keypress on
+  Windows for the final command-dispatch and system-conflict smoke test.
+
 ## `browser` global is NOT webextension-polyfill
 
 - `@wxt-dev/browser` is just `globalThis.browser ?? globalThis.chrome`. On Chrome

@@ -64,23 +64,28 @@ export default defineConfig({
     //   - MV3 (Chrome): `_execute_action`
     //   - MV2 (Firefox, as WXT currently generates): `_execute_browser_action`
     // Using the wrong one is silently ignored, so we branch on the target.
+    // Windows overrides avoid NVIDIA's Alt+Shift+Z overlay and Chrome's
+    // reserved Alt+Shift+A command while preserving mnemonic shortcuts.
     commands: {
       [browser === 'firefox' ? '_execute_browser_action' : '_execute_action']: {
         description: 'Open the Mustard popup',
         suggested_key: {
           default: 'Alt+Shift+M',
+          windows: 'Alt+Shift+M',
         },
       },
       'toggle-minimize-notes': {
         description: 'Toggle minimize Mustard notes',
         suggested_key: {
           default: 'Alt+Shift+Z',
+          windows: 'Alt+Shift+H',
         },
       },
       'show-all-notes': {
         description: 'Show all Mustard notes on this page',
         suggested_key: {
           default: 'Alt+Shift+A',
+          windows: 'Alt+Shift+G',
         },
       },
     },
