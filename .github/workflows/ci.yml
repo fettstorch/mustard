@@ -97,6 +97,48 @@ jobs:
           path: test-results/
           retention-days: 7
 
+  extension-e2e-windows-shortcuts:
+    name: Extension E2E (Windows shortcuts)
+    runs-on: windows-latest
+    needs: quality
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build extension for E2E
+        run: npm run build:e2e
+
+      - name: Install Playwright Chromium
+        run: npx playwright install chromium
+
+      - name: Run native Windows shortcut test
+        env:
+          MUSTARD_NATIVE_SHORTCUT_TEST: '1'
+        run: npx playwright test test/e2e/windows-shortcuts.spec.ts
+
+      - name: Upload failure report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-windows-shortcuts
+          path: playwright-report/
+          retention-days: 7
+
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-windows-shortcuts
+          path: test-results/
+          retention-days: 7
+
   extension-e2e-auth:
     name: Extension E2E (Auth / Local Supabase)
     runs-on: ubuntu-latest
