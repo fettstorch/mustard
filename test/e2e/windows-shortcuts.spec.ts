@@ -73,19 +73,19 @@ test.describe('Windows keyboard shortcuts', () => {
     // the browser. The explicit command values ensure all three native combos
     // are available; the two app commands below are additionally dispatched.
     expect(shortcuts).toMatchObject({
-      _execute_action: 'Alt+Shift+M',
-      'toggle-minimize-notes': 'Alt+Shift+H',
-      'show-all-notes': 'Alt+Shift+G',
+      _execute_action: 'Alt+M',
+      'toggle-minimize-notes': 'Alt+H',
+      'show-all-notes': 'Alt+G',
     })
 
     await worker.evaluate(() => chrome.storage.local.set({ 'mustard-notes-minimized': false }))
-    await sendWindowsShortcut('%+h')
+    await sendWindowsShortcut('%h')
     await expect.poll(() => readMinimizedState(context), { timeout: 8_000 }).toBe(true)
 
-    await sendWindowsShortcut('%+h')
+    await sendWindowsShortcut('%h')
     await expect.poll(() => readMinimizedState(context), { timeout: 8_000 }).toBe(false)
 
-    await sendWindowsShortcut('%+g')
+    await sendWindowsShortcut('%g')
     await expect(page.locator('#mustard-load-all-toast')).toHaveText(
       'Log in to Mustard to see all notes on this page',
       { timeout: 8_000 },
