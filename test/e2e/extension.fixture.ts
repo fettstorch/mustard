@@ -50,15 +50,12 @@ export async function loginAs(context: BrowserContext, user: TestUser): Promise<
 /**
  * Launches a persistent Chromium context with Mustard loaded from dist/chrome.
  * Uses `channel: 'chromium'` so extensions work in headless mode (no Xvfb needed in CI).
- * The dedicated Windows shortcut test opts into headed mode so Windows can
- * deliver an actual OS keyboard shortcut to the browser window.
  * The extension must be built before running E2E tests (`nr build:e2e`).
  */
 export const test = base.extend<ExtensionFixtures>({
   context: async ({}, use, testInfo) => {
     const context = await chromium.launchPersistentContext(testInfo.outputPath('user-data-dir'), {
       channel: 'chromium',
-      headless: process.env.MUSTARD_NATIVE_SHORTCUT_TEST !== '1',
       args: [
         `--disable-extensions-except=${extensionPath}`,
         `--load-extension=${extensionPath}`,
