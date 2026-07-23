@@ -25,9 +25,57 @@ async function readMinimizedState(context: BrowserContext): Promise<boolean> {
  * keyboard API. Extension commands are browser-level shortcuts, so only the
  * native path proves that Chromium receives and dispatches the binding.
  */
-async function sendWindowsShortcut(shortcut: string): Promise<void> {
+async function sendWindowsShortcut(key: number): Promise<void> {
   const script = `
-    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+
+public static class MustardKeyboard {
+  [StructLayout(LayoutKind.Sequential)]
+  public struct KEYBDINPUT {
+    public ushort wVk;
+    public ushort wScan;
+    public uint dwFlags;
+    public uint time;
+    public IntPtr dwExtraInfo;
+  }
+
+  [StructLayout(LayoutKind.Sequential)]
+  public struct MOUSEINPUT {
+    public int dx;
+    public int dy;
+    public uint mouseData;
+    public uint dwFlags;
+    public uint time;
+    public IntPtr dwExtraInfo;
+  }
+
+  [StructLayout(LayoutKind.Explicit)]
+  public struct INPUTUNION {
+    [FieldOffset(0)] public KEYBDINPUT ki;
+    [FieldOffset(0)] public MOUSEINPUT mi;
+  }
+
+  [StructLayout(LayoutKind.Sequential)]
+  public struct INPUT {
+    public uint type;
+    public INPUTUNION u;
+  }
+
+  [DllImport("user32.dll", SetLastError = true)]
+  public static extern uint SendInput(uint inputCount, INPUT[] inputs, int inputSize);
+
+  public static INPUT Key(ushort virtualKey, bool keyUp) {
+    return new INPUT {
+      type = 1,
+      u = new INPUTUNION {
+        ki = new KEYBDINPUT { wVk = virtualKey, dwFlags = keyUp ? 0x0002u : 0u }
+      }
+    };
+  }
+}
+'@
     $target = Get-Process | Where-Object { $_.MainWindowTitle -like '*${windowTitle}*' } |
       Select-Object -First 1
     if ($null -eq $target) { throw 'Could not find the headed Chromium test window.' }
@@ -35,7 +83,18 @@ async function sendWindowsShortcut(shortcut: string): Promise<void> {
     $shell = New-Object -ComObject WScript.Shell
     if (-not $shell.AppActivate($target.Id)) { throw 'Could not activate the Chromium test window.' }
     Start-Sleep -Milliseconds 250
-    [System.Windows.Forms.SendKeys]::SendWait('${shortcut}')
+    $inputs = [MustardKeyboard+INPUT[]]@(
+      [MustardKeyboard]::Key(0x12, $false),
+      [MustardKeyboard]::Key(${key}, $false),
+      [MustardKeyboard]::Key(${key}, $true),
+      [MustardKeyboard]::Key(0x12, $true)
+    )
+    $sent = [MustardKeyboard]::SendInput(
+      $inputs.Length,
+      $inputs,
+      [Runtime.InteropServices.Marshal]::SizeOf([type][MustardKeyboard+INPUT])
+    )
+    if ($sent -ne $inputs.Length) { throw "SendInput inserted $sent of $($inputs.Length) events." }
     Start-Sleep -Milliseconds 250
   `
   await execFileAsync('powershell.exe', [
@@ -79,13 +138,13 @@ test.describe('Windows keyboard shortcuts', () => {
     })
 
     await worker.evaluate(() => chrome.storage.local.set({ 'mustard-notes-minimized': false }))
-    await sendWindowsShortcut('%h')
+    await sendWindowsShortcut(0x48) // H
     await expect.poll(() => readMinimizedState(context), { timeout: 8_000 }).toBe(true)
 
-    await sendWindowsShortcut('%h')
+    await sendWindowsShortcut(0x48) // H
     await expect.poll(() => readMinimizedState(context), { timeout: 8_000 }).toBe(false)
 
-    await sendWindowsShortcut('%g')
+    await sendWindowsShortcut(0x47) // G
     await expect(page.locator('#mustard-load-all-toast')).toHaveText(
       'Log in to Mustard to see all notes on this page',
       { timeout: 8_000 },
