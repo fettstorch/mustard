@@ -79,7 +79,7 @@ export default defineConfig({
         description: 'Toggle minimize Mustard notes',
         suggested_key: {
           default: 'Alt+Shift+Z',
-          windows: 'Alt+H',
+          windows: 'Alt+N',
         },
       },
       'show-all-notes': {
