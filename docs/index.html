@@ -9,6 +9,19 @@
       href="https://fonts.googleapis.com/css2?family=Azeret+Mono:wght@300;400;500;600;700&display=swap"
       rel="stylesheet"
     />
+    <script
+      id="rive-runtime"
+      src="https://unpkg.com/@rive-app/canvas@2.39.1/rive.js"
+      async
+    ></script>
+    <link
+      id="mustard-rive-asset"
+      rel="preload"
+      href="./assets/mustard.riv"
+      as="image"
+      media="not all"
+      crossorigin
+    />
     <title>Mustard — Add your opinion to any webpage</title>
 
     <!-- OpenGraph -->
@@ -100,9 +113,37 @@
         margin-bottom: 48px;
       }
 
-      .hero img {
-        width: 128px;
-        height: 128px;
+      .hero-visual {
+        width: 300px;
+        height: 300px;
+        margin: -48px auto 0;
+        display: grid;
+      }
+
+      .hero-visual > * {
+        width: 100%;
+        height: 100%;
+        grid-area: 1 / 1;
+      }
+
+      .hero-fallback {
+        display: block;
+        pointer-events: none;
+      }
+
+      .hero-rive {
+        display: block;
+        opacity: 0;
+        pointer-events: auto;
+      }
+
+      .hero-visual.is-rive-ready .hero-fallback {
+        opacity: 0;
+      }
+
+      .hero-visual.is-rive-ready .hero-rive {
+        opacity: 1;
+        cursor: pointer !important;
       }
 
       .hero h1 {
@@ -617,7 +658,11 @@
     </header>
 
     <div class="hero">
-      <img src="mustard_bottle_smile_512.png" alt="Mustard" />
+      <div class="hero-visual" role="img" aria-label="Mustard">
+        <img class="hero-fallback" src="mustard_bottle_smile_512.png" alt="" />
+        <canvas class="hero-rive" id="hero-rive" width="300" height="300" aria-hidden="true">
+        </canvas>
+      </div>
       <h1>Hello Mustard!</h1>
       <p>
         Add your opinion to any webpage — right-click anywhere and select
@@ -892,6 +937,218 @@
         </section>
       </div>
     </div>
+    <script>
+      ;(function () {
+        var runtimeScript = document.getElementById('rive-runtime')
+        var riveCanvas = document.getElementById('hero-rive')
+        var riveInstance = null
+        var riveLoadId = 0
+        var jumpControl = null
+        var cuteControl = null
+        var lastPointerX = null
+        var lastPointerY = null
+        var CUTE_DISTANCE = 200
+
+        function resizeRive() {
+          if (riveInstance) riveInstance.resizeDrawingSurfaceToCanvas()
+          refreshCuteFromLastPointer()
+        }
+
+        function stopRive() {
+          riveLoadId += 1
+
+          setCute(false)
+          jumpControl = null
+          cuteControl = null
+
+          if (riveInstance) {
+            riveInstance.cleanup()
+            riveInstance = null
+          }
+          document.querySelector('.hero-visual').classList.remove('is-rive-ready')
+        }
+
+        function validateRiveBuffer(buffer, url) {
+          var bytes = new Uint8Array(buffer)
+          var hasRiveHeader =
+            bytes.length >= 4 &&
+            bytes[0] === 82 &&
+            bytes[1] === 73 &&
+            bytes[2] === 86 &&
+            bytes[3] === 69
+
+          if (!hasRiveHeader) {
+            throw new Error('Mustard Rive asset returned invalid data from ' + url)
+          }
+
+          return buffer
+        }
+
+        function bindRiveControls() {
+          var viewModel = riveInstance && riveInstance.viewModelInstance
+
+          if (viewModel) {
+            jumpControl = viewModel.trigger('jump')
+            cuteControl = viewModel.boolean('cute')
+          }
+
+          // Keep compatibility if the asset is ever changed back to legacy
+          // state-machine inputs instead of its current bound ViewModel.
+          if (!jumpControl || !cuteControl) {
+            var inputs = riveInstance.stateMachineInputs('State Machine 1') || []
+            inputs.forEach(function (input) {
+              if (!jumpControl && input.name === 'jump') jumpControl = input
+              if (!cuteControl && input.name === 'cute') cuteControl = input
+            })
+          }
+
+          refreshCuteFromLastPointer()
+        }
+
+        function fireJump() {
+          if (!jumpControl) return
+
+          if (typeof jumpControl.trigger === 'function') jumpControl.trigger()
+          else if (typeof jumpControl.fire === 'function') jumpControl.fire()
+        }
+
+        function setCute(value) {
+          if (cuteControl && cuteControl.value !== value) cuteControl.value = value
+        }
+
+        function updateCuteForPointer(clientX, clientY) {
+          if (!riveCanvas) return
+
+          var bounds = riveCanvas.getBoundingClientRect()
+          var distanceX = Math.max(bounds.left - clientX, 0, clientX - bounds.right)
+          var distanceY = Math.max(bounds.top - clientY, 0, clientY - bounds.bottom)
+          setCute(Math.hypot(distanceX, distanceY) <= CUTE_DISTANCE)
+        }
+
+        function refreshCuteFromLastPointer() {
+          if (lastPointerX == null || lastPointerY == null) {
+            setCute(false)
+            return
+          }
+
+          updateCuteForPointer(lastPointerX, lastPointerY)
+        }
+
+        function clearPointerPosition() {
+          lastPointerX = null
+          lastPointerY = null
+          setCute(false)
+        }
+
+        function forwardMouseToRive(event) {
+          lastPointerX = event.clientX
+          lastPointerY = event.clientY
+          updateCuteForPointer(lastPointerX, lastPointerY)
+
+          if (!riveInstance || !riveCanvas || event.target === riveCanvas) return
+
+          var bounds = riveCanvas.getBoundingClientRect()
+          var clientX = Math.max(bounds.left + 1, Math.min(event.clientX, bounds.right - 1))
+          var clientY = Math.max(bounds.top + 1, Math.min(event.clientY, bounds.bottom - 1))
+
+          riveCanvas.dispatchEvent(
+            new MouseEvent('mousemove', {
+              clientX: clientX,
+              clientY: clientY,
+            }),
+          )
+        }
+
+        function loadRiveBuffer(url) {
+          if (window.location.protocol !== 'file:') {
+            return fetch(url).then(function (response) {
+              if (!response.ok) throw new Error('HTTP ' + response.status + ' loading ' + url)
+              return response.arrayBuffer()
+            })
+          }
+
+          // Firefox can preview this static page directly from disk, but fetch()
+          // does not reliably return local binary assets. XHR supports the same-file
+          // preview and still gives Rive the exact ArrayBuffer it expects.
+          return new Promise(function (resolve, reject) {
+            var request = new XMLHttpRequest()
+            request.open('GET', url, true)
+            request.responseType = 'arraybuffer'
+            request.onload = function () {
+              if (request.response) resolve(request.response)
+              else reject(new Error('Could not read the local Rive asset at ' + url))
+            }
+            request.onerror = function () {
+              reject(new Error('Could not read the local Rive asset at ' + url))
+            }
+            request.send()
+          })
+        }
+
+        function startRive() {
+          if (riveInstance || !window.rive) return
+
+          var visual = document.querySelector('.hero-visual')
+          var assetLink = document.getElementById('mustard-rive-asset')
+          if (!visual || !riveCanvas || !assetLink) return
+
+          var assetUrl = assetLink.href
+          var loadId = (riveLoadId += 1)
+
+          loadRiveBuffer(assetUrl)
+            .then(function (buffer) {
+              if (loadId !== riveLoadId) return
+
+              riveInstance = new window.rive.Rive({
+                buffer: validateRiveBuffer(buffer, assetUrl),
+                canvas: riveCanvas,
+                artboard: 'mustard',
+                stateMachines: 'State Machine 1',
+                autoplay: true,
+                autoBind: true,
+                shouldDisableRiveListeners: false,
+                layout: new window.rive.Layout({
+                  fit: window.rive.Fit.Contain,
+                  alignment: window.rive.Alignment.Center,
+                }),
+                onLoad: function () {
+                  resizeRive()
+                  bindRiveControls()
+                  visual.classList.add('is-rive-ready')
+                  requestAnimationFrame(function () {
+                    if (riveInstance) riveInstance.setupRiveListeners()
+                  })
+                },
+                onLoadError: function (event) {
+                  console.error('Mustard Rive failed to initialize:', event)
+                  stopRive()
+                },
+              })
+            })
+            .catch(function (error) {
+              console.error('Mustard Rive failed to load:', error)
+              stopRive()
+            })
+        }
+
+        if (window.rive) {
+          startRive()
+        } else if (runtimeScript) {
+          runtimeScript.addEventListener('load', startRive, { once: true })
+        }
+
+        window.addEventListener('resize', resizeRive)
+        window.addEventListener('scroll', refreshCuteFromLastPointer, { passive: true })
+        window.addEventListener('mousemove', forwardMouseToRive)
+        window.addEventListener('click', fireJump)
+        window.addEventListener('blur', clearPointerPosition)
+        document.addEventListener('mouseleave', clearPointerPosition)
+        window.addEventListener('pagehide', stopRive)
+        window.addEventListener('pageshow', function (event) {
+          if (event.persisted) startRive()
+        })
+      })()
+    </script>
     <script>
       ;(function () {
         var ua = navigator.userAgent
