@@ -32,7 +32,7 @@ import { createMustardState } from '@/ui/content/mustard-state'
 import { showMustardToast } from './mustard-toast'
 import type { MustardNote } from '@/shared/model/MustardNote'
 import type { MustardComment } from '@/shared/model/MustardComment'
-import { Observable, synchronize } from '@fettstorch/jule'
+import { Observable, subject, synchronize } from '@fettstorch/jule'
 import { createApp, watch } from 'vue'
 
 const NOTES_MINIMIZED_KEY = 'mustard-notes-minimized'
@@ -166,7 +166,7 @@ export default defineContentScript({
 
       if (remoteNoteIds.length === 0 || !mustardState.currentUserId) {
         mustardState.unreadByNoteId = {}
-        unreadCountsSettledOnce = true
+        unreadCountsSettledOnce.resolve()
         maybeApplyPendingFocus()
         return
       }
@@ -180,7 +180,7 @@ export default defineContentScript({
             if (count > 0) next[noteId] = count
           }
           mustardState.unreadByNoteId = next
-          unreadCountsSettledOnce = true
+          unreadCountsSettledOnce.resolve()
           maybeApplyPendingFocus()
         })
         .catch((err) => {
@@ -330,18 +330,20 @@ export default defineContentScript({
     // view. It's retried as notes/unread-counts arrive (whichever the focus
     // needs) and cleared after it successfully applies.
     let pendingFocus: PendingFocus | null = null
-    // True once the page's initial (follow-graph-restricted) notes query has
-    // resolved, whether or not it returned any notes — distinguishes "still
-    // loading" from "loaded and legitimately empty" for the guard below.
-    let initialNotesQuerySettled = false
-    // True once fetchUnreadForNotes has completed at least one real round trip
-    // (even a trivial one with zero ids) — lets the page-row branch tell "the
-    // normal cycle hasn't reported back yet" from "it reported back and the
-    // target genuinely isn't in the loaded note set".
-    let unreadCountsSettledOnce = false
-    // One-shot per page load: guards against starting a second by-id repair
-    // fetch while one is already in flight or has already run.
-    let pendingFocusRepairState: 'idle' | 'pending' = 'idle'
+    // Resolves once the page's initial (follow-graph-restricted) notes query
+    // has settled, whether or not it returned any notes — distinguishes
+    // "still loading" from "loaded and legitimately empty" for the guard
+    // below. A subject rather than a boolean: .status() is a synchronous
+    // "has this settled yet" check, and .resolve() is a plain milestone
+    // signal (this never needs its resolved value).
+    const initialNotesQuerySettled = subject<void>()
+    // Resolves once fetchUnreadForNotes has completed at least one real round
+    // trip (even a trivial one with zero ids) — lets the page-row branch tell
+    // "the normal cycle hasn't reported back yet" from "it reported back and
+    // the target genuinely isn't in the loaded note set". fetchUnreadForNotes
+    // runs repeatedly all session long; resolve() is idempotent, so calling
+    // it every time still correctly means "at least once".
+    const unreadCountsSettledOnce = subject<void>()
 
     function scrollToNote(noteId: string): void {
       const note = mustardState.notes.find((n) => n.id === noteId)
@@ -368,8 +370,14 @@ export default defineContentScript({
      * mention channels — fetch just the missing note(s) by id (never the whole
      * page) and merge them in. Gives up (clears `pendingFocus`) only once an
      * authoritative source confirms there's genuinely nothing to find.
+     *
+     * Wrapped in `synchronize` so overlapping calls (e.g. one from the boot
+     * query settling, another from fetchUnreadForNotes settling moments later)
+     * queue instead of racing, and — unlike a hand-rolled "already ran" guard —
+     * naturally allow a fresh attempt any time it's called again, including
+     * after a transient failure below.
      */
-    async function repairPendingFocusVisibility(focus: PendingFocus): Promise<void> {
+    const repairPendingFocusVisibility = synchronize(async (focus: PendingFocus): Promise<void> => {
       const pageUrl = focus.pageUrl
       let missingIds: string[]
 
@@ -381,7 +389,8 @@ export default defineContentScript({
           unreadIds = await sendMessage(createQueryUnreadCommentNoteIdsMessage(pageUrl))
         } catch {
           // Transient failure — don't treat it as "no unread threads"; leave
-          // pendingFocus alone so it isn't wrongly given up on.
+          // pendingFocus alone so a later trigger (e.g. the next
+          // NOTIFICATIONS_CHANGED) can retry.
           return
         }
         if (unreadIds.length === 0) {
@@ -400,7 +409,7 @@ export default defineContentScript({
         dtos = await sendMessage(createQueryNotesByIdsMessage(pageUrl, missingIds))
       } catch {
         // Transient failure — don't conclude the note is gone; leave
-        // pendingFocus so a later retry can still repair it.
+        // pendingFocus alone so a later trigger can still retry.
         return
       }
       const existingIds = new Set(mustardState.notes.map((n) => n.id))
@@ -417,17 +426,34 @@ export default defineContentScript({
       fetchProfilesForNotes(newNotes)
       fetchCommentsForNotes(newNotes)
       fetchUnreadForNotes(mustardState.notes)
-      maybeApplyPendingFocus()
-    }
+
+      // Complete the focus for the repaired note(s) directly instead of
+      // re-invoking maybeApplyPendingFocus(): the page-row case may have
+      // already cleared pendingFocus after expanding a different,
+      // already-visible note, and even when it's still set, unreadByNoteId
+      // won't reflect these brand-new notes until the fetchUnreadForNotes
+      // call above resolves — acknowledging them here unconditionally is the
+      // only way they don't end up needing a second click.
+      mustardState.areNotesVisible = true
+      const newNoteIds = newNotes.map((n) => n.id).filter((id): id is string => !!id)
+      for (const id of newNoteIds) {
+        mustardState.expandedCommentNoteIds[id] = true
+        if (!mustardState.clientOutdated) {
+          event.emit(createMarkNotificationsSeenForNoteMessage(id))
+        }
+      }
+      if (newNoteIds[0]) scrollToNote(newNoteIds[0])
+      if (pendingFocus === focus) pendingFocus = null
+    })
 
     function maybeApplyPendingFocus(): void {
       if (!pendingFocus || pendingFocus.pageUrl !== getCurrentPageUrl()) return
-      if (!initialNotesQuerySettled) return // wait for the first query to resolve
+      if (initialNotesQuerySettled.status() === 'pending') return // wait for the first query to resolve
 
       const focus = pendingFocus
+      // repairPendingFocusVisibility is synchronize()'d, so calling this
+      // more than once just queues rather than racing or duplicating work.
       const startRepair = () => {
-        if (pendingFocusRepairState !== 'idle') return
-        pendingFocusRepairState = 'pending'
         repairPendingFocusVisibility(focus).catch(() => {
           if (pendingFocus === focus) pendingFocus = null
         })
@@ -452,14 +478,13 @@ export default defineContentScript({
           // Only attempt repair once the normal unread-counts cycle has
           // actually reported back and still found nothing — otherwise this
           // fires on every ordinary "counts haven't arrived yet" tick.
-          if (unreadCountsSettledOnce) startRepair()
+          if (unreadCountsSettledOnce.status() !== 'pending') startRepair()
           return
         }
         // A visible note already has unread comments, but a joined thread
         // outside the follow graph never surfaces in unreadByNoteId at all —
         // check for it too so it doesn't take a second click to discover.
-        // startRepair() is a one-shot no-op if a repair already ran.
-        if (unreadCountsSettledOnce) startRepair()
+        if (unreadCountsSettledOnce.status() !== 'pending') startRepair()
       }
 
       mustardState.areNotesVisible = true
@@ -761,14 +786,13 @@ export default defineContentScript({
       }
     })
 
-    // Query notes for the current page. Settle the flag on failure too —
-    // otherwise a rejected boot query (e.g. a transient service-worker or
-    // storage failure) leaves maybeApplyPendingFocus's loading guard blocked
-    // forever, since it was previously only set in the success branch.
+    // Query notes for the current page. Settle on failure too — otherwise a
+    // rejected boot query (e.g. a transient service-worker or storage
+    // failure) leaves maybeApplyPendingFocus's loading guard blocked forever.
     runNotesQuery(getCurrentPageUrl(), { withComments: true })
       .catch(() => {})
       .finally(() => {
-        initialNotesQuerySettled = true
+        initialNotesQuerySettled.resolve()
         maybeApplyPendingFocus()
       })
 
