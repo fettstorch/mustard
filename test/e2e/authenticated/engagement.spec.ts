@@ -284,6 +284,10 @@ test.describe('joined-thread deep link (unfollowed author)', () => {
     // thread" scenario, not just an unread-count check.
     await loginAs(context, TEST_USERS.stranger)
 
+    // DEBUG: surface background/content-script errors that a silent .catch()
+    // fallback would otherwise hide behind "element(s) not found".
+    context.on('console', (msg) => console.log('[context console]', msg.text()))
+
     const popup = await context.newPage()
     await popup.goto(popupUrl)
 
@@ -296,6 +300,7 @@ test.describe('joined-thread deep link (unfollowed author)', () => {
     await expect(unreadRow).toHaveCount(1)
 
     const [notePage] = await Promise.all([context.waitForEvent('page'), unreadRow.click()])
+    notePage.on('pageerror', (err) => console.log('[notePage pageerror]', err.message))
     await notePage.waitForLoadState()
 
     const mustard = notePage.locator('#mustard-host')
