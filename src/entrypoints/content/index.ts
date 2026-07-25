@@ -1,5 +1,7 @@
 import {
   createQueryNotesMessage,
+  createQueryNotesByIdsMessage,
+  createQueryUnreadCommentNoteIdsMessage,
   createGetAtprotoSessionMessage,
   createGetProfilesMessage,
   createQueryCommentsMessage,
@@ -164,6 +166,8 @@ export default defineContentScript({
 
       if (remoteNoteIds.length === 0 || !mustardState.currentUserId) {
         mustardState.unreadByNoteId = {}
+        unreadCountsSettledOnce = true
+        maybeApplyPendingFocus()
         return
       }
 
@@ -176,6 +180,7 @@ export default defineContentScript({
             if (count > 0) next[noteId] = count
           }
           mustardState.unreadByNoteId = next
+          unreadCountsSettledOnce = true
           maybeApplyPendingFocus()
         })
         .catch((err) => {
@@ -325,6 +330,18 @@ export default defineContentScript({
     // view. It's retried as notes/unread-counts arrive (whichever the focus
     // needs) and cleared after it successfully applies.
     let pendingFocus: PendingFocus | null = null
+    // True once the page's initial (follow-graph-restricted) notes query has
+    // resolved, whether or not it returned any notes — distinguishes "still
+    // loading" from "loaded and legitimately empty" for the guard below.
+    let initialNotesQuerySettled = false
+    // True once fetchUnreadForNotes has completed at least one real round trip
+    // (even a trivial one with zero ids) — lets the page-row branch tell "the
+    // normal cycle hasn't reported back yet" from "it reported back and the
+    // target genuinely isn't in the loaded note set".
+    let unreadCountsSettledOnce = false
+    // One-shot per page load: guards against starting a second by-id repair
+    // fetch while one is already in flight or has already run.
+    let pendingFocusRepairState: 'idle' | 'pending' = 'idle'
 
     function scrollToNote(noteId: string): void {
       const note = mustardState.notes.find((n) => n.id === noteId)
@@ -344,26 +361,90 @@ export default defineContentScript({
       })
     }
 
+    /**
+     * When a pending-focus target isn't in the currently-loaded note set — e.g.
+     * a notification about a joined thread on an unfollowed author's note,
+     * which `queryNotes` never fetches since it only covers the follow/repost/
+     * mention channels — fetch just the missing note(s) by id (never the whole
+     * page) and merge them in. Gives up (clears `pendingFocus`) only once an
+     * authoritative source confirms there's genuinely nothing to find.
+     */
+    async function repairPendingFocusVisibility(focus: PendingFocus): Promise<void> {
+      const pageUrl = focus.pageUrl
+      let missingIds: string[]
+
+      if (focus.noteId) {
+        missingIds = [focus.noteId]
+      } else {
+        const unreadIds = await sendMessage(createQueryUnreadCommentNoteIdsMessage(pageUrl)).catch(
+          () => [] as string[],
+        )
+        if (unreadIds.length === 0) {
+          if (pendingFocus === focus) pendingFocus = null
+          return
+        }
+        const loadedIds = new Set(mustardState.notes.map((n) => n.id))
+        missingIds = unreadIds.filter((id) => !loadedIds.has(id))
+        // Every unread note is already loaded — the in-flight/normal
+        // fetchUnreadForNotes cycle will expand it once counts land.
+        if (missingIds.length === 0) return
+      }
+
+      const dtos = await sendMessage(createQueryNotesByIdsMessage(pageUrl, missingIds)).catch(
+        () => [] as DtoMustardNote[],
+      )
+      const existingIds = new Set(mustardState.notes.map((n) => n.id))
+      const newNotes = dtos.map(DtoMustardNote.fromDto).filter((n) => !existingIds.has(n.id))
+
+      if (newNotes.length === 0) {
+        // Fetched directly by id (bypassing the follow graph) and still found
+        // nothing — the note is gone (deleted) or the id is stale. Give up.
+        if (pendingFocus === focus) pendingFocus = null
+        return
+      }
+
+      mustardState.notes = [...mustardState.notes, ...newNotes]
+      fetchProfilesForNotes(newNotes)
+      fetchCommentsForNotes(newNotes)
+      fetchUnreadForNotes(mustardState.notes)
+      maybeApplyPendingFocus()
+    }
+
     function maybeApplyPendingFocus(): void {
       if (!pendingFocus || pendingFocus.pageUrl !== getCurrentPageUrl()) return
-      if (mustardState.notes.length === 0) return // wait for notes to load
+      if (!initialNotesQuerySettled) return // wait for the first query to resolve
+
+      const focus = pendingFocus
+      const startRepair = () => {
+        if (pendingFocusRepairState !== 'idle') return
+        pendingFocusRepairState = 'pending'
+        repairPendingFocusVisibility(focus).catch(() => {
+          if (pendingFocus === focus) pendingFocus = null
+        })
+      }
 
       let targetIds: string[]
-      const targetNoteId = pendingFocus.noteId
+      const targetNoteId = focus.noteId
       if (targetNoteId) {
-        // Bail (don't keep waiting) if the note simply isn't visible to this user.
+        // Not visible via the normal query — try a targeted by-id repair
+        // before giving up (see repairPendingFocusVisibility).
         if (!mustardState.notes.some((n) => n.id === targetNoteId)) {
-          pendingFocus = null
+          startRepair()
           return
         }
         targetIds = [targetNoteId]
       } else {
-        // Page-row case: focus notes that currently have unread comments. If
-        // none are loaded yet, wait — fetchUnreadForNotes will retry us.
+        // Page-row case: focus notes that currently have unread comments.
         targetIds = Object.keys(mustardState.unreadByNoteId).filter(
           (id) => (mustardState.unreadByNoteId[id] ?? 0) > 0,
         )
-        if (targetIds.length === 0) return
+        if (targetIds.length === 0) {
+          // Only attempt repair once the normal unread-counts cycle has
+          // actually reported back and still found nothing — otherwise this
+          // fires on every ordinary "counts haven't arrived yet" tick.
+          if (unreadCountsSettledOnce) startRepair()
+          return
+        }
       }
 
       mustardState.areNotesVisible = true
@@ -656,7 +737,10 @@ export default defineContentScript({
 
     // Query notes for the current page
     runNotesQuery(getCurrentPageUrl(), { withComments: true })
-      .then(() => maybeApplyPendingFocus())
+      .then(() => {
+        initialNotesQuerySettled = true
+        maybeApplyPendingFocus()
+      })
       .catch(() => {})
 
     function showSessionExpiredBanner() {

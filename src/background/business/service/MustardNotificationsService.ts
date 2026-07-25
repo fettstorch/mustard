@@ -51,11 +51,13 @@ export interface MustardNotificationsService {
   getTotalUnreadCount(): Promise<number>
 
   /**
-   * pageUrl → unread comment count across the current user's own notes and
-   * other threads they joined. Pages with zero unread are absent. Drives the
-   * popup's Notes & Threads overview; always fresh (no index cache involved).
+   * pageUrl → ids of notes with an unread comment, across the current user's
+   * own notes and other threads they joined. Pages with zero unread are
+   * absent. Drives the popup's Notes & Threads overview (as a count) and
+   * deep-link repair (as specific note ids to fetch by id); always fresh (no
+   * index cache involved).
    */
-  queryUnreadCommentsByPage(): Promise<Record<string, number>>
+  queryUnreadCommentsByPage(): Promise<Record<string, string[]>>
 
   /**
    * ALL of the current user's unread notifications — both mentions and comment

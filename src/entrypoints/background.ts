@@ -421,6 +421,17 @@ export default defineBackground(() => {
       return notes.map(DtoMustardNote.toDto)
     },
 
+    QUERY_NOTES_BY_IDS: async (message) => {
+      const notes = await mustardNotesManager.queryMustardNotesByIds(
+        message.pageUrl,
+        message.noteIds,
+      )
+      return notes.map(DtoMustardNote.toDto)
+    },
+
+    QUERY_UNREAD_COMMENT_NOTE_IDS: (message) =>
+      mustardNotificationsManager.queryUnreadCommentNoteIdsForPage(message.pageUrl),
+
     GET_LINK_PREVIEW: (message) => resolveLinkPreviewForNote(message.url),
 
     GET_LINK_PREVIEW_IMAGE: (message) => loadLinkPreviewThumbnail(message.thumbnailPath),

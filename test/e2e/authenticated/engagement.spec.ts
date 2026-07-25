@@ -258,6 +258,60 @@ test.describe('popup notification badge', () => {
   })
 })
 
+test.describe('joined-thread deep link (unfollowed author)', () => {
+  let noteId: string
+
+  test.beforeEach(async () => {
+    noteId = await seedNote(author.userId, FIXTURE_URL, 'Note the stranger joins uninvited')
+    await seedComment(
+      noteId,
+      TEST_USERS.stranger.userId,
+      'Stranger joins without following the author',
+    )
+    // A later reply creates the unread notification the stranger clicks through.
+    await seedComment(noteId, viewer.userId, 'Someone else replies to the thread')
+  })
+
+  test.afterEach(async () => {
+    await deleteNote(noteId)
+  })
+
+  test('clicking the joined-thread popup row reveals the note even though the author is unfollowed', async ({
+    authenticatedContext: context,
+    popupUrl,
+  }) => {
+    // stranger follows nobody — a genuine "joined an unfollowed author's
+    // thread" scenario, not just an unread-count check.
+    await loginAs(context, TEST_USERS.stranger)
+
+    const popup = await context.newPage()
+    await popup.goto(popupUrl)
+
+    const unreadPill = popup.locator('.my-pages-unread-pill')
+    await expect(unreadPill).toBeVisible()
+    await expect(unreadPill).toContainText('1 unread')
+
+    await popup.getByRole('button', { name: /Notes & Threads/ }).click()
+    const unreadRow = popup.locator('.my-pages-row.has-unread')
+    await expect(unreadRow).toHaveCount(1)
+
+    const [notePage] = await Promise.all([context.waitForEvent('page'), unreadRow.click()])
+    await notePage.waitForLoadState()
+
+    const mustard = notePage.locator('#mustard-host')
+    const note = mustard
+      .locator('.mustard-note-wrapper')
+      .filter({ hasText: 'Note the stranger joins uninvited' })
+    // This is the exact gap the Codex review flagged: queryNotes only fetches
+    // notes reachable via follow/repost/mention, so a joined-thread note from
+    // an unfollowed author never loads here even though the popup linked to it.
+    await expect(note).toBeVisible({ timeout: 8_000 })
+    await expect(note.getByText('Someone else replies to the thread')).toBeVisible()
+
+    await loginAs(context, viewer)
+  })
+})
+
 test.describe('mention visibility in index', () => {
   let noteId: string
 

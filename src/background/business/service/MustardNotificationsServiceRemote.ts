@@ -114,7 +114,7 @@ export class MustardNotificationsServiceRemote implements MustardNotificationsSe
     return count ?? 0
   }
 
-  async queryUnreadCommentsByPage(): Promise<Record<string, number>> {
+  async queryUnreadCommentsByPage(): Promise<Record<string, string[]>> {
     // RLS scopes rows to recipient_id = auth.jwt().sub. Include comment
     // notifications from both the user's own notes and other threads they have
     // joined, so every unread thread is visible and clickable in the popup.
@@ -132,10 +132,10 @@ export class MustardNotificationsServiceRemote implements MustardNotificationsSe
       .eq('type', 'comment')
       .overrideTypes<{ note_id: string; notes: { page_url: string } | null }[], { merge: false }>()
     if (error) throw new Error(`Failed to query unread by page: ${error.message}`)
-    const result: Record<string, number> = {}
+    const result: Record<string, string[]> = {}
     for (const row of data ?? []) {
       if (!row.notes) continue
-      result[row.notes.page_url] = (result[row.notes.page_url] ?? 0) + 1
+      ;(result[row.notes.page_url] ??= []).push(row.note_id)
     }
     return result
   }

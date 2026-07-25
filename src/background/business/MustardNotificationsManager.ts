@@ -100,7 +100,7 @@ export const mustardNotificationsManager = {
 
     const entries = pages.map((pageUrl) => ({
       pageUrl,
-      unreadCount: unreadCommentsByPage[pageUrl] ?? 0,
+      unreadCount: unreadCommentsByPage[pageUrl]?.length ?? 0,
       lastNoteAt: latestNoteAtByPage[pageUrl] ?? 0,
     }))
 
@@ -115,5 +115,16 @@ export const mustardNotificationsManager = {
     })
 
     return entries
+  },
+
+  /**
+   * Ids of notes with an unread comment on a specific page, for the current
+   * user — sourced straight from the notifications table, so it works even
+   * for notes the viewer's follow graph wouldn't otherwise surface (e.g. a
+   * joined thread on an unfollowed author's note). Deep-link repair only.
+   */
+  async queryUnreadCommentNoteIdsForPage(pageUrl: string): Promise<string[]> {
+    const byPage = await notificationsService.queryUnreadCommentsByPage()
+    return byPage[pageUrl] ?? []
   },
 }

@@ -48,6 +48,32 @@ export type QueryNotesMessage = Satisfies<
   }
 >
 
+// Message to fetch specific notes by id on a page, ignoring the follow graph
+// (response: DtoMustardNote[]). Deep-link repair only: when a notification
+// points at a note outside the follow/repost/mention channels (e.g. a joined
+// thread on an unfollowed author's note), this loads just that note instead
+// of reloading the whole page via `includeAllAuthors`.
+export type QueryNotesByIdsMessage = Satisfies<
+  BaseMessage,
+  {
+    type: 'QUERY_NOTES_BY_IDS'
+    pageUrl: string
+    noteIds: string[]
+  }
+>
+
+// Message to ask which note ids on a page have unread comments for the
+// current user (response: string[]) — sourced from the notifications table
+// directly, so it works even when the notes themselves haven't loaded yet
+// (e.g. a joined thread on an unfollowed author's note).
+export type QueryUnreadCommentNoteIdsMessage = Satisfies<
+  BaseMessage,
+  {
+    type: 'QUERY_UNREAD_COMMENT_NOTE_IDS'
+    pageUrl: string
+  }
+>
+
 /** Content script → service worker: unfurl the editor's first URL. */
 export type GetLinkPreviewMessage = Satisfies<
   BaseMessage,
@@ -393,6 +419,8 @@ export type Message =
   | OpenNoteEditorMessage
   | UpsertNoteMessage
   | QueryNotesMessage
+  | QueryNotesByIdsMessage
+  | QueryUnreadCommentNoteIdsMessage
   | GetLinkPreviewMessage
   | GetLinkPreviewImageMessage
   | DeleteNoteMessage
@@ -441,6 +469,8 @@ type MessageResponses = {
   OPEN_NOTE_EDITOR: void
   UPSERT_NOTE: WriteResponse<DtoMustardNote[]>
   QUERY_NOTES: DtoMustardNote[]
+  QUERY_NOTES_BY_IDS: DtoMustardNote[]
+  QUERY_UNREAD_COMMENT_NOTE_IDS: string[]
   GET_LINK_PREVIEW: LinkPreview | undefined
   GET_LINK_PREVIEW_IMAGE: string | undefined
   DELETE_NOTE: DtoMustardNote[]
@@ -554,6 +584,19 @@ export function createQueryNotesMessage(
     pageUrl,
     ...(includeAllAuthors ? { includeAllAuthors } : {}),
   }
+}
+
+export function createQueryNotesByIdsMessage(
+  pageUrl: string,
+  noteIds: string[],
+): QueryNotesByIdsMessage {
+  return { type: 'QUERY_NOTES_BY_IDS', pageUrl, noteIds }
+}
+
+export function createQueryUnreadCommentNoteIdsMessage(
+  pageUrl: string,
+): QueryUnreadCommentNoteIdsMessage {
+  return { type: 'QUERY_UNREAD_COMMENT_NOTE_IDS', pageUrl }
 }
 
 export function createGetLinkPreviewMessage(url: string): GetLinkPreviewMessage {
