@@ -19,7 +19,7 @@ The name "mustard" comes from the German saying _"seinen Senf dazu geben"_ (to a
   - **Save locally**: Stored in browser only (no login required)
   - **Publish**: Stored on server, visible to followers (requires login — Bluesky or GitHub)
 - Users can delete their own notes
-- **Comments**: Any logged-in user can leave flat (non-nested) comments on published notes; comments are publicly readable; note authors are notified of new comments via an extension-icon badge and a "My Mustard Notes" popup section; unread indicators clear when the comment thread is expanded
+- **Comments**: Any logged-in user can leave flat (non-nested) comments on published notes; comments are publicly readable; each new comment notifies the note author and everyone who previously joined the thread (except the new commenter); unread indicators clear when the comment thread is expanded
 
 #### Accounts & Social Graph
 

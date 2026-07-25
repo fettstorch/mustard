@@ -28,7 +28,7 @@ flowchart TB
 
     subgraph Extension["Mustard Extension"]
         direction LR
-        Popup["Popup<br/>(My Mustard Notes • badge)"]
+        Popup["Popup<br/>(Notes & Threads • badge)"]
         Options["Options"]
         CS["Content Script<br/>(notes + thread UI + red dot)"]
         Badge["Icon Badge"]
@@ -131,8 +131,10 @@ flowchart TB
 - **Reposts are visibility grants**, not new notes: resolved alongside (not merged
   into) the author index to avoid leaking the author's other notes.
 - **Notifications**: presence-of-row = unread (no `read` column); a
-  `SECURITY DEFINER` trigger on `comments` INSERT writes them and skips
-  self-comments.
+  `SECURITY DEFINER` trigger on `comments` INSERT fans a `comment` notification
+  out to the note author and every distinct prior commenter, while skipping the
+  new commenter. A participant mentioned in that same comment receives the
+  thread notification only (not a duplicate `mention` row).
 - **Identity = opaque UUID, not provider id**: authors/reposters/mention actors
   are `users.id` UUIDs. To render them, `GET_PROFILES` and mention enrichment go
   through `resolveProfilesByUserId` (UUID → `identities` → atproto Bluesky
