@@ -370,7 +370,6 @@ export default defineContentScript({
      * authoritative source confirms there's genuinely nothing to find.
      */
     async function repairPendingFocusVisibility(focus: PendingFocus): Promise<void> {
-      console.debug('[REPAIR-DEBUG] repairPendingFocusVisibility started', focus)
       const pageUrl = focus.pageUrl
       let missingIds: string[]
 
@@ -378,12 +377,8 @@ export default defineContentScript({
         missingIds = [focus.noteId]
       } else {
         const unreadIds = await sendMessage(createQueryUnreadCommentNoteIdsMessage(pageUrl)).catch(
-          (err) => {
-            console.debug('[REPAIR-DEBUG] QUERY_UNREAD_COMMENT_NOTE_IDS failed', err)
-            return [] as string[]
-          },
+          () => [] as string[],
         )
-        console.debug('[REPAIR-DEBUG] unreadIds', unreadIds)
         if (unreadIds.length === 0) {
           if (pendingFocus === focus) pendingFocus = null
           return
@@ -396,12 +391,8 @@ export default defineContentScript({
       }
 
       const dtos = await sendMessage(createQueryNotesByIdsMessage(pageUrl, missingIds)).catch(
-        (err) => {
-          console.debug('[REPAIR-DEBUG] QUERY_NOTES_BY_IDS failed', err)
-          return [] as DtoMustardNote[]
-        },
+        () => [] as DtoMustardNote[],
       )
-      console.debug('[REPAIR-DEBUG] fetched notes by id', dtos)
       const existingIds = new Set(mustardState.notes.map((n) => n.id))
       const newNotes = dtos.map(DtoMustardNote.fromDto).filter((n) => !existingIds.has(n.id))
 
@@ -420,15 +411,6 @@ export default defineContentScript({
     }
 
     function maybeApplyPendingFocus(): void {
-      console.debug('[REPAIR-DEBUG] maybeApplyPendingFocus called', {
-        pendingFocus,
-        currentPageUrl: getCurrentPageUrl(),
-        initialNotesQuerySettled,
-        unreadCountsSettledOnce,
-        pendingFocusRepairState,
-        notesCount: mustardState.notes.length,
-        unreadByNoteId: mustardState.unreadByNoteId,
-      })
       if (!pendingFocus || pendingFocus.pageUrl !== getCurrentPageUrl()) return
       if (!initialNotesQuerySettled) return // wait for the first query to resolve
 
@@ -483,17 +465,15 @@ export default defineContentScript({
       .get(PENDING_FOCUS_KEY)
       .then((result) => {
         const focus = result[PENDING_FOCUS_KEY] as PendingFocus | undefined
-        console.debug('[REPAIR-DEBUG] pending focus read from storage', {
-          focus,
-          currentPageUrl: getCurrentPageUrl(),
-        })
-        if (focus) {
-          // One-shot: clear immediately so it never fires on later navigations.
+        // Every tab's content script runs this same read (matches: <all_urls>),
+        // so only the tab the focus actually targets may consume (and clear)
+        // it — otherwise an unrelated tab that happens to boot around the same
+        // time (e.g. the onInstalled onboarding tab) can read and delete this
+        // one-shot key before the real target tab gets to it.
+        if (focus && focus.pageUrl === getCurrentPageUrl()) {
           browser.storage.local.remove(PENDING_FOCUS_KEY).catch(() => {})
-          if (focus.pageUrl === getCurrentPageUrl()) {
-            pendingFocus = focus
-            maybeApplyPendingFocus()
-          }
+          pendingFocus = focus
+          maybeApplyPendingFocus()
         }
       })
       .catch(() => {})

@@ -284,10 +284,6 @@ test.describe('joined-thread deep link (unfollowed author)', () => {
     // thread" scenario, not just an unread-count check.
     await loginAs(context, TEST_USERS.stranger)
 
-    // DEBUG: surface the service worker's own logs (message handling,
-    // uncaught errors) alongside notePage's below.
-    context.on('console', (msg) => console.log('[sw?]', msg.text()))
-
     const popup = await context.newPage()
     await popup.goto(popupUrl)
 
@@ -316,10 +312,6 @@ test.describe('joined-thread deep link (unfollowed author)', () => {
       }),
       unreadRow.click(),
     ])
-    // DEBUG: we've confirmed notePage is the right tab; see why the note
-    // still never renders on it in CI.
-    notePage.on('console', (msg) => console.log('[notePage]', msg.text()))
-    notePage.on('pageerror', (err) => console.log('[notePage pageerror]', err.message))
     await notePage.waitForLoadState()
 
     const mustard = notePage.locator('#mustard-host')
