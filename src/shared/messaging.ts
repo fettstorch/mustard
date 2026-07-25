@@ -334,8 +334,8 @@ export type MarkNotificationsSeenForNoteMessage = Satisfies<
   }
 >
 
-// Popup → service worker: overview of pages where the user has notes, with
-// per-page unread counts. Response: DtoMyPagesOverview.
+// Popup → service worker: overview of pages where the user has notes or unread
+// joined-thread activity, with per-page unread counts. Response: DtoMyPagesOverview.
 export type GetMyPagesOverviewMessage = Satisfies<
   BaseMessage,
   {

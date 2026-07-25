@@ -8,7 +8,7 @@
  *
  * `noteId === null` means "no specific note" — the content script falls back to
  * focusing whichever notes on the page currently have unread comments (the
- * "My Mustard Notes" page-row case).
+ * "Notes & Threads" page-row case).
  */
 export const PENDING_FOCUS_KEY = 'mustard-pending-focus'
 

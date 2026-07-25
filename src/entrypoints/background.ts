@@ -176,7 +176,7 @@ export default defineBackground(() => {
    * notifications (remote note/comment deletion cascades, mark-seen): refresh
    * the toolbar badge and tell the popup + content scripts. The index cache is
    * NOT invalidated — unread counts are computed straight from the
-   * notifications table (queryMyUnreadByPage), never from the cached index.
+   * notifications table (queryUnreadCommentsByPage), never from the cached index.
    * Fire-and-forget — callers don't need to await the fan-out.
    */
   function afterNotificationMutation(): void {

@@ -224,7 +224,7 @@ test.describe('popup notification badge', () => {
     const popup = await context.newPage()
     await popup.goto(popupUrl)
 
-    // The popup "My Mustard Notes" tab shows unread count when there are notifications
+    // The popup "Notes & Threads" section shows unread count when there are notifications
     await expect(popup.getByRole('button', { name: 'Logout' })).toBeVisible()
     const unreadPill = popup.locator('.my-pages-unread-pill')
     await expect(unreadPill).toBeVisible()
@@ -233,6 +233,28 @@ test.describe('popup notification badge', () => {
     await popup.close()
     // Restore viewer session for any subsequent tests
     await loginAs(context, viewer)
+  })
+
+  test('prior commenter popup shows unread activity on another author’s note', async ({
+    authenticatedContext: context,
+    popupUrl,
+  }) => {
+    const status = getLocalSupabaseStatus()
+    await seedComment(noteId, TEST_USERS.stranger.userId, 'A later participant replies', status)
+
+    const popup = await context.newPage()
+    await popup.goto(popupUrl)
+
+    const unreadPill = popup.locator('.my-pages-unread-pill')
+    await expect(unreadPill).toBeVisible()
+    await expect(unreadPill).toContainText('1 unread')
+
+    await popup.getByRole('button', { name: /Notes & Threads/ }).click()
+    const unreadPage = popup.locator('.my-pages-row.has-unread')
+    await expect(unreadPage).toHaveCount(1)
+    await expect(unreadPage).toHaveAttribute('title', FIXTURE_URL)
+
+    await popup.close()
   })
 })
 
