@@ -16,7 +16,7 @@ export interface RawMention {
 }
 
 /**
- * An unread notification of any kind (a mention OR a comment on your note),
+ * An unread notification of any kind (a mention OR activity in a comment thread),
  * before actor-profile enrichment. The `type` distinguishes the two so a native
  * browser notification can title itself appropriately. `source` still records
  * whether the snippet came from a note or a comment.
@@ -26,7 +26,7 @@ export interface RawNotification extends RawMention {
 }
 
 /**
- * Service for "unread comment notifications" on the current user's notes.
+ * Service for unread mention and comment-thread notifications.
  *
  * The notifications table only stores unread rows — there is no "read" column.
  * Marking a notification as seen == deleting the row.
@@ -51,15 +51,17 @@ export interface MustardNotificationsService {
   getTotalUnreadCount(): Promise<number>
 
   /**
-   * pageUrl → unread count across the current user's OWN notes (both comment
-   * and mention types). Pages with zero unread are absent. Drives the popup's
-   * My Pages overview; always fresh (no index cache involved).
+   * pageUrl → ids of notes with an unread comment, across the current user's
+   * own notes and other threads they joined. Pages with zero unread are
+   * absent. Drives the popup's Notes & Threads overview (as a count) and
+   * deep-link repair (as specific note ids to fetch by id); always fresh (no
+   * index cache involved).
    */
-  queryMyUnreadByPage(userId: string): Promise<Record<string, number>>
+  queryUnreadCommentsByPage(): Promise<Record<string, string[]>>
 
   /**
-   * ALL of the current user's unread notifications — both mentions and comments
-   * on their notes — newest first. RLS scopes to the recipient. Drives native
+   * ALL of the current user's unread notifications — both mentions and comment
+   * thread activity — newest first. RLS scopes to the recipient. Drives native
    * browser notifications and the popup's Mentions list (filtered to mentions by
    * the caller), mirroring every event the in-app system tracks.
    */

@@ -120,9 +120,7 @@ export function createNativeNotifications(deps: NativeNotificationsDeps): Native
         }
         staggered = true
         const title =
-          n.type === 'mention'
-            ? `${actorName(n)} mentioned you`
-            : `${actorName(n)} commented on your note`
+          n.type === 'mention' ? `${actorName(n)} mentioned you` : `${actorName(n)} added a comment`
         try {
           await browser.notifications.create(n.id, {
             type: 'basic',

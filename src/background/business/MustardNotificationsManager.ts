@@ -42,8 +42,8 @@ export const mustardNotificationsManager = {
   },
 
   /**
-   * All of the current user's unread notifications (mentions AND comments on
-   * their notes), newest first, with each actor resolved to a profile. Drives
+   * All of the current user's unread notifications (mentions AND comment-thread
+   * activity), newest first, with each actor resolved to a profile. Drives
    * both native browser notifications and the popup's Mentions list (filtered to
    * `type === 'mention'` by the caller).
    *
@@ -77,28 +77,30 @@ export const mustardNotificationsManager = {
   },
 
   /**
-   * Build the popup's "My Pages" overview. Pages + latest-note timestamps come
-   * from the cached get-index data; unread counts come straight from the
+   * Build the popup's "Notes & Threads" overview. The user's published-note
+   * pages + latest-note timestamps come from cached index data. Pages with
+   * unread activity from any thread they joined come straight from the
    * notifications table so they're fresh even while the index cache is warm.
    *
    * Sort order:
    *   1. Pages with at least one unread come first, sorted by unread count desc.
    *   2. Remaining pages sorted by lastNoteAt desc (most-recent note first).
    *
-   * Returns [] when the user isn't logged in or has no notes.
+   * Returns [] when the user has neither published notes nor unread joined threads.
    */
   async queryMyPagesOverview(userId: string): Promise<DtoMyPagesOverview> {
-    const [index, latestNoteAtByPage, myUnreadByPage] = await Promise.all([
+    const [index, latestNoteAtByPage, unreadCommentsByPage] = await Promise.all([
       notesService.queryIndex(userId),
       notesService.queryMyLatestNoteAtByPage(userId),
-      notificationsService.queryMyUnreadByPage(userId),
+      notificationsService.queryUnreadCommentsByPage(),
     ])
 
     const myPages = index.getPagesForUser(userId)
+    const pages = [...new Set([...myPages, ...Object.keys(unreadCommentsByPage)])]
 
-    const entries = myPages.map((pageUrl) => ({
+    const entries = pages.map((pageUrl) => ({
       pageUrl,
-      unreadCount: myUnreadByPage[pageUrl] ?? 0,
+      unreadCount: unreadCommentsByPage[pageUrl]?.length ?? 0,
       lastNoteAt: latestNoteAtByPage[pageUrl] ?? 0,
     }))
 
@@ -113,5 +115,16 @@ export const mustardNotificationsManager = {
     })
 
     return entries
+  },
+
+  /**
+   * Ids of notes with an unread comment on a specific page, for the current
+   * user — sourced straight from the notifications table, so it works even
+   * for notes the viewer's follow graph wouldn't otherwise surface (e.g. a
+   * joined thread on an unfollowed author's note). Deep-link repair only.
+   */
+  async queryUnreadCommentNoteIdsForPage(pageUrl: string): Promise<string[]> {
+    const byPage = await notificationsService.queryUnreadCommentsByPage()
+    return byPage[pageUrl] ?? []
   },
 }

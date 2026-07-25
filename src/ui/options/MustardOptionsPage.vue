@@ -446,8 +446,9 @@ async function disconnect(provider: string, label: string) {
             <span class="pref-label">Browser notifications</span>
           </label>
           <span class="pref-hint">
-            Get a native browser notification when someone mentions you or comments on your note —
-            on top of the in-app badge. Picked up as you browse, so there may be a short delay.
+            Get a native browser notification when someone mentions you or adds a comment to a
+            thread you joined — on top of the in-app badge. Picked up as you browse, so there may be
+            a short delay.
           </span>
         </div>
         <div class="pref-row pref-row-stack">

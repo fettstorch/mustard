@@ -1,10 +1,11 @@
 <script setup lang="ts">
 /**
- * "My Pages" section in the popup.
+ * "Notes & Threads" section in the popup.
  *
- * Lists every page where the logged-in user has published notes. Pages with
- * unread comment notifications float to the top (sorted by unread count desc),
- * remaining pages sort by most-recently-updated note desc.
+ * Lists every page where the logged-in user has published notes, plus pages
+ * where they have unread activity in a thread they joined. Unread pages float
+ * to the top (sorted by unread count desc); remaining pages sort by the user's
+ * most-recently-updated note.
  *
  * The section is collapsible (click the header to expand/collapse).
  * Clicking a page row opens that URL in a new tab.
@@ -60,7 +61,7 @@ function toggle() {
       @click="toggle"
     >
       <span class="my-pages-title">
-        My Mustard Notes
+        Notes &amp; Threads
         <span v-if="totalUnread > 0" class="my-pages-unread-pill"> {{ totalUnread }} unread </span>
       </span>
       <span class="my-pages-chevron" :class="{ 'is-open': isExpanded }">›</span>
@@ -69,7 +70,7 @@ function toggle() {
     <div v-if="isExpanded" class="my-pages-list">
       <div v-if="isLoading && overview.length === 0" class="my-pages-status">Loading…</div>
       <div v-else-if="overview.length === 0" class="my-pages-status">
-        You haven't published any notes yet.
+        You haven't published any notes or joined any threads yet.
       </div>
       <button
         v-for="entry in overview"

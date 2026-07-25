@@ -128,11 +128,11 @@ Tests that need specific DB state seed and clean it per-test via helpers in
 
 ### Test files
 
-| File                        | What it covers                                                                                                  |
-| --------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| `authenticated.spec.ts`     | Popup recognises seeded session; publishes a remote note; reloads and restores it                               |
-| `social-visibility.spec.ts` | Follow-graph visibility, repost bridge, unrepost revocation, repostersByNoteId                                  |
-| `engagement.spec.ts`        | Comment notification trigger, self-comment exclusion, cascade delete, mention notifications, author popup badge |
+| File                        | What it covers                                                                                                                                                             |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `authenticated.spec.ts`     | Popup recognises seeded session; publishes a remote note; reloads and restores it                                                                                          |
+| `social-visibility.spec.ts` | Follow-graph visibility, repost bridge, unrepost revocation, repostersByNoteId                                                                                             |
+| `engagement.spec.ts`        | Comment-notification fan-out to authors and prior participants, self-comment exclusion, recipient deduplication, cascade delete, mention notifications, author popup badge |
 
 ### Anon key
 

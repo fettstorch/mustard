@@ -304,6 +304,27 @@ class MustardNotesServiceRemote implements MustardNotesService {
     }
   }
 
+  /**
+   * Fetch specific notes by id on a page, ignoring the viewer's follow graph —
+   * the targeted counterpart to `queryAllNotesForPage`. Backs deep-link repair:
+   * when a notification points at a note outside the follow/repost/mention
+   * channels (e.g. a joined thread on an unfollowed author's note), this loads
+   * just that note instead of the whole page.
+   */
+  async queryNotesByIds(pageUrl: string, noteIds: string[]): Promise<MustardNote[]> {
+    if (noteIds.length === 0) return []
+    // Deliberately doesn't catch-and-return-[] like the sibling queries above:
+    // callers (pending-focus repair) treat a genuinely empty result as proof
+    // the note is gone, so a transient failure must propagate as a rejection
+    // instead of masquerading as "confirmed not found".
+    const notesById = new Map<string, DbNote>()
+    await fetchNotesByIdForPage(pageUrl, noteIds, notesById)
+    const repostersByNoteId = await fetchRepostersForNotes([...notesById.keys()])
+    return [...notesById.values()].map((row) =>
+      dbNoteToMustardNote(row, repostersByNoteId.get(row.id) ?? []),
+    )
+  }
+
   async upsertNote(note: MustardNote): Promise<MustardNote> {
     // Validate content length
     if (note.content.length > LIMITS.CONTENT_MAX_LENGTH) {

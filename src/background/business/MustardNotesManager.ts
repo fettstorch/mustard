@@ -60,6 +60,14 @@ export const mustardNotesManager = {
   },
 
   /**
+   * Fetch specific remote notes by id, ignoring the follow graph. Deep-link
+   * repair only — see `MustardNotesServiceRemote.queryNotesByIds`.
+   */
+  async queryMustardNotesByIds(pageUrl: string, noteIds: string[]): Promise<MustardNote[]> {
+    return remoteService.queryNotesByIds(pageUrl, noteIds)
+  },
+
+  /**
    * Query the index of pages with notes from all services.
    * @param userId - The logged-in user's ID (DID), used for remote service queries
    */

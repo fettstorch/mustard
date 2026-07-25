@@ -176,7 +176,7 @@ export default defineBackground(() => {
    * notifications (remote note/comment deletion cascades, mark-seen): refresh
    * the toolbar badge and tell the popup + content scripts. The index cache is
    * NOT invalidated — unread counts are computed straight from the
-   * notifications table (queryMyUnreadByPage), never from the cached index.
+   * notifications table (queryUnreadCommentsByPage), never from the cached index.
    * Fire-and-forget — callers don't need to await the fan-out.
    */
   function afterNotificationMutation(): void {
@@ -420,6 +420,17 @@ export default defineBackground(() => {
       )
       return notes.map(DtoMustardNote.toDto)
     },
+
+    QUERY_NOTES_BY_IDS: async (message) => {
+      const notes = await mustardNotesManager.queryMustardNotesByIds(
+        message.pageUrl,
+        message.noteIds,
+      )
+      return notes.map(DtoMustardNote.toDto)
+    },
+
+    QUERY_UNREAD_COMMENT_NOTE_IDS: (message) =>
+      mustardNotificationsManager.queryUnreadCommentNoteIdsForPage(message.pageUrl),
 
     GET_LINK_PREVIEW: (message) => resolveLinkPreviewForNote(message.url),
 
