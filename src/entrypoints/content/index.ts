@@ -399,9 +399,14 @@ export default defineContentScript({
         }
         const loadedIds = new Set(mustardState.notes.map((n) => n.id))
         missingIds = unreadIds.filter((id) => !loadedIds.has(id))
-        // Every unread note is already loaded — the in-flight/normal
-        // fetchUnreadForNotes cycle will expand it once counts land.
-        if (missingIds.length === 0) return
+        // Every unread note is already loaded — confirmed nothing hidden, the
+        // in-flight/normal fetchUnreadForNotes cycle already expanded it (the
+        // caller may have deferred clearing pendingFocus to us for exactly
+        // this determination — see maybeApplyPendingFocus's repairTriggered).
+        if (missingIds.length === 0) {
+          if (pendingFocus === focus) pendingFocus = null
+          return
+        }
       }
 
       let dtos: DtoMustardNote[]
@@ -460,6 +465,12 @@ export default defineContentScript({
       }
 
       let targetIds: string[]
+      // True once a hidden-thread repair has been kicked off alongside the
+      // already-visible target below. In that case repairPendingFocusVisibility
+      // itself owns clearing pendingFocus (it may still need to retry after a
+      // transient failure) — the tail below must not race it by clearing
+      // pendingFocus out from under a repair that hasn't resolved yet.
+      let repairTriggered = false
       const targetNoteId = focus.noteId
       if (targetNoteId) {
         // Not visible via the normal query — try a targeted by-id repair
@@ -484,7 +495,10 @@ export default defineContentScript({
         // A visible note already has unread comments, but a joined thread
         // outside the follow graph never surfaces in unreadByNoteId at all —
         // check for it too so it doesn't take a second click to discover.
-        if (unreadCountsSettledOnce.status() !== 'pending') startRepair()
+        if (unreadCountsSettledOnce.status() !== 'pending') {
+          repairTriggered = true
+          startRepair()
+        }
       }
 
       mustardState.areNotesVisible = true
@@ -507,7 +521,7 @@ export default defineContentScript({
         }
       }
       scrollToNote(targetIds[0]!)
-      pendingFocus = null
+      if (!repairTriggered) pendingFocus = null
     }
 
     browser.storage.local
