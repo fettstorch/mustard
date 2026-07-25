@@ -284,10 +284,6 @@ test.describe('joined-thread deep link (unfollowed author)', () => {
     // thread" scenario, not just an unread-count check.
     await loginAs(context, TEST_USERS.stranger)
 
-    // DEBUG: surface background/content-script errors that a silent .catch()
-    // fallback would otherwise hide behind "element(s) not found".
-    context.on('console', (msg) => console.log('[context console]', msg.text()))
-
     const popup = await context.newPage()
     await popup.goto(popupUrl)
 
@@ -299,8 +295,23 @@ test.describe('joined-thread deep link (unfollowed author)', () => {
     const unreadRow = popup.locator('.my-pages-row.has-unread')
     await expect(unreadRow).toHaveCount(1)
 
-    const [notePage] = await Promise.all([context.waitForEvent('page'), unreadRow.click()])
-    notePage.on('pageerror', (err) => console.log('[notePage pageerror]', err.message))
+    // Filter for our target page specifically: on a fresh extension install
+    // (always the case in CI, unlike a reused local dev profile),
+    // browser.runtime.onInstalled also opens an unrelated onboarding tab
+    // whose Page can otherwise race with (and be mistaken for) the tab
+    // openDeepLink creates here.
+    const [notePage] = await Promise.all([
+      context.waitForEvent('page', {
+        predicate: async (p) => {
+          if (p.url() === FIXTURE_URL) return true
+          return p
+            .waitForURL(FIXTURE_URL, { timeout: 2_000 })
+            .then(() => true)
+            .catch(() => false)
+        },
+      }),
+      unreadRow.click(),
+    ])
     await notePage.waitForLoadState()
 
     const mustard = notePage.locator('#mustard-host')
@@ -310,9 +321,7 @@ test.describe('joined-thread deep link (unfollowed author)', () => {
     // This is the exact gap the Codex review flagged: queryNotes only fetches
     // notes reachable via follow/repost/mention, so a joined-thread note from
     // an unfollowed author never loads here even though the popup linked to it.
-    // The repair path is a few sequential round trips (unread-ids → notes-by-id
-    // → comments/counts), slower than a normal page load, hence the longer wait.
-    await expect(note).toBeVisible({ timeout: 15_000 })
+    await expect(note).toBeVisible({ timeout: 10_000 })
     await expect(note.getByText('Someone else replies to the thread')).toBeVisible()
 
     await loginAs(context, viewer)
