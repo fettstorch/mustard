@@ -468,7 +468,16 @@ export default defineContentScript({
         // Reading the thread acknowledges its unread comment notifications.
         // Routed through the same event the manual toggle uses, so the optimistic
         // clear + sendMessage stay in one canonical place.
-        if (mustardState.unreadByNoteId[id] && !mustardState.clientOutdated) {
+        //
+        // A specific-note focus (targetNoteId) always implies unread activity —
+        // that's the only reason a PendingFocus was set for it — so acknowledge
+        // it unconditionally rather than gating on unreadByNoteId: a note that
+        // just got merged in by repairPendingFocusVisibility hasn't had its
+        // fresh count land yet (fetchUnreadForNotes is still in flight), and
+        // waiting for it would let this one-shot focus complete and clear
+        // itself before the ack ever fires. The page-row case still gates on
+        // the cache since its targetIds are only ever built FROM that cache.
+        if ((targetNoteId || mustardState.unreadByNoteId[id]) && !mustardState.clientOutdated) {
           event.emit(createMarkNotificationsSeenForNoteMessage(id))
         }
       }
