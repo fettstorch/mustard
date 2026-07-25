@@ -455,6 +455,11 @@ export default defineContentScript({
           if (unreadCountsSettledOnce) startRepair()
           return
         }
+        // A visible note already has unread comments, but a joined thread
+        // outside the follow graph never surfaces in unreadByNoteId at all —
+        // check for it too so it doesn't take a second click to discover.
+        // startRepair() is a one-shot no-op if a repair already ran.
+        if (unreadCountsSettledOnce) startRepair()
       }
 
       mustardState.areNotesVisible = true
