@@ -761,13 +761,16 @@ export default defineContentScript({
       }
     })
 
-    // Query notes for the current page
+    // Query notes for the current page. Settle the flag on failure too —
+    // otherwise a rejected boot query (e.g. a transient service-worker or
+    // storage failure) leaves maybeApplyPendingFocus's loading guard blocked
+    // forever, since it was previously only set in the success branch.
     runNotesQuery(getCurrentPageUrl(), { withComments: true })
-      .then(() => {
+      .catch(() => {})
+      .finally(() => {
         initialNotesQuerySettled = true
         maybeApplyPendingFocus()
       })
-      .catch(() => {})
 
     function showSessionExpiredBanner() {
       showMustardToast({
