@@ -376,9 +376,14 @@ export default defineContentScript({
       if (focus.noteId) {
         missingIds = [focus.noteId]
       } else {
-        const unreadIds = await sendMessage(createQueryUnreadCommentNoteIdsMessage(pageUrl)).catch(
-          () => [] as string[],
-        )
+        let unreadIds: string[]
+        try {
+          unreadIds = await sendMessage(createQueryUnreadCommentNoteIdsMessage(pageUrl))
+        } catch {
+          // Transient failure — don't treat it as "no unread threads"; leave
+          // pendingFocus alone so it isn't wrongly given up on.
+          return
+        }
         if (unreadIds.length === 0) {
           if (pendingFocus === focus) pendingFocus = null
           return
@@ -390,9 +395,14 @@ export default defineContentScript({
         if (missingIds.length === 0) return
       }
 
-      const dtos = await sendMessage(createQueryNotesByIdsMessage(pageUrl, missingIds)).catch(
-        () => [] as DtoMustardNote[],
-      )
+      let dtos: DtoMustardNote[]
+      try {
+        dtos = await sendMessage(createQueryNotesByIdsMessage(pageUrl, missingIds))
+      } catch {
+        // Transient failure — don't conclude the note is gone; leave
+        // pendingFocus so a later retry can still repair it.
+        return
+      }
       const existingIds = new Set(mustardState.notes.map((n) => n.id))
       const newNotes = dtos.map(DtoMustardNote.fromDto).filter((n) => !existingIds.has(n.id))
 

@@ -313,17 +313,16 @@ class MustardNotesServiceRemote implements MustardNotesService {
    */
   async queryNotesByIds(pageUrl: string, noteIds: string[]): Promise<MustardNote[]> {
     if (noteIds.length === 0) return []
-    try {
-      const notesById = new Map<string, DbNote>()
-      await fetchNotesByIdForPage(pageUrl, noteIds, notesById)
-      const repostersByNoteId = await fetchRepostersForNotes([...notesById.keys()])
-      return [...notesById.values()].map((row) =>
-        dbNoteToMustardNote(row, repostersByNoteId.get(row.id) ?? []),
-      )
-    } catch (error) {
-      console.error('Failed to query remote notes by id:', error)
-      return []
-    }
+    // Deliberately doesn't catch-and-return-[] like the sibling queries above:
+    // callers (pending-focus repair) treat a genuinely empty result as proof
+    // the note is gone, so a transient failure must propagate as a rejection
+    // instead of masquerading as "confirmed not found".
+    const notesById = new Map<string, DbNote>()
+    await fetchNotesByIdForPage(pageUrl, noteIds, notesById)
+    const repostersByNoteId = await fetchRepostersForNotes([...notesById.keys()])
+    return [...notesById.values()].map((row) =>
+      dbNoteToMustardNote(row, repostersByNoteId.get(row.id) ?? []),
+    )
   }
 
   async upsertNote(note: MustardNote): Promise<MustardNote> {
