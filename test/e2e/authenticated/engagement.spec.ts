@@ -305,7 +305,9 @@ test.describe('joined-thread deep link (unfollowed author)', () => {
     // This is the exact gap the Codex review flagged: queryNotes only fetches
     // notes reachable via follow/repost/mention, so a joined-thread note from
     // an unfollowed author never loads here even though the popup linked to it.
-    await expect(note).toBeVisible({ timeout: 8_000 })
+    // The repair path is a few sequential round trips (unread-ids → notes-by-id
+    // → comments/counts), slower than a normal page load, hence the longer wait.
+    await expect(note).toBeVisible({ timeout: 15_000 })
     await expect(note.getByText('Someone else replies to the thread')).toBeVisible()
 
     await loginAs(context, viewer)
