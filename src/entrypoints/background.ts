@@ -52,6 +52,7 @@ import {
 import { CLIENT_OUTDATED_ERROR, isRemoteMutationMessage } from '@/shared/remote-mutation'
 import { githubAvatarUrl } from '@/shared/providers'
 import { PENDING_FOCUS_KEY, type PendingFocus } from '@/shared/pending-focus'
+import { unhideNote } from '@/shared/hidden-notes'
 
 /** Builds a github UserProfile from an id + login, falling back to the id when the login is unknown. */
 function buildGithubProfile(id: string, login: string | undefined): UserProfile {
@@ -439,6 +440,27 @@ export default defineBackground(() => {
     DELETE_NOTE: async (message) => {
       await mustardNotesManager.deleteNote(message.noteId, message.pageUrl, message.authorId)
 
+      // A delete can originate outside the page (the options gallery). Every
+      // content script caches its page notes, so invalidate the removed note
+      // before the gallery drops its hidden ref — otherwise storage.onChanged
+      // would make the stale cached note visible again until the next query.
+      await broadcastToAllTabs({
+        type: 'NOTE_DELETED',
+        noteId: message.noteId,
+        pageUrl: message.pageUrl,
+      })
+      // A deleted note can no longer be meaningfully hidden. Centralizing this
+      // cleanup here covers both gallery deletes and page-side deletes of notes
+      // temporarily revealed by Show All or notification focus.
+      try {
+        await unhideNote(message.noteId)
+      } catch (err) {
+        // The note itself is already gone and every open tab has evicted it.
+        // A secondary local-preference cleanup failure must not turn that
+        // completed delete into a rejected DELETE_NOTE response.
+        console.warn('DELETE_NOTE hidden-ref cleanup failed:', err)
+      }
+
       if (message.authorId === 'local') {
         const localNotes = await mustardNotesManager.queryLocalNotesFor(message.pageUrl)
         return localNotes.map(DtoMustardNote.toDto)
@@ -592,6 +614,12 @@ export default defineBackground(() => {
     OPEN_POPUP: () => {
       const action = getActionApi()
       action?.openPopup?.()?.catch(() => {})
+    },
+
+    OPEN_OPTIONS_PAGE: () => {
+      browser.runtime.openOptionsPage().catch((err) => {
+        console.warn('OPEN_OPTIONS_PAGE failed:', err)
+      })
     },
 
     GET_APP_STATUS: () => getAppStatus(),

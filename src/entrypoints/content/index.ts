@@ -29,7 +29,13 @@ import { DtoMustardNote } from '@/shared/dto/DtoMustardNote'
 import { DtoMustardComment } from '@/shared/dto/DtoMustardComment'
 import MustardContent from '@/ui/content/MustardContent.vue'
 import { createMustardState } from '@/ui/content/mustard-state'
-import { showMustardToast } from './mustard-toast'
+import { showMustardToast } from '@/ui/content/mustard-toast'
+import {
+  HIDDEN_NOTES_KEY,
+  readHiddenNoteIds,
+  toHiddenNoteIds,
+  type HiddenNotesStore,
+} from '@/shared/hidden-notes'
 import type { MustardNote } from '@/shared/model/MustardNote'
 import type { MustardComment } from '@/shared/model/MustardComment'
 import { Observable, subject, synchronize } from '@fettstorch/jule'
@@ -75,6 +81,30 @@ export default defineContentScript({
       Object.keys(mustardState.pendingNoteIds).forEach(
         (key) => delete mustardState.pendingNoteIds[key],
       )
+    }
+
+    /** Remove a confirmed-deleted note and all of its per-note UI state. */
+    function dropDeletedNote(noteId: string): void {
+      mustardState.notes = mustardState.notes.filter((note) => note.id !== noteId)
+      delete mustardState.revealedHiddenNoteIds[noteId]
+      delete mustardState.comments[noteId]
+      delete mustardState.commentsLoadState[noteId]
+      delete mustardState.expandedCommentNoteIds[noteId]
+      delete mustardState.unreadByNoteId[noteId]
+      delete mustardState.pendingNoteIds[noteId]
+    }
+
+    function revealHiddenNotes(noteIds: string[]): void {
+      for (const noteId of noteIds) mustardState.revealedHiddenNoteIds[noteId] = true
+    }
+
+    function applyHiddenNoteIds(hiddenNoteIds: Record<string, boolean>): void {
+      mustardState.hiddenNoteIds = hiddenNoteIds
+      // Once a note is genuinely un-hidden, its temporary reveal must not linger
+      // and accidentally exempt a future hide of that same note.
+      for (const noteId of Object.keys(mustardState.revealedHiddenNoteIds)) {
+        if (!hiddenNoteIds[noteId]) delete mustardState.revealedHiddenNoteIds[noteId]
+      }
     }
 
     /**
@@ -440,7 +470,10 @@ export default defineContentScript({
       // call above resolves — acknowledging them here unconditionally is the
       // only way they don't end up needing a second click.
       mustardState.areNotesVisible = true
+      // A notification must always be able to surface its note, so a repaired note
+      // gets a temporary render exception without revealing unrelated hidden notes.
       const newNoteIds = newNotes.map((n) => n.id).filter((id): id is string => !!id)
+      revealHiddenNotes(newNoteIds)
       for (const id of newNoteIds) {
         mustardState.expandedCommentNoteIds[id] = true
         if (!mustardState.clientOutdated) {
@@ -502,6 +535,11 @@ export default defineContentScript({
       }
 
       mustardState.areNotesVisible = true
+      // A notification must always be able to surface its target, even when that
+      // target is a hidden note already loaded via the normal query (so the repair
+      // branch above was skipped). Reveal only those targets; unrelated hidden
+      // notes stay filtered.
+      revealHiddenNotes(targetIds)
       for (const id of targetIds) {
         mustardState.expandedCommentNoteIds[id] = true
         // Reading the thread acknowledges its unread comment notifications.
@@ -553,6 +591,8 @@ export default defineContentScript({
       mustardState.commentsLoadState = {}
       mustardState.expandedCommentNoteIds = {}
       mustardState.unreadByNoteId = {}
+      // Temporary notification / "show all" exceptions are page-scoped.
+      mustardState.revealedHiddenNoteIds = {}
       runNotesQuery(newUrl, { withComments: true }).catch(() => {})
     }
 
@@ -672,6 +712,10 @@ export default defineContentScript({
         mustardState.areNotesVisible = message.visible
         return Promise.resolve(mustardState.areNotesVisible)
       }
+      if (message.type === 'NOTE_DELETED') {
+        if (message.pageUrl === getCurrentPageUrl()) dropDeletedNote(message.noteId)
+        return
+      }
       if (message.type === 'LOAD_ALL_NOTES') {
         // One-shot: re-query the current page ignoring the follow graph, render
         // the result, and report the count back so the popup can show an
@@ -694,6 +738,14 @@ export default defineContentScript({
               includeAllAuthors: true,
               withComments: true,
             })
+            // "Show all" is the intentional bulk escape hatch: reveal every
+            // currently loaded hidden note, while later hides still filter
+            // normally because they are not added to this exception set.
+            revealHiddenNotes(
+              mustardState.notes
+                .filter((note) => note.id && mustardState.hiddenNoteIds[note.id])
+                .map((note) => note.id!),
+            )
             if (withToast) {
               showLoadAllNotesToast(
                 count > 0
@@ -776,6 +828,14 @@ export default defineContentScript({
       })
       .catch(() => {})
 
+    // Which notes the user has hidden for good. Read separately from the prefs
+    // above because it needs shaping (refs -> id map), not just a boolean cast.
+    readHiddenNoteIds()
+      .then((ids) => {
+        applyHiddenNoteIds(ids)
+      })
+      .catch(() => {})
+
     // Keep in sync when preferences are changed from popup or options page
     browser.storage.onChanged.addListener((changes) => {
       if (NOTES_MINIMIZED_KEY in changes) {
@@ -783,6 +843,14 @@ export default defineContentScript({
       }
       if (SHOW_ANCHOR_IN_EDITOR_KEY in changes) {
         mustardState.showAnchorInEditor = !!changes[SHOW_ANCHOR_IN_EDITOR_KEY].newValue
+      }
+      if (HIDDEN_NOTES_KEY in changes) {
+        // Fans hide/un-hide out to every other tab, and back to this one after its
+        // own optimistic update. Un-hiding from the options page re-renders the
+        // note live in any tab already showing its page.
+        applyHiddenNoteIds(
+          toHiddenNoteIds((changes[HIDDEN_NOTES_KEY].newValue ?? {}) as HiddenNotesStore),
+        )
       }
       if (ALT_CLICK_ENABLED_KEY in changes) {
         altClickEnabled = !!changes[ALT_CLICK_ENABLED_KEY].newValue
@@ -950,11 +1018,7 @@ export default defineContentScript({
             else applyNotesResponse(dtos)
             // The deletion is now confirmed, so discard the removed note's
             // per-note UI state and unlock only this note.
-            delete mustardState.comments[message.noteId]
-            delete mustardState.commentsLoadState[message.noteId]
-            delete mustardState.expandedCommentNoteIds[message.noteId]
-            delete mustardState.unreadByNoteId[message.noteId]
-            delete mustardState.pendingNoteIds[message.noteId]
+            dropDeletedNote(message.noteId)
           })
           .catch((err) => {
             console.error('mustard [content-script] DELETE_NOTE failed:', err)

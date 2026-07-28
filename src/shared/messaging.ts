@@ -103,6 +103,19 @@ export type DeleteNoteMessage = Satisfies<
   }
 >
 
+// Background → content scripts: a delete initiated on another extension surface
+// succeeded. Tabs cache page notes in memory, so they must invalidate the removed
+// note instead of relying on a later query (or exposing it when its hidden ref is
+// removed by the options gallery).
+export type NoteDeletedMessage = Satisfies<
+  BaseMessage,
+  {
+    type: 'NOTE_DELETED'
+    noteId: string
+    pageUrl: string
+  }
+>
+
 // Content script → service worker: repost / un-repost a remote note. A repost is
 // a visibility grant — it lets the current user's followers see the note too.
 // Response: fresh DtoMustardNote[] for the page (so the avatar stack updates).
@@ -278,6 +291,16 @@ export type OpenPopupMessage = Satisfies<
   }
 >
 
+// Content script → service worker: open the extension options page. A content
+// script can't call browser.runtime.openOptionsPage() itself, so the "note hidden"
+// toast routes through the background to point users at the un-hide gallery.
+export type OpenOptionsPageMessage = Satisfies<
+  BaseMessage,
+  {
+    type: 'OPEN_OPTIONS_PAGE'
+  }
+>
+
 // Any surface → service worker: is this client still supported by the backend?
 // Drives the "please update" guard (read-only mode below the server's minimum).
 export type GetAppStatusMessage = Satisfies<
@@ -424,6 +447,7 @@ export type Message =
   | GetLinkPreviewMessage
   | GetLinkPreviewImageMessage
   | DeleteNoteMessage
+  | NoteDeletedMessage
   | SetRepostMessage
   | AtprotoLoginMessage
   | GithubLoginMessage
@@ -439,6 +463,7 @@ export type Message =
   | SessionChangedMessage
   | SessionExpiredMessage
   | OpenPopupMessage
+  | OpenOptionsPageMessage
   | GetAppStatusMessage
   | RequestUpdateMessage
   | QueryCommentsMessage
@@ -474,6 +499,7 @@ type MessageResponses = {
   GET_LINK_PREVIEW: LinkPreview | undefined
   GET_LINK_PREVIEW_IMAGE: string | undefined
   DELETE_NOTE: DtoMustardNote[]
+  NOTE_DELETED: void
   SET_REPOST: DtoMustardNote[]
   ATPROTO_LOGIN: { userId: string; did?: string } | null
   GITHUB_LOGIN: { userId: string } | null
@@ -489,6 +515,7 @@ type MessageResponses = {
   SESSION_CHANGED: void
   SESSION_EXPIRED: void
   OPEN_POPUP: void
+  OPEN_OPTIONS_PAGE: void
   GET_APP_STATUS: AppStatusResponse
   REQUEST_UPDATE: void
   QUERY_COMMENTS: QueryCommentsResponse

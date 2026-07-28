@@ -11,9 +11,12 @@ import {
   createUpsertNoteMessage,
   createDeleteNoteMessage,
   createSetRepostMessage,
+  sendMessage,
   type Message,
 } from '@/shared/messaging'
 import { LIMITS } from '@/shared/constants'
+import { filterVisibleNotes, hideNote, makeHiddenNoteRef, unhideNote } from '@/shared/hidden-notes'
+import { showMustardToast } from './mustard-toast'
 
 const PUBLISH_CONFIRM_DISMISSED_KEY = 'mustard-publish-confirm-dismissed'
 
@@ -89,7 +92,14 @@ const notesWithPositions = computed(() => {
   // eslint-disable-next-line @typescript-eslint/no-unused-expressions
   resizeTick.value // dependency to trigger recalculation
   if (!mustardState.areNotesVisible) return []
-  return mustardState.notes.map((note) => {
+  // Hidden notes are dropped here rather than at query time: they still load, so
+  // un-hiding brings one straight back without a re-query. Explicit reveal paths
+  // add only their intended note IDs as temporary exceptions.
+  return filterVisibleNotes(
+    mustardState.notes,
+    mustardState.hiddenNoteIds,
+    mustardState.revealedHiddenNoteIds,
+  ).map((note) => {
     const anchorPos = calculateAnchorPosition(note.anchorData)
     const offset = getDragOffset(note.id)
     return {
@@ -300,6 +310,58 @@ function onNoteRepost(note: MustardNoteType, reposted: boolean) {
   if (!note.id) return
   event.emit(createSetRepostMessage(note.id, note.anchorData.pageUrl, reposted))
 }
+
+/**
+ * Note: user pressed hide. The note isn't removed from `mustardState.notes` — the
+ * render gate drops it (animating out via the TransitionGroup) while it stays in
+ * the list, which is what lets an un-hide re-render it with no re-query.
+ *
+ * `hiddenNoteIds` is set optimistically so the note leaves the screen on this
+ * frame; the storage write then fans the same update out to every other tab via
+ * the `storage.onChanged` listener in the content script.
+ */
+function onNoteHide(note: MustardNoteType) {
+  const ref = makeHiddenNoteRef(note, Date.now())
+  if (!ref) return
+  const wasTemporarilyRevealed = !!mustardState.revealedHiddenNoteIds[ref.noteId]
+  delete mustardState.revealedHiddenNoteIds[ref.noteId]
+  mustardState.hiddenNoteIds[ref.noteId] = true
+  hideNote(ref).catch((err) => {
+    // The write failed, so the note isn't actually hidden — put it back rather
+    // than leave the user believing a hide stuck that won't survive a reload.
+    console.error('mustard: could not hide note:', err)
+    delete mustardState.hiddenNoteIds[ref.noteId]
+    if (wasTemporarilyRevealed) mustardState.revealedHiddenNoteIds[ref.noteId] = true
+  })
+  showMustardToast({
+    id: 'mustard-hidden-note-toast',
+    text: 'Note hidden — un-hide it in Mustard options',
+    autoDismissMs: 5000,
+    onClick: (dismiss) => {
+      sendMessage({ type: 'OPEN_OPTIONS_PAGE' }).catch(() => {})
+      dismiss()
+    },
+  })
+}
+
+/**
+ * Note: user pressed un-hide on a note revealed here ("show all notes on this
+ * page" or notification deep-link repair). Mirror of `onNoteHide`: clear the id
+ * optimistically so the note lifts back to full emphasis this frame, then persist
+ * — which fans out to every other tab via the `storage.onChanged` listener.
+ */
+function onNoteUnhide(note: MustardNoteType) {
+  if (!note.id) return
+  const noteId = note.id
+  delete mustardState.revealedHiddenNoteIds[noteId]
+  delete mustardState.hiddenNoteIds[noteId]
+  unhideNote(noteId).catch((err) => {
+    // The write failed, so the note is still hidden — restore the flag rather
+    // than leave the user believing an un-hide stuck that won't survive a reload.
+    console.error('mustard: could not un-hide note:', err)
+    mustardState.hiddenNoteIds[noteId] = true
+  })
+}
 </script>
 
 <template>
@@ -316,6 +378,8 @@ function onNoteRepost(note: MustardNoteType, reposted: boolean) {
         @pressed-publish="onNotePublish"
         @pressed-delete="onNoteDelete"
         @pressed-repost="onNoteRepost"
+        @pressed-hide="onNoteHide"
+        @pressed-unhide="onNoteUnhide"
         @drag="(offset) => setDragOffset(note.id, offset)"
       >
         <PublishConfirmBubble

@@ -60,11 +60,29 @@ export const mustardNotesManager = {
   },
 
   /**
-   * Fetch specific remote notes by id, ignoring the follow graph. Deep-link
-   * repair only — see `MustardNotesServiceRemote.queryNotesByIds`.
+   * Fetch specific notes by id, ignoring the follow graph. Two callers:
+   * notification deep-link repair, and the Options page's hidden-notes gallery.
+   *
+   * Checks local storage as well as remote, so an unpublished draft note can be
+   * resolved by id too (the gallery needs this; deep-link repair only ever passes
+   * remote ids, for which the local lookup simply contributes nothing).
+   *
+   * Deliberately propagates a remote rejection instead of degrading to the local
+   * hits — see `MustardNotesServiceRemote.queryNotesByIds`: repair treats an empty
+   * result as proof the note is gone, so a transient failure must not masquerade
+   * as "confirmed not found". Callers that prefer partial results over an error
+   * (the gallery) catch per page themselves.
    */
   async queryMustardNotesByIds(pageUrl: string, noteIds: string[]): Promise<MustardNote[]> {
-    return remoteService.queryNotesByIds(pageUrl, noteIds)
+    if (noteIds.length === 0) return []
+
+    const wanted = new Set(noteIds)
+    const localNotes = (await localService.queryNotes(pageUrl)).filter(
+      (note) => note.id && wanted.has(note.id),
+    )
+    const remoteNotes = await remoteService.queryNotesByIds(pageUrl, noteIds)
+
+    return sortByCreationDateAsc([...localNotes, ...remoteNotes])
   },
 
   /**

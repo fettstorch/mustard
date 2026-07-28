@@ -15,7 +15,7 @@ import {
 import type { DtoMustardMention } from '@/shared/dto/DtoMustardMention'
 import { useNotificationsChanged } from './use-notifications-changed'
 import { openPageFocused } from './open-page-focused'
-import { displayUrl } from './display-url'
+import { displayUrl } from '@/shared/display-url'
 
 const props = defineProps<{
   /** When true, skip remote mark-seen writes (client is below min version). */
