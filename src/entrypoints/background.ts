@@ -452,7 +452,14 @@ export default defineBackground(() => {
       // A deleted note can no longer be meaningfully hidden. Centralizing this
       // cleanup here covers both gallery deletes and page-side deletes of notes
       // temporarily revealed by Show All or notification focus.
-      await unhideNote(message.noteId)
+      try {
+        await unhideNote(message.noteId)
+      } catch (err) {
+        // The note itself is already gone and every open tab has evicted it.
+        // A secondary local-preference cleanup failure must not turn that
+        // completed delete into a rejected DELETE_NOTE response.
+        console.warn('DELETE_NOTE hidden-ref cleanup failed:', err)
+      }
 
       if (message.authorId === 'local') {
         const localNotes = await mustardNotesManager.queryLocalNotesFor(message.pageUrl)
