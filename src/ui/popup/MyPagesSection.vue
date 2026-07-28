@@ -15,7 +15,7 @@ import { createGetMyPagesOverviewMessage, sendMessage } from '@/shared/messaging
 import type { DtoMyPagesOverview } from '@/shared/dto/DtoMyPagesOverview'
 import { useNotificationsChanged } from './use-notifications-changed'
 import { openPageFocused } from './open-page-focused'
-import { displayUrl } from './display-url'
+import { displayUrl } from '@/shared/display-url'
 
 const overview = ref<DtoMyPagesOverview>([])
 const isExpanded = ref(false)

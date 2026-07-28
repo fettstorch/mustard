@@ -1,5 +1,5 @@
 /**
- * Compact, human-friendly rendering of a page URL for popup rows: drops the
+ * Compact, human-friendly rendering of a page URL for list rows: drops the
  * scheme and collapses a root-only path. Falls back to the raw string if the
  * URL can't be parsed.
  */
