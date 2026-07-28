@@ -250,11 +250,11 @@ export function useHiddenNotes(currentUserId: () => string | null): HiddenNotesG
   }
 
   async function unhideEvery(): Promise<void> {
+    await unhideAll()
     entries.value = []
     refs.value = []
     state.notes = []
     state.hiddenNoteIds = {}
-    await unhideAll()
   }
 
   /**
