@@ -511,6 +511,11 @@ export default defineContentScript({
       }
 
       mustardState.areNotesVisible = true
+      // A notification must always be able to surface its target, even when that
+      // target is a hidden note already loaded via the normal query (so the repair
+      // branch above was skipped). Reveal it here too — same reasoning, and reset
+      // on the next navigation (see the url-change handler).
+      mustardState.filterHiddenNotes = false
       for (const id of targetIds) {
         mustardState.expandedCommentNoteIds[id] = true
         // Reading the thread acknowledges its unread comment notifications.
