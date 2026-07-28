@@ -245,8 +245,8 @@ export function useHiddenNotes(currentUserId: () => string | null): HiddenNotesG
   }
 
   async function unhide(noteId: string): Promise<void> {
-    dropHiddenNote(noteId)
     await unhideNote(noteId)
+    dropHiddenNote(noteId)
   }
 
   async function unhideEvery(): Promise<void> {
