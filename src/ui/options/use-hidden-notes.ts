@@ -1,4 +1,4 @@
-import { computed, ref, watchEffect, type ComputedRef, type Ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watchEffect, type ComputedRef, type Ref } from 'vue'
 import { Observable } from '@fettstorch/jule'
 import {
   createDeleteNoteMessage,
@@ -17,6 +17,7 @@ import {
   readHiddenNoteRefs,
   unhideAll,
   unhideNote,
+  HIDDEN_NOTES_KEY,
   type HiddenNoteRef,
 } from '@/shared/hidden-notes'
 import type { MustardComment } from '@/shared/model/MustardComment'
@@ -89,6 +90,37 @@ export function useHiddenNotes(currentUserId: () => string | null): HiddenNotesG
     // Most recently hidden first.
     refs.value = Object.values(store).sort((a, b) => b.hiddenAt - a.hiddenAt)
   }
+
+  /** Order-independent identity of the hidden set, to tell a real change from a no-op. */
+  function refIdKey(list: HiddenNoteRef[]): string {
+    return list
+      .map((r) => r.noteId)
+      .sort()
+      .join(',')
+  }
+
+  /**
+   * React to the hidden set changing underneath us — a note hidden or un-hidden
+   * from a page tab (or another options tab) while this gallery is open.
+   *
+   * The gallery's own un-hide/delete already update `refs` optimistically before
+   * they write, so those writes come back here as a no-op set and are skipped —
+   * only a genuinely external change reloads. And the reload only runs once the
+   * section has been opened; before that, refreshing `refs` is enough to keep the
+   * count badge honest, and the notes load when it's first expanded.
+   */
+  async function syncFromStorage(): Promise<void> {
+    const before = refIdKey(refs.value)
+    await readRefs()
+    if (refIdKey(refs.value) === before) return
+    if (loadState.value === 'loaded') await load()
+  }
+
+  const onStorageChanged = (changes: Record<string, unknown>) => {
+    if (HIDDEN_NOTES_KEY in changes) syncFromStorage().catch(() => {})
+  }
+  onMounted(() => browser.storage.onChanged.addListener(onStorageChanged))
+  onUnmounted(() => browser.storage.onChanged.removeListener(onStorageChanged))
 
   async function load(): Promise<void> {
     loadState.value = 'loading'

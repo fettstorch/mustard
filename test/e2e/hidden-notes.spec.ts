@@ -151,6 +151,39 @@ test.describe('Hiding individual notes', () => {
     await expect(mustard.getByText('First note hidden')).toHaveCount(0)
   })
 
+  test('an open gallery live-updates when a note is hidden from a page tab', async ({
+    context,
+    extensionId,
+  }) => {
+    const page = await context.newPage()
+    await page.goto(fixtureUrl)
+    const mustard = page.locator('#mustard-host')
+    await expect(mustard).toBeAttached({ timeout: 8_000 })
+
+    await createLocalNote(context, page, 'First hidden note')
+    await hideOnlyNote(page)
+
+    const options = await context.newPage()
+    await options.goto(`chrome-extension://${extensionId}/options.html`)
+    await options.getByRole('button', { name: /Hidden notes \(1\)/ }).click()
+    // Section is now open AND loaded — the state that arms syncFromStorage's reload.
+    await expect(options.locator('.hidden-note-card')).toHaveCount(1, { timeout: 8_000 })
+
+    // Hide a second note from the page while the gallery stays open. The gallery
+    // never reloads here; storage.onChanged has to pull the new note in on its own.
+    await page.bringToFront()
+    await createLocalNote(context, page, 'Second hidden note')
+    await hideOnlyNote(page)
+
+    const cards = options.locator('.hidden-note-card')
+    await expect(cards).toHaveCount(2, { timeout: 8_000 })
+    // Proof the reload actually fetched it, not just bumped a count.
+    await expect(
+      options.locator('.hidden-note-card', { hasText: 'Second hidden note' }),
+    ).toHaveCount(1)
+    await expect(options.getByRole('button', { name: /Hidden notes \(2\)/ })).toBeVisible()
+  })
+
   test('deleting a note from the gallery removes the tile and drops its hidden entry', async ({
     context,
     extensionId,
