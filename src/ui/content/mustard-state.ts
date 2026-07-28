@@ -30,12 +30,11 @@ export type MustardState = {
    */
   hiddenNoteIds: Record<string, boolean>
   /**
-   * Whether hidden notes are filtered out of rendering. Default true; cleared by
-   * the explicit reveal paths ("show all notes on this page", notification
-   * deep-link repair) and reset on navigation. Per-page and in-memory, same
-   * lifecycle as `areNotesVisible`.
+   * Hidden note IDs temporarily revealed on this page. Notification focus adds
+   * only its target; "show all" adds every loaded hidden note. Cleared on
+   * navigation so the persisted hidden set remains authoritative.
    */
-  filterHiddenNotes: boolean
+  revealedHiddenNoteIds: Record<string, boolean>
   /** True when this build is below the backend's minimum: remote writes are blocked, so the UI disables publish/comment controls. */
   clientOutdated: boolean
 
@@ -71,7 +70,7 @@ export function createMustardState(): MustardState {
     areNotesMinimized: false,
     showAnchorInEditor: false,
     hiddenNoteIds: {},
-    filterHiddenNotes: true,
+    revealedHiddenNoteIds: {},
     clientOutdated: false,
 
     comments: {},

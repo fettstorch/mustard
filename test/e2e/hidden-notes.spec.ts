@@ -86,6 +86,68 @@ test.describe('Hiding individual notes', () => {
     await expect(mustard.getByText('Note to hide')).toHaveCount(0)
   })
 
+  test('notification focus reveals only its hidden target and later hides still remove notes', async ({
+    context,
+  }) => {
+    const page = await context.newPage()
+    await page.goto(fixtureUrl)
+    const mustard = page.locator('#mustard-host')
+    await expect(mustard).toBeAttached({ timeout: 8_000 })
+
+    await createLocalNote(context, page, 'Focused hidden note')
+    const focused = mustard.locator('.mustard-note').filter({ hasText: 'Focused hidden note' })
+    await focused.hover()
+    await focused.locator('[title^="Hide this note"]').click()
+    await expect(focused).toHaveCount(0)
+
+    let serviceWorker = context.serviceWorkers()[0]
+    if (!serviceWorker) serviceWorker = await context.waitForEvent('serviceworker')
+    await expect
+      .poll(() =>
+        serviceWorker.evaluate(async () => {
+          const result = await chrome.storage.local.get('mustard-hidden-notes')
+          return Object.keys(result['mustard-hidden-notes'] ?? {}).length
+        }),
+      )
+      .toBe(1)
+    const focusedNoteId = await serviceWorker.evaluate(async () => {
+      const result = await chrome.storage.local.get('mustard-hidden-notes')
+      return Object.keys(result['mustard-hidden-notes'] ?? {})[0]!
+    })
+
+    await createLocalNote(context, page, 'Unrelated hidden note')
+    const unrelated = mustard.locator('.mustard-note').filter({ hasText: 'Unrelated hidden note' })
+    await unrelated.hover()
+    await unrelated.locator('[title^="Hide this note"]').click()
+    await expect(unrelated).toHaveCount(0)
+
+    await createLocalNote(context, page, 'Visible note hidden later')
+    await serviceWorker.evaluate(
+      async ({ pageUrl, noteId }) => {
+        await chrome.storage.local.set({
+          'mustard-pending-focus': { pageUrl, noteId },
+        })
+      },
+      { pageUrl: fixtureUrl, noteId: focusedNoteId },
+    )
+
+    await page.reload()
+    await expect(mustard).toBeAttached({ timeout: 8_000 })
+
+    const revealed = mustard.locator('.mustard-note').filter({ hasText: 'Focused hidden note' })
+    await expect(revealed).toBeVisible({ timeout: 8_000 })
+    await expect(revealed).toHaveClass(/is-hidden/)
+    await expect(mustard.getByText('Unrelated hidden note')).toHaveCount(0)
+
+    // The old global filter switch left every subsequent hide rendered (only
+    // faded). A per-note exception must not exempt a different note.
+    const later = mustard.locator('.mustard-note').filter({ hasText: 'Visible note hidden later' })
+    await expect(later).toBeVisible()
+    await later.hover()
+    await later.locator('[title^="Hide this note"]').click()
+    await expect(later).toHaveCount(0)
+  })
+
   test('the options page lists a hidden note and un-hiding it brings the note back', async ({
     context,
     extensionId,

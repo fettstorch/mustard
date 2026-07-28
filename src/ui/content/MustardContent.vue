@@ -93,12 +93,12 @@ const notesWithPositions = computed(() => {
   resizeTick.value // dependency to trigger recalculation
   if (!mustardState.areNotesVisible) return []
   // Hidden notes are dropped here rather than at query time: they still load, so
-  // un-hiding brings one straight back without a re-query, and the explicit reveal
-  // paths only have to clear `filterHiddenNotes`.
+  // un-hiding brings one straight back without a re-query. Explicit reveal paths
+  // add only their intended note IDs as temporary exceptions.
   return filterVisibleNotes(
     mustardState.notes,
     mustardState.hiddenNoteIds,
-    mustardState.filterHiddenNotes,
+    mustardState.revealedHiddenNoteIds,
   ).map((note) => {
     const anchorPos = calculateAnchorPosition(note.anchorData)
     const offset = getDragOffset(note.id)
@@ -323,12 +323,15 @@ function onNoteRepost(note: MustardNoteType, reposted: boolean) {
 function onNoteHide(note: MustardNoteType) {
   const ref = makeHiddenNoteRef(note, Date.now())
   if (!ref) return
+  const wasTemporarilyRevealed = !!mustardState.revealedHiddenNoteIds[ref.noteId]
+  delete mustardState.revealedHiddenNoteIds[ref.noteId]
   mustardState.hiddenNoteIds[ref.noteId] = true
   hideNote(ref).catch((err) => {
     // The write failed, so the note isn't actually hidden — put it back rather
     // than leave the user believing a hide stuck that won't survive a reload.
     console.error('mustard: could not hide note:', err)
     delete mustardState.hiddenNoteIds[ref.noteId]
+    if (wasTemporarilyRevealed) mustardState.revealedHiddenNoteIds[ref.noteId] = true
   })
   showMustardToast({
     id: 'mustard-hidden-note-toast',
@@ -350,6 +353,7 @@ function onNoteHide(note: MustardNoteType) {
 function onNoteUnhide(note: MustardNoteType) {
   if (!note.id) return
   const noteId = note.id
+  delete mustardState.revealedHiddenNoteIds[noteId]
   delete mustardState.hiddenNoteIds[noteId]
   unhideNote(noteId).catch((err) => {
     // The write failed, so the note is still hidden — restore the flag rather

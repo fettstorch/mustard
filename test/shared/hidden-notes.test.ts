@@ -170,28 +170,42 @@ describe('filterVisibleNotes', () => {
   const hidden = makeNote({ id: 'hidden' })
   const hiddenIds = { hidden: true }
 
-  it('removes hidden notes when filtering is enabled', () => {
-    expect(filterVisibleNotes([visible, hidden], hiddenIds, true)).toEqual([visible])
+  it('removes hidden notes without a temporary reveal', () => {
+    expect(filterVisibleNotes([visible, hidden], hiddenIds, {})).toEqual([visible])
   })
 
-  it('returns every note including hidden ones when filtering is disabled', () => {
-    expect(filterVisibleNotes([visible, hidden], hiddenIds, false)).toEqual([visible, hidden])
+  it('keeps a temporarily revealed hidden note', () => {
+    expect(filterVisibleNotes([visible, hidden], hiddenIds, { hidden: true })).toEqual([
+      visible,
+      hidden,
+    ])
+  })
+
+  it('reveals only the requested hidden note', () => {
+    const otherHidden = makeNote({ id: 'other-hidden' })
+    expect(
+      filterVisibleNotes(
+        [visible, hidden, otherHidden],
+        { hidden: true, 'other-hidden': true },
+        { hidden: true },
+      ),
+    ).toEqual([visible, hidden])
   })
 
   it('keeps notes that have no id, since an unsaved note cannot be hidden', () => {
     const unsaved = makeNote({ id: null })
 
-    expect(filterVisibleNotes([unsaved, hidden], hiddenIds, true)).toEqual([unsaved])
+    expect(filterVisibleNotes([unsaved, hidden], hiddenIds, {})).toEqual([unsaved])
   })
 
   it('preserves the incoming order of the notes it keeps', () => {
     const first = makeNote({ id: 'first' })
     const second = makeNote({ id: 'second' })
 
-    expect(filterVisibleNotes([second, hidden, first], hiddenIds, true)).toEqual([second, first])
+    expect(filterVisibleNotes([second, hidden, first], hiddenIds, {})).toEqual([second, first])
   })
 
   it('returns every note when nothing is hidden', () => {
-    expect(filterVisibleNotes([visible, hidden], {}, true)).toEqual([visible, hidden])
+    expect(filterVisibleNotes([visible, hidden], {}, {})).toEqual([visible, hidden])
   })
 })

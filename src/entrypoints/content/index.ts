@@ -86,11 +86,25 @@ export default defineContentScript({
     /** Remove a confirmed-deleted note and all of its per-note UI state. */
     function dropDeletedNote(noteId: string): void {
       mustardState.notes = mustardState.notes.filter((note) => note.id !== noteId)
+      delete mustardState.revealedHiddenNoteIds[noteId]
       delete mustardState.comments[noteId]
       delete mustardState.commentsLoadState[noteId]
       delete mustardState.expandedCommentNoteIds[noteId]
       delete mustardState.unreadByNoteId[noteId]
       delete mustardState.pendingNoteIds[noteId]
+    }
+
+    function revealHiddenNotes(noteIds: string[]): void {
+      for (const noteId of noteIds) mustardState.revealedHiddenNoteIds[noteId] = true
+    }
+
+    function applyHiddenNoteIds(hiddenNoteIds: Record<string, boolean>): void {
+      mustardState.hiddenNoteIds = hiddenNoteIds
+      // Once a note is genuinely un-hidden, its temporary reveal must not linger
+      // and accidentally exempt a future hide of that same note.
+      for (const noteId of Object.keys(mustardState.revealedHiddenNoteIds)) {
+        if (!hiddenNoteIds[noteId]) delete mustardState.revealedHiddenNoteIds[noteId]
+      }
     }
 
     /**
@@ -457,9 +471,9 @@ export default defineContentScript({
       // only way they don't end up needing a second click.
       mustardState.areNotesVisible = true
       // A notification must always be able to surface its note, so a repaired note
-      // beats the hidden filter — same reasoning as forcing visibility above.
-      mustardState.filterHiddenNotes = false
+      // gets a temporary render exception without revealing unrelated hidden notes.
       const newNoteIds = newNotes.map((n) => n.id).filter((id): id is string => !!id)
+      revealHiddenNotes(newNoteIds)
       for (const id of newNoteIds) {
         mustardState.expandedCommentNoteIds[id] = true
         if (!mustardState.clientOutdated) {
@@ -523,9 +537,9 @@ export default defineContentScript({
       mustardState.areNotesVisible = true
       // A notification must always be able to surface its target, even when that
       // target is a hidden note already loaded via the normal query (so the repair
-      // branch above was skipped). Reveal it here too — same reasoning, and reset
-      // on the next navigation (see the url-change handler).
-      mustardState.filterHiddenNotes = false
+      // branch above was skipped). Reveal only those targets; unrelated hidden
+      // notes stay filtered.
+      revealHiddenNotes(targetIds)
       for (const id of targetIds) {
         mustardState.expandedCommentNoteIds[id] = true
         // Reading the thread acknowledges its unread comment notifications.
@@ -577,9 +591,8 @@ export default defineContentScript({
       mustardState.commentsLoadState = {}
       mustardState.expandedCommentNoteIds = {}
       mustardState.unreadByNoteId = {}
-      // A reveal ("show all notes", deep-link repair) is scoped to the page it was
-      // triggered on, so hidden notes are filtered again on the next one.
-      mustardState.filterHiddenNotes = true
+      // Temporary notification / "show all" exceptions are page-scoped.
+      mustardState.revealedHiddenNoteIds = {}
       runNotesQuery(newUrl, { withComments: true }).catch(() => {})
     }
 
@@ -712,10 +725,6 @@ export default defineContentScript({
         // popup is open to render it.
         const withToast = message.withToast === true
         mustardState.areNotesVisible = true
-        // "Show all" is the escape hatch: it reveals hidden notes too, so they can
-        // be un-hidden in place instead of via the options page. Reset on the next
-        // navigation (see the url-change handler).
-        mustardState.filterHiddenNotes = false
         // Loading all notes needs a logged-in session (author profiles resolve
         // via the authenticated path). On the shortcut path, nudge instead of
         // silently doing nothing.
@@ -729,6 +738,14 @@ export default defineContentScript({
               includeAllAuthors: true,
               withComments: true,
             })
+            // "Show all" is the intentional bulk escape hatch: reveal every
+            // currently loaded hidden note, while later hides still filter
+            // normally because they are not added to this exception set.
+            revealHiddenNotes(
+              mustardState.notes
+                .filter((note) => note.id && mustardState.hiddenNoteIds[note.id])
+                .map((note) => note.id!),
+            )
             if (withToast) {
               showLoadAllNotesToast(
                 count > 0
@@ -815,7 +832,7 @@ export default defineContentScript({
     // above because it needs shaping (refs -> id map), not just a boolean cast.
     readHiddenNoteIds()
       .then((ids) => {
-        mustardState.hiddenNoteIds = ids
+        applyHiddenNoteIds(ids)
       })
       .catch(() => {})
 
@@ -831,8 +848,8 @@ export default defineContentScript({
         // Fans hide/un-hide out to every other tab, and back to this one after its
         // own optimistic update. Un-hiding from the options page re-renders the
         // note live in any tab already showing its page.
-        mustardState.hiddenNoteIds = toHiddenNoteIds(
-          (changes[HIDDEN_NOTES_KEY].newValue ?? {}) as HiddenNotesStore,
+        applyHiddenNoteIds(
+          toHiddenNoteIds((changes[HIDDEN_NOTES_KEY].newValue ?? {}) as HiddenNotesStore),
         )
       }
       if (ALT_CLICK_ENABLED_KEY in changes) {

@@ -13,10 +13,9 @@ import type { MustardNote } from './model/MustardNote'
  * the real notes on demand so previews always show current content. The cost is
  * that a note deleted by its author can only be reported, not rendered.
  *
- * Filtering happens at RENDER time, not query time (see `filterVisibleNotes` and
- * `MustardState.filterHiddenNotes`). Notes still load in full, which is what keeps
- * un-hiding instant and leaves the notification deep-link repair path working
- * untouched.
+ * Filtering happens at RENDER time, not query time (see `filterVisibleNotes`).
+ * Notes still load in full, which keeps un-hiding instant and lets notification
+ * focus temporarily reveal only the intended hidden note.
  */
 
 export const HIDDEN_NOTES_KEY = 'mustard-hidden-notes'
@@ -123,8 +122,9 @@ export function groupRefsByPage(refs: HiddenNoteRef[]): { pageUrl: string; noteI
 export function filterVisibleNotes(
   notes: MustardNote[],
   hiddenNoteIds: Record<string, boolean>,
-  filterHiddenNotes: boolean,
+  revealedHiddenNoteIds: Record<string, boolean>,
 ): MustardNote[] {
-  if (!filterHiddenNotes) return notes
-  return notes.filter((note) => !note.id || !hiddenNoteIds[note.id])
+  return notes.filter(
+    (note) => !note.id || !hiddenNoteIds[note.id] || revealedHiddenNoteIds[note.id],
+  )
 }
