@@ -594,6 +594,12 @@ export default defineBackground(() => {
       action?.openPopup?.()?.catch(() => {})
     },
 
+    OPEN_OPTIONS_PAGE: () => {
+      browser.runtime.openOptionsPage().catch((err) => {
+        console.warn('OPEN_OPTIONS_PAGE failed:', err)
+      })
+    },
+
     GET_APP_STATUS: () => getAppStatus(),
 
     REQUEST_UPDATE: () => requestClientUpdate(),

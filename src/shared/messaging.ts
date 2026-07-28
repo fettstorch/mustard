@@ -278,6 +278,16 @@ export type OpenPopupMessage = Satisfies<
   }
 >
 
+// Content script → service worker: open the extension options page. A content
+// script can't call browser.runtime.openOptionsPage() itself, so the "note hidden"
+// toast routes through the background to point users at the un-hide gallery.
+export type OpenOptionsPageMessage = Satisfies<
+  BaseMessage,
+  {
+    type: 'OPEN_OPTIONS_PAGE'
+  }
+>
+
 // Any surface → service worker: is this client still supported by the backend?
 // Drives the "please update" guard (read-only mode below the server's minimum).
 export type GetAppStatusMessage = Satisfies<
@@ -439,6 +449,7 @@ export type Message =
   | SessionChangedMessage
   | SessionExpiredMessage
   | OpenPopupMessage
+  | OpenOptionsPageMessage
   | GetAppStatusMessage
   | RequestUpdateMessage
   | QueryCommentsMessage
@@ -489,6 +500,7 @@ type MessageResponses = {
   SESSION_CHANGED: void
   SESSION_EXPIRED: void
   OPEN_POPUP: void
+  OPEN_OPTIONS_PAGE: void
   GET_APP_STATUS: AppStatusResponse
   REQUEST_UPDATE: void
   QUERY_COMMENTS: QueryCommentsResponse

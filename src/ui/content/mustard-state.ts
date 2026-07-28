@@ -23,6 +23,19 @@ export type MustardState = {
   areNotesMinimized: boolean
   /** Whether anchor data is shown in the note editor (global preference, persisted in chrome.storage.local) */
   showAnchorInEditor: boolean
+  /**
+   * Note IDs the user has hidden for good (derived from the refs persisted in
+   * chrome.storage.local under `mustard-hidden-notes`). Hidden notes still load
+   * normally — this gates rendering, not fetching.
+   */
+  hiddenNoteIds: Record<string, boolean>
+  /**
+   * Whether hidden notes are filtered out of rendering. Default true; cleared by
+   * the explicit reveal paths ("show all notes on this page", notification
+   * deep-link repair) and reset on navigation. Per-page and in-memory, same
+   * lifecycle as `areNotesVisible`.
+   */
+  filterHiddenNotes: boolean
   /** True when this build is below the backend's minimum: remote writes are blocked, so the UI disables publish/comment controls. */
   clientOutdated: boolean
 
@@ -57,6 +70,8 @@ export function createMustardState(): MustardState {
     areNotesVisible: true,
     areNotesMinimized: false,
     showAnchorInEditor: false,
+    hiddenNoteIds: {},
+    filterHiddenNotes: true,
     clientOutdated: false,
 
     comments: {},
