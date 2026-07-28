@@ -147,6 +147,55 @@ test('a published hidden note keeps its preview, comments and un-hide control in
   await expect(mustard.getByText('Hidden published note')).toBeVisible({ timeout: 20_000 })
 })
 
+test('the gallery refreshes its session when Options regains focus', async ({
+  authenticatedContext: context,
+  popupUrl,
+  extensionId,
+}) => {
+  const noteId = await seedNote(
+    AUTH_E2E_USER.userId,
+    FIXTURE_URL,
+    'Hidden note owned before logout',
+  )
+  try {
+    let serviceWorker = context.serviceWorkers()[0]
+    if (!serviceWorker) serviceWorker = await context.waitForEvent('serviceworker')
+    await serviceWorker.evaluate(
+      async ({ id, pageUrl }) => {
+        await chrome.storage.local.set({
+          'mustard-hidden-notes': {
+            [id]: { noteId: id, pageUrl, hiddenAt: Date.now() },
+          },
+        })
+      },
+      { id: noteId, pageUrl: FIXTURE_URL },
+    )
+
+    const options = await context.newPage()
+    await options.goto(`chrome-extension://${extensionId}/options.html`)
+    await expect(options.getByText('Connected', { exact: true })).toBeVisible()
+    await options.getByRole('button', { name: /Hidden notes \(1\)/ }).click()
+
+    const card = options.locator('.hidden-note-card')
+    await expect(card).toHaveCount(1, { timeout: 20_000 })
+    await card.locator('.mustard-note').hover()
+    await expect(card.locator('[title="Delete this note"]')).toHaveCount(1)
+
+    const popup = await context.newPage()
+    await popup.goto(popupUrl)
+    await popup.evaluate(() => chrome.runtime.sendMessage({ type: 'ATPROTO_LOGOUT' }))
+    await popup.close()
+
+    await options.bringToFront()
+    await options.evaluate(() => window.dispatchEvent(new Event('focus')))
+    await expect(options.getByText('Not logged in', { exact: true })).toBeVisible()
+    await expect(card.locator('[title="Delete this note"]')).toHaveCount(0)
+    await expect(card.locator('.comment-toggle')).toHaveCount(0)
+  } finally {
+    await deleteNote(noteId)
+  }
+})
+
 test.describe('outdated client gallery guard', () => {
   let previousMinimum: string | undefined
 

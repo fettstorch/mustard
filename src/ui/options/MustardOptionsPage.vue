@@ -15,7 +15,7 @@
  * when clicking the extension icon. This is a full-page settings interface.
  */
 
-import { ref, computed, onMounted, provide } from 'vue'
+import { ref, computed, onMounted, onUnmounted, provide } from 'vue'
 import { version } from '../../../package.json'
 import {
   MUSTARD_FONTS,
@@ -120,7 +120,12 @@ const shortcutsUrl = ref<string>('')
 const isFirefoxBrowser = ref<boolean>(false)
 const isMacPlatform = ref<boolean>(false)
 
+const refreshSessionOnFocus = () => {
+  refreshSession().catch(() => {})
+}
+
 onMounted(async () => {
+  window.addEventListener('focus', refreshSessionOnFocus)
   const result = await browser.storage.local.get([
     PUBLISH_CONFIRM_DISMISSED_KEY,
     NOTES_MINIMIZED_KEY,
@@ -170,6 +175,8 @@ onMounted(async () => {
   // Pick the right modifier for the Firefox add-ons shortcut hint.
   isMacPlatform.value = /Mac/i.test(navigator.userAgent)
 })
+
+onUnmounted(() => window.removeEventListener('focus', refreshSessionOnFocus))
 
 function openShortcutsPage() {
   if (!shortcutsUrl.value) return
