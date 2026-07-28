@@ -52,6 +52,7 @@ import {
 import { CLIENT_OUTDATED_ERROR, isRemoteMutationMessage } from '@/shared/remote-mutation'
 import { githubAvatarUrl } from '@/shared/providers'
 import { PENDING_FOCUS_KEY, type PendingFocus } from '@/shared/pending-focus'
+import { unhideNote } from '@/shared/hidden-notes'
 
 /** Builds a github UserProfile from an id + login, falling back to the id when the login is unknown. */
 function buildGithubProfile(id: string, login: string | undefined): UserProfile {
@@ -448,6 +449,10 @@ export default defineBackground(() => {
         noteId: message.noteId,
         pageUrl: message.pageUrl,
       })
+      // A deleted note can no longer be meaningfully hidden. Centralizing this
+      // cleanup here covers both gallery deletes and page-side deletes of notes
+      // temporarily revealed by Show All or notification focus.
+      await unhideNote(message.noteId)
 
       if (message.authorId === 'local') {
         const localNotes = await mustardNotesManager.queryLocalNotesFor(message.pageUrl)

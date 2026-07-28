@@ -273,7 +273,6 @@ export function useHiddenNotes(currentUserId: () => string | null): HiddenNotesG
     try {
       await sendMessage(createDeleteNoteMessage(noteId, note.anchorData.pageUrl, note.authorId))
       dropHiddenNote(noteId)
-      await unhideNote(noteId)
     } catch (err) {
       console.error('mustard [options] DELETE_NOTE failed:', err)
     } finally {

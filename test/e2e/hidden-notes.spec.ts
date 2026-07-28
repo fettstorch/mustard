@@ -148,6 +148,69 @@ test.describe('Hiding individual notes', () => {
     await expect(later).toHaveCount(0)
   })
 
+  test('deleting a temporarily revealed hidden note removes its gallery ref', async ({
+    context,
+    extensionId,
+  }) => {
+    const page = await context.newPage()
+    await page.goto(fixtureUrl)
+    const mustard = page.locator('#mustard-host')
+    await expect(mustard).toBeAttached({ timeout: 8_000 })
+
+    await createLocalNote(context, page, 'Hidden note deleted from its page')
+    await hideOnlyNote(page)
+
+    let serviceWorker = context.serviceWorkers()[0]
+    if (!serviceWorker) serviceWorker = await context.waitForEvent('serviceworker')
+    const noteId = await expect
+      .poll(() =>
+        serviceWorker.evaluate(async () => {
+          const result = await chrome.storage.local.get('mustard-hidden-notes')
+          return Object.keys(result['mustard-hidden-notes'] ?? {})[0]
+        }),
+      )
+      .not.toBeUndefined()
+      .then(() =>
+        serviceWorker.evaluate(async () => {
+          const result = await chrome.storage.local.get('mustard-hidden-notes')
+          return Object.keys(result['mustard-hidden-notes'] ?? {})[0]!
+        }),
+      )
+
+    await serviceWorker.evaluate(
+      async ({ pageUrl, hiddenNoteId }) => {
+        await chrome.storage.local.set({
+          'mustard-pending-focus': { pageUrl, noteId: hiddenNoteId },
+        })
+      },
+      { pageUrl: fixtureUrl, hiddenNoteId: noteId },
+    )
+    await page.reload()
+    await expect(mustard).toBeAttached({ timeout: 8_000 })
+
+    const revealed = mustard
+      .locator('.mustard-note')
+      .filter({ hasText: 'Hidden note deleted from its page' })
+    await expect(revealed).toBeVisible({ timeout: 8_000 })
+    await revealed.hover()
+    await revealed.locator('[title="Delete this note"]').click()
+    await expect(revealed).toHaveCount(0)
+
+    await expect
+      .poll(() =>
+        serviceWorker.evaluate(async () => {
+          const result = await chrome.storage.local.get('mustard-hidden-notes')
+          return Object.keys(result['mustard-hidden-notes'] ?? {}).length
+        }),
+      )
+      .toBe(0)
+
+    const options = await context.newPage()
+    await options.goto(`chrome-extension://${extensionId}/options.html`)
+    await expect(options.getByRole('button', { name: /Hidden notes \(/ })).toHaveCount(0)
+    await expect(options.locator('.hidden-note-missing')).toHaveCount(0)
+  })
+
   test('the options page lists a hidden note and un-hiding it brings the note back', async ({
     context,
     extensionId,
