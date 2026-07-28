@@ -29,7 +29,13 @@ import { DtoMustardNote } from '@/shared/dto/DtoMustardNote'
 import { DtoMustardComment } from '@/shared/dto/DtoMustardComment'
 import MustardContent from '@/ui/content/MustardContent.vue'
 import { createMustardState } from '@/ui/content/mustard-state'
-import { showMustardToast } from './mustard-toast'
+import { showMustardToast } from '@/ui/content/mustard-toast'
+import {
+  HIDDEN_NOTES_KEY,
+  readHiddenNoteIds,
+  toHiddenNoteIds,
+  type HiddenNotesStore,
+} from '@/shared/hidden-notes'
 import type { MustardNote } from '@/shared/model/MustardNote'
 import type { MustardComment } from '@/shared/model/MustardComment'
 import { Observable, subject, synchronize } from '@fettstorch/jule'
@@ -440,6 +446,9 @@ export default defineContentScript({
       // call above resolves — acknowledging them here unconditionally is the
       // only way they don't end up needing a second click.
       mustardState.areNotesVisible = true
+      // A notification must always be able to surface its note, so a repaired note
+      // beats the hidden filter — same reasoning as forcing visibility above.
+      mustardState.filterHiddenNotes = false
       const newNoteIds = newNotes.map((n) => n.id).filter((id): id is string => !!id)
       for (const id of newNoteIds) {
         mustardState.expandedCommentNoteIds[id] = true
@@ -553,6 +562,9 @@ export default defineContentScript({
       mustardState.commentsLoadState = {}
       mustardState.expandedCommentNoteIds = {}
       mustardState.unreadByNoteId = {}
+      // A reveal ("show all notes", deep-link repair) is scoped to the page it was
+      // triggered on, so hidden notes are filtered again on the next one.
+      mustardState.filterHiddenNotes = true
       runNotesQuery(newUrl, { withComments: true }).catch(() => {})
     }
 
@@ -681,6 +693,10 @@ export default defineContentScript({
         // popup is open to render it.
         const withToast = message.withToast === true
         mustardState.areNotesVisible = true
+        // "Show all" is the escape hatch: it reveals hidden notes too, so they can
+        // be un-hidden in place instead of via the options page. Reset on the next
+        // navigation (see the url-change handler).
+        mustardState.filterHiddenNotes = false
         // Loading all notes needs a logged-in session (author profiles resolve
         // via the authenticated path). On the shortcut path, nudge instead of
         // silently doing nothing.
@@ -776,6 +792,14 @@ export default defineContentScript({
       })
       .catch(() => {})
 
+    // Which notes the user has hidden for good. Read separately from the prefs
+    // above because it needs shaping (refs -> id map), not just a boolean cast.
+    readHiddenNoteIds()
+      .then((ids) => {
+        mustardState.hiddenNoteIds = ids
+      })
+      .catch(() => {})
+
     // Keep in sync when preferences are changed from popup or options page
     browser.storage.onChanged.addListener((changes) => {
       if (NOTES_MINIMIZED_KEY in changes) {
@@ -783,6 +807,14 @@ export default defineContentScript({
       }
       if (SHOW_ANCHOR_IN_EDITOR_KEY in changes) {
         mustardState.showAnchorInEditor = !!changes[SHOW_ANCHOR_IN_EDITOR_KEY].newValue
+      }
+      if (HIDDEN_NOTES_KEY in changes) {
+        // Fans hide/un-hide out to every other tab, and back to this one after its
+        // own optimistic update. Un-hiding from the options page re-renders the
+        // note live in any tab already showing its page.
+        mustardState.hiddenNoteIds = toHiddenNoteIds(
+          (changes[HIDDEN_NOTES_KEY].newValue ?? {}) as HiddenNotesStore,
+        )
       }
       if (ALT_CLICK_ENABLED_KEY in changes) {
         altClickEnabled = !!changes[ALT_CLICK_ENABLED_KEY].newValue

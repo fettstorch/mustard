@@ -22,14 +22,42 @@ import {
 const props = defineProps<{
   note: MustardNote
   dragOffset: { x: number; y: number }
+  /**
+   * Per-feature switches. Every feature is on by default (see `features` below); a
+   * consumer that reuses this component on a surface where a given affordance makes
+   * no sense sets just that one to false — no flag here is named after (or knows
+   * about) any specific consumer.
+   *
+   * Currently used by the options-page hidden-notes gallery, which turns off the
+   * three affordances that only mean something on the note's own page (drag,
+   * publish, repost). Deleting has no switch — if you can see your note you can
+   * remove it — and content (link preview, avatars, comments) is always on.
+   */
+  enabledFeatures?: {
+    drag?: boolean
+    publish?: boolean
+    repost?: boolean
+  }
 }>()
 
 const emit = defineEmits<{
   (e: 'pressed-publish', note: MustardNote): void
   (e: 'pressed-delete', note: MustardNote): void
   (e: 'pressed-repost', note: MustardNote, reposted: boolean): void
+  (e: 'pressed-hide', note: MustardNote): void
+  (e: 'pressed-unhide', note: MustardNote): void
   (e: 'drag', offset: { x: number; y: number }): void
 }>()
+
+// Everything on unless a consumer explicitly switches a feature off. Spreading the
+// (partial) prop over the all-true default keeps any feature the consumer didn't
+// mention enabled.
+const features = computed(() => ({
+  drag: true,
+  publish: true,
+  repost: true,
+  ...props.enabledFeatures,
+}))
 
 // Drag state
 const isDragging = ref(false)
@@ -44,6 +72,7 @@ function onContentMousedown(e: MouseEvent) {
 }
 
 function onDragStart(e: MouseEvent) {
+  if (!features.value.drag) return
   if (isMinimized.value && !isHovered.value) return
   e.preventDefault()
   isDragging.value = true
@@ -123,8 +152,15 @@ const isRepostedByMe = computed(() => {
 
 /** Show the repost toggle on remote notes that aren't mine, when logged in. */
 const showRepostButton = computed(
-  () => isRemoteNote.value && !isMyOwnNote.value && isLoggedIn.value,
+  () => isRemoteNote.value && !isMyOwnNote.value && isLoggedIn.value && features.value.repost,
 )
+
+/**
+ * Publishing belongs to the page the note lives on: its confirmation bubble is
+ * positioned against the note's page anchor. Deleting, by contrast, stays
+ * available wherever you can see your own note — including the options gallery.
+ */
+const showPublishButton = computed(() => isLocalNote.value && features.value.publish)
 
 // Accumulating rotation: each press adds a full turn, which the CSS ease-out
 // transition animates as a single 360° spin (and keeps spinning forward on
@@ -175,6 +211,28 @@ const shouldShowCharacterCount = computed(() => {
 const isHovered = ref(false)
 
 const isMinimized = computed(() => mustardState.areNotesMinimized)
+
+/**
+ * True when this note is on the user's hidden list. On a page such a note normally
+ * isn't rendered at all, and only reaches the screen via an explicit reveal ("show
+ * all notes on this page") or notification deep-link repair — hence the
+ * de-emphasis, which says why it's there. In the options gallery every note is
+ * hidden, so that fade is overridden there.
+ */
+const isHidden = computed(() => !!props.note.id && !!mustardState.hiddenNoteIds[props.note.id])
+
+/**
+ * Hiding records a note id, so it needs a confirmed one. An optimistic
+ * `optimistic-…` placeholder has none — same reasoning as `showCommentToggle`.
+ */
+const showHideButton = computed(() => !!props.note.id && !isPending.value && !isHidden.value)
+
+/**
+ * Un-hide is offered wherever a hidden note is actually on screen: the options
+ * gallery (every note there is hidden) and the two page-side reveals (show all
+ * notes, notification deep-link repair).
+ */
+const showUnhideButton = computed(() => !!props.note.id && !isPending.value && isHidden.value)
 
 // --- Comments / notifications ---
 
@@ -262,7 +320,7 @@ watch(unreadCount, (count) => {
   <div class="mustard-note-wrapper">
     <div
       class="mustard-note mustard-notes-bg mustard-notes-border mustard-notes-txt mustard-notes-padding"
-      :class="{ 'is-dragging': isDragging, 'is-minimized': isMinimized }"
+      :class="{ 'is-dragging': isDragging, 'is-minimized': isMinimized, 'is-hidden': isHidden }"
       style="width: fit-content; padding-top: 8px; padding-bottom: 4px"
       @mousedown="onDragStart"
       @mouseenter="isHovered = true"
@@ -279,7 +337,7 @@ watch(unreadCount, (count) => {
         <MustardNoteHeader class="mustard-note-actions" style="translate: 5px; flex: 1">
           <template v-if="isMyOwnNote">
             <IconButton
-              v-if="isLocalNote"
+              v-if="showPublishButton"
               icon="publish"
               :title="
                 mustardState.clientOutdated
@@ -302,6 +360,30 @@ watch(unreadCount, (count) => {
               @mousedown.stop
             />
           </template>
+          <span
+            v-if="showHideButton"
+            class="mustard-hide-toggle"
+            :class="{ 'is-visible': isHovered }"
+          >
+            <IconButton
+              icon="eye-closed"
+              title="Hide this note — un-hide it later in Mustard options"
+              @click="emit('pressed-hide', note)"
+              @mousedown.stop
+            />
+          </span>
+          <span
+            v-if="showUnhideButton"
+            class="mustard-hide-toggle"
+            :class="{ 'is-visible': isHovered }"
+          >
+            <IconButton
+              icon="eye-open"
+              title="Un-hide this note"
+              @click="emit('pressed-unhide', note)"
+              @mousedown.stop
+            />
+          </span>
           <span
             v-if="showRepostButton"
             class="mustard-repost-toggle"
@@ -407,6 +489,48 @@ watch(unreadCount, (count) => {
 
 .mustard-note.is-dragging {
   cursor: grabbing;
+}
+
+/* --- Hide toggle ---
+ * Hover-gated so the resting note stays clean. Collapsed to zero width rather
+ * than just transparent, so it leaves no dead gap in the header when hidden —
+ * same technique as CommentToggle's "+ Add comment" affordance.
+ */
+.mustard-hide-toggle {
+  display: inline-grid;
+  /* minmax(0, …) rather than a bare `0fr`: a bare flex track keeps an automatic
+   * content-based minimum, and IconButton's 8px of horizontal padding holds that
+   * open (to exactly 8px) even once the icon itself has shrunk to nothing. */
+  grid-template-columns: minmax(0, 0fr);
+  overflow: hidden;
+  opacity: 0;
+  transition:
+    grid-template-columns 0.2s ease,
+    opacity 0.2s ease;
+}
+
+.mustard-hide-toggle.is-visible {
+  grid-template-columns: minmax(0, 1fr);
+  opacity: 1;
+}
+
+.mustard-hide-toggle > * {
+  min-width: 0;
+}
+
+/* --- Hidden state ---
+ * A note on the hidden list is normally not rendered. When it IS on screen the
+ * user explicitly revealed it ("show all notes on this page") or a notification
+ * deep-link pulled it back, so de-emphasise it to make that obvious — and lift
+ * it back to full strength on hover, since it's still fully readable content.
+ */
+.mustard-note.is-hidden {
+  opacity: 0.55;
+  transition: opacity 0.2s ease;
+}
+
+.mustard-note.is-hidden:hover {
+  opacity: 1;
 }
 
 /* --- Minimized state ---

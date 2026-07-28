@@ -1,6 +1,16 @@
 /* Shared mustard-notes component classes.
  * Prefixed with mustard-notes- to avoid collisions with host page styles
  * (content script injects into pages without Shadow DOM).
+ *
+ * Rules that style note *content* (code blocks, highlight.js tokens, scrollbars)
+ * are root-scoped to `:is(#mustard-host, .mustard-surface)`:
+ *   - `#mustard-host` is the content script's host element.
+ *   - `.mustard-surface` marks any extension-page container that renders real
+ *     notes — currently the options page's hidden-notes gallery. Without it those
+ *     containers get the note markup but none of this styling.
+ * Add `.mustard-surface` to any new surface that renders MustardNote.
+ * Do NOT widen these to a generic root like `#app`: this stylesheet is injected
+ * into arbitrary host pages, and `#app` is a very common id out there.
  */
 
 /* Mustard tube gradient background + plastic shine shadow */
@@ -113,9 +123,9 @@
 /* Fenced code blocks in notes, comments, and their TipTap editors.
  * Scope under #mustard-host because this stylesheet is injected into arbitrary
  * pages, whose own pre/code and highlight.js styles must not be affected. */
-#mustard-host .mustard-note-content pre,
-#mustard-host .mustard-comment-content pre,
-#mustard-host .ProseMirror pre {
+:is(#mustard-host, .mustard-surface) .mustard-note-content pre,
+:is(#mustard-host, .mustard-surface) .mustard-comment-content pre,
+:is(#mustard-host, .mustard-surface) .ProseMirror pre {
   box-sizing: border-box;
   /* The surrounding note is width: fit-content. Keep unwrapped code out of its
    * intrinsic width calculation so long lines scroll instead of widening it. */
@@ -138,9 +148,9 @@
   tab-size: 2;
 }
 
-#mustard-host .mustard-note-content pre code,
-#mustard-host .mustard-comment-content pre code,
-#mustard-host .ProseMirror pre code {
+:is(#mustard-host, .mustard-surface) .mustard-note-content pre code,
+:is(#mustard-host, .mustard-surface) .mustard-comment-content pre code,
+:is(#mustard-host, .mustard-surface) .ProseMirror pre code {
   padding: 0;
   color: inherit;
   background: transparent;
@@ -149,9 +159,9 @@
 
 /* Inline code is intentionally neutral; syntax highlighting applies only to
  * fenced code blocks, where authors can provide a language identifier. */
-#mustard-host .mustard-note-content :not(pre) > code,
-#mustard-host .mustard-comment-content :not(pre) > code,
-#mustard-host .ProseMirror :not(pre) > code {
+:is(#mustard-host, .mustard-surface) .mustard-note-content :not(pre) > code,
+:is(#mustard-host, .mustard-surface) .mustard-comment-content :not(pre) > code,
+:is(#mustard-host, .mustard-surface) .ProseMirror :not(pre) > code {
   padding: 0.1em 0.3em;
   color: var(--mustard-brown-dark);
   background: rgba(255, 255, 255, 0.45);
@@ -188,110 +198,110 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#mustard-host .hljs-keyword,
-#mustard-host .hljs-variable,
-#mustard-host .hljs-variable.language_,
-#mustard-host .hljs-name,
-#mustard-host .hljs-selector-attr {
+:is(#mustard-host, .mustard-surface) .hljs-keyword,
+:is(#mustard-host, .mustard-surface) .hljs-variable,
+:is(#mustard-host, .mustard-surface) .hljs-variable.language_,
+:is(#mustard-host, .mustard-surface) .hljs-name,
+:is(#mustard-host, .mustard-surface) .hljs-selector-attr {
   color: #c6a0f6;
 }
 
-#mustard-host .hljs-built_in,
-#mustard-host .hljs-doctag,
-#mustard-host .hljs-emphasis,
-#mustard-host .hljs-strong,
-#mustard-host .hljs-deletion {
+:is(#mustard-host, .mustard-surface) .hljs-built_in,
+:is(#mustard-host, .mustard-surface) .hljs-doctag,
+:is(#mustard-host, .mustard-surface) .hljs-emphasis,
+:is(#mustard-host, .mustard-surface) .hljs-strong,
+:is(#mustard-host, .mustard-surface) .hljs-deletion {
   color: #ed8796;
 }
 
-#mustard-host .hljs-type,
-#mustard-host .hljs-title.class_,
-#mustard-host .hljs-selector-tag {
+:is(#mustard-host, .mustard-surface) .hljs-type,
+:is(#mustard-host, .mustard-surface) .hljs-title.class_,
+:is(#mustard-host, .mustard-surface) .hljs-selector-tag {
   color: #eed49f;
 }
 
-#mustard-host .hljs-literal,
-#mustard-host .hljs-number,
-#mustard-host .hljs-variable.constant_,
-#mustard-host .hljs-meta {
+:is(#mustard-host, .mustard-surface) .hljs-literal,
+:is(#mustard-host, .mustard-surface) .hljs-number,
+:is(#mustard-host, .mustard-surface) .hljs-variable.constant_,
+:is(#mustard-host, .mustard-surface) .hljs-meta {
   color: #f5a97f;
 }
 
-#mustard-host .hljs-operator {
+:is(#mustard-host, .mustard-surface) .hljs-operator {
   color: #91d7e3;
 }
 
-#mustard-host .hljs-punctuation {
+:is(#mustard-host, .mustard-surface) .hljs-punctuation {
   color: #b8c0e0;
 }
 
-#mustard-host .hljs-property,
-#mustard-host .hljs-tag,
-#mustard-host .hljs-bullet,
-#mustard-host .hljs-formula,
-#mustard-host .hljs-selector-class,
-#mustard-host .hljs-selector-pseudo {
+:is(#mustard-host, .mustard-surface) .hljs-property,
+:is(#mustard-host, .mustard-surface) .hljs-tag,
+:is(#mustard-host, .mustard-surface) .hljs-bullet,
+:is(#mustard-host, .mustard-surface) .hljs-formula,
+:is(#mustard-host, .mustard-surface) .hljs-selector-class,
+:is(#mustard-host, .mustard-surface) .hljs-selector-pseudo {
   color: #8bd5ca;
 }
 
-#mustard-host .hljs-regexp {
+:is(#mustard-host, .mustard-surface) .hljs-regexp {
   color: #f5bde6;
 }
 
-#mustard-host .hljs-string,
-#mustard-host .hljs-char.escape_,
-#mustard-host .hljs-attribute,
-#mustard-host .hljs-code,
-#mustard-host .hljs-quote,
-#mustard-host .hljs-addition {
+:is(#mustard-host, .mustard-surface) .hljs-string,
+:is(#mustard-host, .mustard-surface) .hljs-char.escape_,
+:is(#mustard-host, .mustard-surface) .hljs-attribute,
+:is(#mustard-host, .mustard-surface) .hljs-code,
+:is(#mustard-host, .mustard-surface) .hljs-quote,
+:is(#mustard-host, .mustard-surface) .hljs-addition {
   color: #a6da95;
 }
 
-#mustard-host .hljs-subst {
+:is(#mustard-host, .mustard-surface) .hljs-subst {
   color: #a5adcb;
 }
 
-#mustard-host .hljs-symbol,
-#mustard-host .hljs-template-tag,
-#mustard-host .hljs-template-variable {
+:is(#mustard-host, .mustard-surface) .hljs-symbol,
+:is(#mustard-host, .mustard-surface) .hljs-template-tag,
+:is(#mustard-host, .mustard-surface) .hljs-template-variable {
   color: #f0c6c6;
 }
 
-#mustard-host .hljs-title,
-#mustard-host .hljs-title.function_,
-#mustard-host .hljs-section,
-#mustard-host .hljs-attr,
-#mustard-host .hljs-selector-id {
+:is(#mustard-host, .mustard-surface) .hljs-title,
+:is(#mustard-host, .mustard-surface) .hljs-title.function_,
+:is(#mustard-host, .mustard-surface) .hljs-section,
+:is(#mustard-host, .mustard-surface) .hljs-attr,
+:is(#mustard-host, .mustard-surface) .hljs-selector-id {
   color: #8aadf4;
 }
 
-#mustard-host .hljs-params {
+:is(#mustard-host, .mustard-surface) .hljs-params {
   color: #cad3f5;
 }
 
-#mustard-host .hljs-comment {
+:is(#mustard-host, .mustard-surface) .hljs-comment {
   color: #939ab7;
 }
 
-#mustard-host .hljs-emphasis,
-#mustard-host .hljs-link,
-#mustard-host .hljs-quote {
+:is(#mustard-host, .mustard-surface) .hljs-emphasis,
+:is(#mustard-host, .mustard-surface) .hljs-link,
+:is(#mustard-host, .mustard-surface) .hljs-quote {
   font-style: italic;
 }
 
-#mustard-host .hljs-strong {
+:is(#mustard-host, .mustard-surface) .hljs-strong {
   font-weight: bold;
 }
 
-#mustard-host .hljs-link {
+:is(#mustard-host, .mustard-surface) .hljs-link {
   color: #7dc4e4;
 }
 
-#mustard-host .hljs-addition {
+:is(#mustard-host, .mustard-surface) .hljs-addition {
   background: rgba(166, 218, 149, 0.15);
 }
 
-#mustard-host .hljs-deletion {
+:is(#mustard-host, .mustard-surface) .hljs-deletion {
   background: rgba(237, 135, 150, 0.15);
 }
 
@@ -349,29 +359,30 @@
 /* explicitly.                                                        */
 /* ---------------------------------------------------------------- */
 #mustard-host,
+.mustard-surface,
 .mustard-popup {
   scrollbar-width: thin;
   scrollbar-color: var(--mustard-brown-border) transparent;
 }
 
-#mustard-host ::-webkit-scrollbar,
+:is(#mustard-host, .mustard-surface) ::-webkit-scrollbar,
 .mustard-popup ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 
-#mustard-host ::-webkit-scrollbar-track,
+:is(#mustard-host, .mustard-surface) ::-webkit-scrollbar-track,
 .mustard-popup ::-webkit-scrollbar-track {
   background: transparent;
 }
 
-#mustard-host ::-webkit-scrollbar-thumb,
+:is(#mustard-host, .mustard-surface) ::-webkit-scrollbar-thumb,
 .mustard-popup ::-webkit-scrollbar-thumb {
   background-color: var(--mustard-brown-border);
   border-radius: 4px;
 }
 
-#mustard-host ::-webkit-scrollbar-thumb:hover,
+:is(#mustard-host, .mustard-surface) ::-webkit-scrollbar-thumb:hover,
 .mustard-popup ::-webkit-scrollbar-thumb:hover {
   background-color: var(--mustard-brown-dark);
 }
