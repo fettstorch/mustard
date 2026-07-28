@@ -1,3 +1,4 @@
+import { synchronize } from '@fettstorch/jule'
 import type { MustardNote } from './model/MustardNote'
 
 /**
@@ -51,22 +52,36 @@ export function toHiddenNoteIds(store: HiddenNotesStore): Record<string, boolean
   return ids
 }
 
-export async function hideNote(ref: HiddenNoteRef): Promise<void> {
+/**
+ * One lock shared by every hidden-set mutation, so hide / un-hide / un-hide-all
+ * run one at a time and can't read-modify-write over each other — a rapid burst
+ * of hides in a tab, or un-hides in the options gallery, would otherwise let a
+ * later write clobber an earlier one.
+ *
+ * The queue is per-JS-realm (content script, options page and background each
+ * get their own), which is all a viewer-side preference needs: the only race
+ * left is two *separate* tabs mutating inside a single storage round-trip, which
+ * isn't a real usage pattern here, and storage.local offers no atomic
+ * compare-and-swap to close it without funnelling writes through one context.
+ */
+const storeMutationLock = {}
+
+export const hideNote = synchronize(async (ref: HiddenNoteRef): Promise<void> => {
   const store = await readHiddenNoteRefs()
   store[ref.noteId] = ref
   await browser.storage.local.set({ [HIDDEN_NOTES_KEY]: store })
-}
+}, storeMutationLock)
 
-export async function unhideNote(noteId: string): Promise<void> {
+export const unhideNote = synchronize(async (noteId: string): Promise<void> => {
   const store = await readHiddenNoteRefs()
   if (!(noteId in store)) return
   delete store[noteId]
   await browser.storage.local.set({ [HIDDEN_NOTES_KEY]: store })
-}
+}, storeMutationLock)
 
-export async function unhideAll(): Promise<void> {
+export const unhideAll = synchronize(async (): Promise<void> => {
   await browser.storage.local.set({ [HIDDEN_NOTES_KEY]: {} })
-}
+}, storeMutationLock)
 
 /**
  * Build a ref for a note. Returns null for a note with no id yet — an optimistic

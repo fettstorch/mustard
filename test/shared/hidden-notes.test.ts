@@ -91,6 +91,17 @@ describe('hidden-notes storage', () => {
     expect(await readHiddenNoteRefs()).toEqual({})
   })
 
+  it('serializes concurrent hides so neither write clobbers the other', async () => {
+    // Fired without awaiting between them: without the shared lock both read the
+    // same (empty) store and the second set() would drop the first note.
+    await Promise.all([
+      hideNote(makeRef({ noteId: 'note-1' })),
+      hideNote(makeRef({ noteId: 'note-2' })),
+    ])
+
+    expect(Object.keys(await readHiddenNoteRefs()).sort()).toEqual(['note-1', 'note-2'])
+  })
+
   it('exposes hidden ids as a lookup map for the render gate', async () => {
     await hideNote(makeRef({ noteId: 'note-1' }))
     await hideNote(makeRef({ noteId: 'note-2' }))
