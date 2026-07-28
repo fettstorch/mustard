@@ -190,7 +190,8 @@ test.describe('Hiding individual notes', () => {
   }) => {
     const page = await context.newPage()
     await page.goto(fixtureUrl)
-    await expect(page.locator('#mustard-host')).toBeAttached({ timeout: 8_000 })
+    const mustard = page.locator('#mustard-host')
+    await expect(mustard).toBeAttached({ timeout: 8_000 })
 
     await createLocalNote(context, page, 'Note to delete from gallery')
     await hideOnlyNote(page)
@@ -203,6 +204,21 @@ test.describe('Hiding individual notes', () => {
 
     await card.locator('[title="Delete this note"]').click()
     await expect(options.locator('.hidden-note-card')).toHaveCount(0, { timeout: 8_000 })
+
+    // Removing the hidden ref fans out to the still-open page. The page must
+    // already have invalidated its cached note by then, or that stale deleted
+    // note would become visible again. Wait until the ref write has settled,
+    // then allow the cross-context storage event to reach the content script.
+    await expect
+      .poll(() =>
+        options.evaluate(async () => {
+          const result = await chrome.storage.local.get('mustard-hidden-notes')
+          return Object.keys(result['mustard-hidden-notes'] ?? {}).length
+        }),
+      )
+      .toBe(0)
+    await page.waitForTimeout(500)
+    await expect(mustard.getByText('Note to delete from gallery')).toHaveCount(0)
 
     // The ref has to go with the note, otherwise the entry would come back as a
     // "Note no longer available" row on the next visit.

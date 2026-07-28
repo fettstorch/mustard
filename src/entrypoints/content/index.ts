@@ -83,6 +83,16 @@ export default defineContentScript({
       )
     }
 
+    /** Remove a confirmed-deleted note and all of its per-note UI state. */
+    function dropDeletedNote(noteId: string): void {
+      mustardState.notes = mustardState.notes.filter((note) => note.id !== noteId)
+      delete mustardState.comments[noteId]
+      delete mustardState.commentsLoadState[noteId]
+      delete mustardState.expandedCommentNoteIds[noteId]
+      delete mustardState.unreadByNoteId[noteId]
+      delete mustardState.pendingNoteIds[noteId]
+    }
+
     /**
      * Fetches uncached profiles. `userIds` are opaque Mustard UUIDs (authors,
      * reposters, self); `mentions` are provider-tagged account ids from mention
@@ -689,6 +699,10 @@ export default defineContentScript({
         mustardState.areNotesVisible = message.visible
         return Promise.resolve(mustardState.areNotesVisible)
       }
+      if (message.type === 'NOTE_DELETED') {
+        if (message.pageUrl === getCurrentPageUrl()) dropDeletedNote(message.noteId)
+        return
+      }
       if (message.type === 'LOAD_ALL_NOTES') {
         // One-shot: re-query the current page ignoring the follow graph, render
         // the result, and report the count back so the popup can show an
@@ -987,11 +1001,7 @@ export default defineContentScript({
             else applyNotesResponse(dtos)
             // The deletion is now confirmed, so discard the removed note's
             // per-note UI state and unlock only this note.
-            delete mustardState.comments[message.noteId]
-            delete mustardState.commentsLoadState[message.noteId]
-            delete mustardState.expandedCommentNoteIds[message.noteId]
-            delete mustardState.unreadByNoteId[message.noteId]
-            delete mustardState.pendingNoteIds[message.noteId]
+            dropDeletedNote(message.noteId)
           })
           .catch((err) => {
             console.error('mustard [content-script] DELETE_NOTE failed:', err)

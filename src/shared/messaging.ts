@@ -103,6 +103,19 @@ export type DeleteNoteMessage = Satisfies<
   }
 >
 
+// Background → content scripts: a delete initiated on another extension surface
+// succeeded. Tabs cache page notes in memory, so they must invalidate the removed
+// note instead of relying on a later query (or exposing it when its hidden ref is
+// removed by the options gallery).
+export type NoteDeletedMessage = Satisfies<
+  BaseMessage,
+  {
+    type: 'NOTE_DELETED'
+    noteId: string
+    pageUrl: string
+  }
+>
+
 // Content script → service worker: repost / un-repost a remote note. A repost is
 // a visibility grant — it lets the current user's followers see the note too.
 // Response: fresh DtoMustardNote[] for the page (so the avatar stack updates).
@@ -434,6 +447,7 @@ export type Message =
   | GetLinkPreviewMessage
   | GetLinkPreviewImageMessage
   | DeleteNoteMessage
+  | NoteDeletedMessage
   | SetRepostMessage
   | AtprotoLoginMessage
   | GithubLoginMessage
@@ -485,6 +499,7 @@ type MessageResponses = {
   GET_LINK_PREVIEW: LinkPreview | undefined
   GET_LINK_PREVIEW_IMAGE: string | undefined
   DELETE_NOTE: DtoMustardNote[]
+  NOTE_DELETED: void
   SET_REPOST: DtoMustardNote[]
   ATPROTO_LOGIN: { userId: string; did?: string } | null
   GITHUB_LOGIN: { userId: string } | null

@@ -439,6 +439,16 @@ export default defineBackground(() => {
     DELETE_NOTE: async (message) => {
       await mustardNotesManager.deleteNote(message.noteId, message.pageUrl, message.authorId)
 
+      // A delete can originate outside the page (the options gallery). Every
+      // content script caches its page notes, so invalidate the removed note
+      // before the gallery drops its hidden ref — otherwise storage.onChanged
+      // would make the stale cached note visible again until the next query.
+      await broadcastToAllTabs({
+        type: 'NOTE_DELETED',
+        noteId: message.noteId,
+        pageUrl: message.pageUrl,
+      })
+
       if (message.authorId === 'local') {
         const localNotes = await mustardNotesManager.queryLocalNotesFor(message.pageUrl)
         return localNotes.map(DtoMustardNote.toDto)
