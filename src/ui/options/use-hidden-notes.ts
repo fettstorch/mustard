@@ -2,6 +2,7 @@ import { computed, onMounted, onUnmounted, ref, watchEffect, type ComputedRef, t
 import { Observable, synchronize } from '@fettstorch/jule'
 import {
   createDeleteNoteMessage,
+  createGetAppStatusMessage,
   createGetProfilesMessage,
   createQueryCommentsMessage,
   createQueryNotesByIdsMessage,
@@ -12,6 +13,7 @@ import { DtoMustardComment } from '@/shared/dto/DtoMustardComment'
 import { DtoMustardNote } from '@/shared/dto/DtoMustardNote'
 import { createMustardState, type MustardState } from '@/ui/content/mustard-state'
 import { extractMentions, type MentionTarget } from '@/shared/mentions'
+import { isRemoteMutationMessage } from '@/shared/remote-mutation'
 import {
   groupRefsByPage,
   readHiddenNoteRefs,
@@ -119,7 +121,18 @@ export function useHiddenNotes(currentUserId: () => string | null): HiddenNotesG
   const onStorageChanged = (changes: Record<string, unknown>) => {
     if (HIDDEN_NOTES_KEY in changes) syncFromStorage().catch(() => {})
   }
-  onMounted(() => browser.storage.onChanged.addListener(onStorageChanged))
+  onMounted(() => {
+    browser.storage.onChanged.addListener(onStorageChanged)
+    // The option page's hidden notes gallery reuses the real note/comment controls, so it needs the same
+    // background-owned version guard as the content script. Fail open: a status
+    // lookup error leaves controls usable, while the background remains the
+    // authoritative write guard.
+    sendMessage(createGetAppStatusMessage())
+      .then((status) => {
+        state.clientOutdated = !!status?.outdated
+      })
+      .catch(() => {})
+  })
   onUnmounted(() => browser.storage.onChanged.removeListener(onStorageChanged))
 
   const runLoad = synchronize(async (): Promise<void> => {
@@ -255,6 +268,7 @@ export function useHiddenNotes(currentUserId: () => string | null): HiddenNotesG
   async function remove(note: MustardNote): Promise<void> {
     const noteId = note.id
     if (!noteId) return
+    if (note.authorId !== 'local' && state.clientOutdated) return
     state.pendingNoteIds[noteId] = true
     try {
       await sendMessage(createDeleteNoteMessage(noteId, note.anchorData.pageUrl, note.authorId))
@@ -272,6 +286,8 @@ export function useHiddenNotes(currentUserId: () => string | null): HiddenNotesG
   // `remove` above, so only the comment paths and the notification
   // acknowledgement need handling here.
   event.subscribe((message) => {
+    if (state.clientOutdated && isRemoteMutationMessage(message)) return
+
     if (message.type === 'UPSERT_COMMENT') {
       state.pendingCommentForNoteIds[message.noteId] = true
       sendMessage(message)
