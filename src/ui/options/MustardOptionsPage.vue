@@ -15,7 +15,7 @@
  * when clicking the extension icon. This is a full-page settings interface.
  */
 
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, provide } from 'vue'
 import { version } from '../../../package.json'
 import {
   MUSTARD_FONTS,
@@ -42,6 +42,9 @@ import {
 import { getSupabaseJwt } from '@/background/auth/SupabaseAuth'
 import type { LinkedIdentity, UserProfileType } from '@/shared/model/UserProfile'
 import { PROVIDER_LABELS } from '@/shared/providers'
+import { displayUrl } from '@/shared/display-url'
+import HiddenNoteCard from './HiddenNoteCard.vue'
+import { useHiddenNotes } from './use-hidden-notes'
 
 const PUBLISH_CONFIRM_DISMISSED_KEY = 'mustard-publish-confirm-dismissed'
 const NOTES_MINIMIZED_KEY = 'mustard-notes-minimized'
@@ -74,6 +77,25 @@ const busyProvider = ref<string | null>(null) // provider with an in-flight conn
 const accountError = ref<string | null>(null)
 const blueskyHandle = ref('') // input for "Connect Bluesky"
 const showBlueskyConnect = ref(false)
+
+// --- Hidden notes ---
+// Refs (id + page url) are read on mount so the collapsed header can show a count
+// with no network. The notes themselves load when the section is opened, so the
+// gallery always shows current content rather than a snapshot taken at hide time.
+//
+// The gallery renders the real MustardNote component, which needs `mustardState`
+// and `event` injected. Both come from a gallery-scoped instance so nothing here
+// can disturb (or be disturbed by) the content script's own state.
+const hidden = useHiddenNotes(() => currentSession.value?.userId ?? null)
+provide('mustardState', hidden.state)
+provide('event', hidden.event)
+
+const hiddenExpanded = ref(false)
+
+async function toggleHiddenSection() {
+  hiddenExpanded.value = !hiddenExpanded.value
+  if (hiddenExpanded.value && hidden.loadState.value === 'idle') await hidden.load()
+}
 
 // The providers Mustard can link, in display order.
 const SUPPORTED_PROVIDERS: { id: UserProfileType; label: string }[] = [
@@ -116,6 +138,9 @@ onMounted(async () => {
   browserNotificationsEnabled.value = result[BROWSER_NOTIFICATIONS_ENABLED_KEY] !== false
   selectedFontId.value = getFontById(result[MUSTARD_FONT_KEY] as string | undefined).id
   selectedThemeId.value = getThemeById(result[MUSTARD_THEME_KEY] as string | undefined).id
+
+  // Refs only — the notes themselves load when the section is opened.
+  await hidden.readRefs()
 
   // Read the live keybindings so they stay accurate after the user rebinds.
   // The popup command is `_execute_action` (Chrome MV3) or
@@ -491,6 +516,67 @@ async function disconnect(provider: string, label: string) {
         </div>
       </section>
 
+      <section class="prefs-section">
+        <button
+          type="button"
+          class="hidden-notes-header"
+          :aria-expanded="hiddenExpanded"
+          @click="toggleHiddenSection"
+        >
+          <h2 class="section-title hidden-notes-title">
+            Hidden notes<span v-if="hidden.count.value"> ({{ hidden.count.value }})</span>
+          </h2>
+          <span class="hidden-notes-chevron" :class="{ 'is-open': hiddenExpanded }">›</span>
+        </button>
+
+        <template v-if="hiddenExpanded">
+          <p v-if="hidden.count.value === 0" class="pref-hint">
+            You haven't hidden any notes. Use the striked through eye button on a note to hide it
+            for good — it won't show up on that page again until you un-hide it here.
+          </p>
+          <p v-else-if="hidden.loadState.value === 'loading'" class="pref-hint">
+            Loading hidden notes…
+          </p>
+          <template v-else>
+            <p class="pref-hint">Hover a note and press the eye button to un-hide it.</p>
+
+            <div v-if="hidden.resolved.value.length" class="hidden-notes-mosaic mustard-surface">
+              <HiddenNoteCard
+                v-for="entry in hidden.resolved.value"
+                :key="entry.ref.noteId"
+                :note="entry.note!"
+                @pressed-unhide="hidden.unhide(entry.ref.noteId)"
+                @pressed-delete="hidden.remove(entry.note!)"
+              />
+            </div>
+
+            <div
+              v-for="entry in hidden.unavailable.value"
+              :key="entry.ref.noteId"
+              class="hidden-note-missing"
+            >
+              <span class="hidden-note-missing-text">
+                Note no longer available ·
+                <a :href="entry.ref.pageUrl" target="_blank" rel="noopener noreferrer">
+                  {{ displayUrl(entry.ref.pageUrl) }}
+                </a>
+              </span>
+              <button
+                type="button"
+                class="hidden-note-remove"
+                @click="hidden.unhide(entry.ref.noteId)"
+              >
+                Remove from list
+              </button>
+            </div>
+
+            <button type="button" class="unhide-all-button" @click="hidden.unhideEvery()">
+              Un-hide all
+            </button>
+          </template>
+        </template>
+      </section>
+
       <section class="shortcuts-section">
         <h2 class="section-title">Keyboard shortcuts</h2>
         <div class="shortcut-row">
@@ -655,6 +741,117 @@ h1 {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+/* --- Hidden notes --- */
+
+.hidden-notes-header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
+}
+
+.hidden-notes-title {
+  flex: 1;
+  /* The button owns the row, so the title's own bottom border would sit above the
+   * chevron's baseline — keep the rule on the title but let it span the row. */
+  padding-bottom: 10px;
+}
+
+.hidden-notes-chevron {
+  padding-bottom: 10px;
+  font-size: 1.1rem;
+  line-height: 1;
+  color: var(--mustard-border);
+  transition: transform 0.2s ease;
+}
+
+.hidden-notes-chevron.is-open {
+  transform: rotate(90deg);
+}
+
+/* True masonry via multi-column: tiles flow down each column and `break-inside`
+ * keeps them whole. Reading order is therefore per-column, not per-row — fine for
+ * a gallery sorted by "most recently hidden".
+ *
+ * Notes size themselves from --mustard-note-content-max-width, so redefining it
+ * here scales them to a gallery column instead of the 25vw they take on a page.
+ * That's why no width override is needed against the note's inline fit-content. */
+/* The gallery stays inside the settings card rather than breaking out of it.
+ *
+ * Full-size notes can't mosaic at this width: usable space is 496px (600px page
+ * − 64px page padding − 40px section padding), which fits two columns of at most
+ * 240px, while a page-width note is ~356px. So notes render at their natural
+ * on-page size and each whole tile is then scaled down (see HiddenNoteCard), which
+ * keeps every note's own proportions instead of stretching them to a shared width.
+ *
+ * Only the MAX content width is set here — leaving the min at its global default
+ * is what lets a short note stay narrow instead of filling its column.
+ *
+ * Sizing uses `column-count`, NOT `column-width`. With column-width the browser
+ * derives the count from the available width, which put this one pixel-hair away
+ * from collapsing to a single column (a stack, not a mosaic) — the section's 1.5px
+ * borders were enough to tip it. A fixed count can't do that, and the settings
+ * column is a fixed width anyway, so there is nothing to adapt to.
+ *
+ * Usable width is 487px: 600 − 64 (page padding) − 6 (page border)
+ * − 40 (section padding) − 3 (section border). Two columns with a 16px gap are
+ * therefore 235px each, so the widest tile — 340px content + 1em padding = 356px —
+ * needs zoom ≤ 0.66. 0.62 leaves a little slack.
+ *
+ * For a denser 3-column grid: count 3 gives 151px columns, needing zoom ≤ 0.42,
+ * which puts body text near 5px. */
+.hidden-notes-mosaic {
+  --mustard-note-content-max-width: 340px;
+  --hidden-note-zoom: 0.62;
+  column-count: 2;
+  column-gap: 16px;
+}
+
+.hidden-note-missing {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 8px 10px;
+  border: 1.5px dashed var(--mustard-border-subtle);
+  border-radius: 8px;
+  font-size: 0.8rem;
+}
+
+.hidden-note-missing-text {
+  opacity: 0.7;
+}
+
+.hidden-note-missing-text a {
+  color: inherit;
+}
+
+.hidden-note-remove,
+.unhide-all-button {
+  background: none;
+  border: 1.5px solid var(--mustard-border-subtle);
+  border-radius: 6px;
+  padding: 4px 10px;
+  cursor: pointer;
+  color: inherit;
+  font-size: 0.75rem;
+}
+
+.hidden-note-remove:hover,
+.unhide-all-button:hover {
+  background: var(--mustard-glass);
+}
+
+.unhide-all-button {
+  align-self: flex-start;
 }
 
 .account-block {
