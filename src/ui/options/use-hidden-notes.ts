@@ -1,5 +1,5 @@
 import { computed, onMounted, onUnmounted, ref, watchEffect, type ComputedRef, type Ref } from 'vue'
-import { Observable } from '@fettstorch/jule'
+import { Observable, synchronize } from '@fettstorch/jule'
 import {
   createDeleteNoteMessage,
   createGetProfilesMessage,
@@ -105,15 +105,15 @@ export function useHiddenNotes(currentUserId: () => string | null): HiddenNotesG
    *
    * The gallery's own un-hide/delete already update `refs` optimistically before
    * they write, so those writes come back here as a no-op set and are skipped —
-   * only a genuinely external change reloads. And the reload only runs once the
-   * section has been opened; before that, refreshing `refs` is enough to keep the
-   * count badge honest, and the notes load when it's first expanded.
+   * only a genuinely external change reloads. Once the section has been opened,
+   * `load` is also queued while an earlier load is in flight; before first open,
+   * refreshing `refs` is enough and the notes load when expanded.
    */
   async function syncFromStorage(): Promise<void> {
     const before = refIdKey(refs.value)
     await readRefs()
     if (refIdKey(refs.value) === before) return
-    if (loadState.value === 'loaded') await load()
+    if (loadState.value !== 'idle') await load()
   }
 
   const onStorageChanged = (changes: Record<string, unknown>) => {
@@ -122,7 +122,7 @@ export function useHiddenNotes(currentUserId: () => string | null): HiddenNotesG
   onMounted(() => browser.storage.onChanged.addListener(onStorageChanged))
   onUnmounted(() => browser.storage.onChanged.removeListener(onStorageChanged))
 
-  async function load(): Promise<void> {
+  const runLoad = synchronize(async (): Promise<void> => {
     loadState.value = 'loading'
     try {
       const wanted = [...refs.value]
@@ -157,6 +157,12 @@ export function useHiddenNotes(currentUserId: () => string | null): HiddenNotesG
     } finally {
       loadState.value = 'loaded'
     }
+  })
+
+  // jule's type preserves the async action's nested Promise even though runtime
+  // Promise resolution flattens it; the explicit await exposes the real API type.
+  async function load(): Promise<void> {
+    await runLoad()
   }
 
   /**

@@ -246,6 +246,56 @@ test.describe('Hiding individual notes', () => {
     await expect(options.getByRole('button', { name: /Hidden notes \(2\)/ })).toBeVisible()
   })
 
+  test('the gallery reloads when hidden refs change during its initial load', async ({
+    context,
+    extensionId,
+  }) => {
+    const page = await context.newPage()
+    await page.goto(fixtureUrl)
+    const mustard = page.locator('#mustard-host')
+    await expect(mustard).toBeAttached({ timeout: 8_000 })
+
+    await createLocalNote(context, page, 'Already hidden before gallery load')
+    await hideOnlyNote(page)
+    await createLocalNote(context, page, 'Hidden while gallery is loading')
+    const second = mustard
+      .locator('.mustard-note')
+      .filter({ hasText: 'Hidden while gallery is loading' })
+
+    // Hold the background's remote half of QUERY_NOTES_BY_IDS so the gallery
+    // stays in `loading` after snapshotting its first ref.
+    let releaseQuery!: () => void
+    const queryMayContinue = new Promise<void>((resolve) => {
+      releaseQuery = resolve
+    })
+    let queryStarted = false
+    const notesRoute = '**/rest/v1/notes**'
+    await context.route(notesRoute, async (route) => {
+      queryStarted = true
+      await queryMayContinue
+      await route.continue()
+    })
+
+    const options = await context.newPage()
+    await options.goto(`chrome-extension://${extensionId}/options.html`)
+    await options.getByRole('button', { name: /Hidden notes \(1\)/ }).click()
+    await expect(options.getByText('Loading hidden notes…')).toBeVisible()
+    await expect.poll(() => queryStarted).toBe(true)
+
+    await page.bringToFront()
+    await second.hover()
+    await second.locator('[title^="Hide this note"]').click()
+    await expect(second).toHaveCount(0)
+    await expect(options.getByRole('button', { name: /Hidden notes \(2\)/ })).toBeVisible()
+
+    releaseQuery()
+    await expect(options.locator('.hidden-note-card')).toHaveCount(2, { timeout: 8_000 })
+    await expect(
+      options.locator('.hidden-note-card', { hasText: 'Hidden while gallery is loading' }),
+    ).toHaveCount(1)
+    await context.unroute(notesRoute)
+  })
+
   test('deleting a note from the gallery removes the tile and drops its hidden entry', async ({
     context,
     extensionId,
