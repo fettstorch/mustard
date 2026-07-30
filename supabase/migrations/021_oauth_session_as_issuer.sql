@@ -1,0 +1,12 @@
+-- The confidential-client upgrade (private_key_jwt) needs the AS issuer at
+-- REFRESH time too, not just at the initial callback: the client assertion's
+-- `aud` must be the issuer (per https://atproto.com/specs/oauth), and refresh
+-- reuses the stored oauth_session row long after the login flow's
+-- oauth_login_state.as_issuer is gone.
+--
+-- Nullable: GitHub rows never set it, and pre-upgrade atproto rows (created
+-- as a public client) are already dead by the time this ships (2-week cap) —
+-- they simply fail to refresh, which the existing refresh-failure handling
+-- already treats as "drop the dead session, fall back or fail" (see
+-- refreshUpstreamAtproto in auth-bridge/index.ts).
+ALTER TABLE oauth_session ADD COLUMN IF NOT EXISTS as_issuer TEXT;

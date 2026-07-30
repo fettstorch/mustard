@@ -5,6 +5,7 @@ import {
   isLinkPreviewThumbnailPath,
 } from '../_shared/link-preview-thumbnails.ts'
 import { createSession, rotateSession, revokeSession, type SessionPair } from './sessions.ts'
+import { clientAssertionFormFields } from './client-assertion.ts'
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -564,19 +565,27 @@ function isDpopNonceError(
   )
 }
 
+// `assertionAudience` (the AS `issuer`, not the endpoint URL) is set on every
+// call now that auth-bridge is a confidential client — PAR, token exchange,
+// and refresh must all carry a `private_key_jwt` client assertion alongside
+// the (unrelated) per-session DPoP proof. Omitted only in tests/dry-runs.
 async function authServerPost(
   url: string,
   formData: Record<string, string>,
   privateJwk: jose.JWK,
   publicJwk: jose.JWK,
+  assertionAudience?: string,
 ): Promise<{ status: number; body: Record<string, unknown> }> {
   let nonce = ''
   for (let attempt = 0; attempt < 2; attempt++) {
     const dpop = await createDpopProof('POST', url, privateJwk, publicJwk, nonce || undefined)
+    const body = assertionAudience
+      ? { ...formData, ...(await clientAssertionFormFields(ATPROTO_CLIENT_ID, assertionAudience)) }
+      : formData
     const resp = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded', DPoP: dpop },
-      body: new URLSearchParams(formData).toString(),
+      body: new URLSearchParams(body).toString(),
     })
     const respBody = await resp.json()
     if (isDpopNonceError(resp.status, resp.headers, respBody)) {
@@ -636,6 +645,7 @@ async function handleAtprotoInitiate(body: {
     },
     privateJwk,
     publicJwk,
+    asMeta.issuer,
   )
   if (!parResp.request_uri) {
     console.error('[auth-bridge] PAR failed:', status, parResp)
@@ -700,6 +710,7 @@ async function handleAtprotoCallback(body: {
     },
     loginState.dpop_jwk,
     loginState.dpop_pub_jwk,
+    iss,
   )
   if (!tokenResp.access_token) {
     console.error('[auth-bridge] Token exchange failed:', status, tokenResp)
@@ -740,6 +751,7 @@ async function handleAtprotoCallback(body: {
     access_token: tokenResp.access_token,
     refresh_token: (tokenResp.refresh_token as string) || null,
     token_endpoint: loginState.token_endpoint,
+    as_issuer: iss,
     scope: grantedScope,
     token_expires_at: tokenExpiresAt,
     updated_at: new Date().toISOString(),
@@ -928,6 +940,7 @@ interface OAuthSessionRow {
   access_token: string | null
   refresh_token: string | null
   token_endpoint: string | null
+  as_issuer: string | null
   token_expires_at: string | null
   dpop_jwk: jose.JWK | null
   dpop_pub_jwk: jose.JWK | null
@@ -959,6 +972,7 @@ async function refreshAtprotoToken(
     },
     session.dpop_jwk,
     session.dpop_pub_jwk,
+    session.as_issuer ?? undefined,
   )
   if (!tokenResp.access_token) {
     console.error('[auth-bridge] Token refresh failed:', status, tokenResp)
