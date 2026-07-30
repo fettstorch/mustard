@@ -1,6 +1,13 @@
 // Supabase JWT management for Chrome extension.
-// First JWT comes from the login flow (auth-bridge callback).
-// Subsequent JWTs are obtained via auth-bridge refresh using the expired JWT as proof.
+//
+// The first jwt+refreshToken pair comes from the login flow (auth-bridge
+// callback). Subsequent jwts are obtained by rotating the refreshToken via
+// auth-bridge `refresh` — a short-lived (24h) jwt backed by a revocable,
+// server-side session (see supabase/functions/auth-bridge/sessions.ts).
+//
+// A cache entry with no `refreshToken` predates this overhaul; it triggers a
+// one-time exchange (see refreshSession) instead of a rotate, then behaves
+// like every other session from then on.
 
 import { getSession, clearStoredSession } from './SessionStore'
 import { broadcastToAllTabs } from '@/shared/messaging'
@@ -14,6 +21,7 @@ interface CachedJwt {
   jwt: string
   userId: string // stable Mustard user id (was `did` before multi-provider migration)
   expiresAt: number
+  refreshToken?: string // absent = legacy cache predating refresh tokens; triggers a one-time exchange
 }
 
 /**
@@ -42,70 +50,110 @@ export const getSupabaseJwt = synchronize(async (): Promise<string | null> => {
     return cached.jwt
   }
 
-  // No valid cache — try refreshing with the expired JWT
+  if (cached?.refreshToken) {
+    return await refreshSession(session.userId, { refreshToken: cached.refreshToken })
+  }
+  // Legacy cache predating refresh tokens — one-time exchange. Once it
+  // succeeds the cache gains a refreshToken and never hits this branch again.
   if (cached?.jwt) {
-    try {
-      const response = await fetch(AUTH_BRIDGE_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-        },
-        body: JSON.stringify({
-          action: 'refresh',
-          userId: session.userId,
-          expired_jwt: cached.jwt,
-        }),
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}))
-        console.error('[SupabaseAuth] Refresh failed:', response.status, errorData)
-
-        // Non-transient failures (4xx, 502) mean the server-side session is gone —
-        // clear all credentials, notify the user, and broadcast so UI updates immediately.
-        if (response.status < 500 || response.status === 502) {
-          console.warn(
-            '[SupabaseAuth] Session invalidated server-side — clearing credentials, user must re-login',
-          )
-          await clearSupabaseJwt()
-          await clearStoredSession()
-          await broadcastSessionCleared()
-        }
-
-        return null
-      }
-
-      const data: { jwt: string; expiresAt: number } = await response.json()
-      await storeSupabaseJwt(data.jwt, data.expiresAt, session.userId)
-      return data.jwt
-    } catch (error) {
-      console.error('[SupabaseAuth] Refresh error:', error)
-      return null
-    }
+    return await refreshSession(session.userId, { userId: session.userId, expired_jwt: cached.jwt })
   }
 
   return null
 })
 
+/** Shared refresh call for both the steady-state and one-time-legacy-exchange paths. */
+async function refreshSession(
+  userId: string,
+  body: { refreshToken: string } | { userId: string; expired_jwt: string },
+): Promise<string | null> {
+  try {
+    const response = await fetch(AUTH_BRIDGE_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+      },
+      body: JSON.stringify({ action: 'refresh', ...body }),
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      console.error('[SupabaseAuth] Refresh failed:', response.status, errorData)
+
+      // Non-transient failures (4xx, 502) mean the server-side session is gone —
+      // clear all credentials, notify the user, and broadcast so UI updates immediately.
+      if (response.status < 500 || response.status === 502) {
+        console.warn(
+          '[SupabaseAuth] Session invalidated server-side — clearing credentials, user must re-login',
+        )
+        await clearSupabaseJwt()
+        await clearStoredSession()
+        await broadcastSessionCleared()
+      }
+
+      return null
+    }
+
+    const data: { jwt: string; expiresAt: number; refreshToken: string } = await response.json()
+    await storeSupabaseJwt(data.jwt, data.expiresAt, userId, data.refreshToken)
+    return data.jwt
+  } catch (error) {
+    console.error('[SupabaseAuth] Refresh error:', error)
+    return null
+  }
+}
+
 /**
- * Store a Supabase JWT in the cache. Called by the login flow after auth-bridge callback.
+ * Store a jwt+refreshToken pair in the cache. Called by the login flow after
+ * auth-bridge callback, and internally after every refresh/exchange.
  */
 export async function storeSupabaseJwt(
   jwt: string,
   expiresAt: number,
   userId: string,
+  refreshToken: string,
 ): Promise<void> {
   await browser.storage.local.set({
-    [STORAGE_KEY]: { jwt, userId, expiresAt } satisfies CachedJwt,
+    [STORAGE_KEY]: { jwt, userId, expiresAt, refreshToken } satisfies CachedJwt,
   })
 }
 
 /**
- * Clear the cached JWT. Must be called on logout.
+ * Clear the cached JWT locally only. Not exported — every external caller
+ * should go through `revokeSupabaseSession` so the server-side session
+ * (and its refresh token) doesn't outlive the local logout.
  */
-export async function clearSupabaseJwt(): Promise<void> {
+async function clearSupabaseJwt(): Promise<void> {
   await browser.storage.local.remove(STORAGE_KEY)
+}
+
+/**
+ * Revoke the current session server-side (deletes its mustard_sessions row so
+ * the refresh token can't be reused elsewhere) and clear local credentials.
+ * Best-effort on the network call: a failed revoke must never block the user
+ * from logging out on this device — they end up logged out locally either way.
+ */
+export async function revokeSupabaseSession(): Promise<void> {
+  const cached = await getCachedJwt()
+  if (cached?.refreshToken) {
+    try {
+      await fetch(AUTH_BRIDGE_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({ action: 'logout', refreshToken: cached.refreshToken }),
+      })
+    } catch (error) {
+      console.warn(
+        '[SupabaseAuth] Failed to revoke server-side session (logging out locally anyway):',
+        error,
+      )
+    }
+  }
+  await clearSupabaseJwt()
 }
 
 // --- Private helpers ---

@@ -6,7 +6,7 @@ import { authBridgePost } from './AuthBridge'
 
 const REDIRECT_URI = browser.identity.getRedirectURL('callback')
 
-type GithubLoginResult = { userId: string; jwt: string; expiresAt: number }
+type GithubLoginResult = { userId: string; jwt: string; expiresAt: number; refreshToken: string }
 
 /**
  * Start GitHub OAuth flow via BFF.
@@ -55,5 +55,10 @@ export async function loginWithGithub(currentJwt?: string): Promise<GithubLoginR
   // The session is persisted by the GITHUB_LOGIN handler via
   // syncSessionIdentities(), which fetches the authoritative identity set
   // (including this GitHub identity's providerAccountId) from the server.
-  return { userId, jwt: result.jwt as string, expiresAt: result.expiresAt as number }
+  return {
+    userId,
+    jwt: result.jwt as string,
+    expiresAt: result.expiresAt as number,
+    refreshToken: result.refreshToken as string,
+  }
 }

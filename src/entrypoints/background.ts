@@ -37,7 +37,11 @@ import {
   resolveGithubAccounts,
   getGithubMentionCandidates,
 } from '@/background/auth/AuthBridge'
-import { clearSupabaseJwt, storeSupabaseJwt, getSupabaseJwt } from '@/background/auth/SupabaseAuth'
+import {
+  storeSupabaseJwt,
+  getSupabaseJwt,
+  revokeSupabaseSession,
+} from '@/background/auth/SupabaseAuth'
 import { MustardProfileServiceBsky } from '@/background/business/service/MustardProfileServiceBsky'
 import type { UserProfile, LinkedIdentity } from '@/shared/model/UserProfile'
 import { MustardMutualsServiceBsky } from '@/background/business/service/MustardMutualsServiceBsky'
@@ -503,7 +507,7 @@ export default defineBackground(() => {
         // so the user's existing Mustard account is linked to GitHub.
         const jwt = message.currentJwt ?? (await getSupabaseJwt()) ?? undefined
         const result = await loginWithGithub(jwt)
-        await storeSupabaseJwt(result.jwt, result.expiresAt, result.userId)
+        await storeSupabaseJwt(result.jwt, result.expiresAt, result.userId, result.refreshToken)
         // Enrich the session with the full identity set (github login may have
         // linked into an existing multi-provider account).
         await syncSessionIdentities(result.jwt, result.userId)
@@ -520,7 +524,7 @@ export default defineBackground(() => {
     ATPROTO_LOGIN: async (message) => {
       try {
         const result = await login(message.handle, message.currentJwt)
-        await storeSupabaseJwt(result.jwt, result.expiresAt, result.userId)
+        await storeSupabaseJwt(result.jwt, result.expiresAt, result.userId, result.refreshToken)
         await syncSessionIdentities(result.jwt, result.userId)
         await invalidateRemoteIndexCache()
         broadcastSessionChanged(result.userId)
@@ -567,7 +571,7 @@ export default defineBackground(() => {
     ATPROTO_LOGOUT: async (message) => {
       try {
         await logout(message.userId)
-        await clearSupabaseJwt()
+        await revokeSupabaseSession()
         await clearNativeNotificationState()
         await invalidateRemoteIndexCache()
         mutualsService.clear()
@@ -591,7 +595,7 @@ export default defineBackground(() => {
           // Last identity removed → the account (and all its content) is gone.
           // Tear down local state exactly like a logout.
           await logout(session?.userId ?? '')
-          await clearSupabaseJwt()
+          await revokeSupabaseSession()
           await clearNativeNotificationState()
           mutualsService.clear()
           broadcastSessionChanged(null)
