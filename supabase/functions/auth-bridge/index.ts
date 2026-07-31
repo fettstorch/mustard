@@ -949,6 +949,38 @@ interface OAuthSessionRow {
 type AtprotoRefreshResult = { ok: true } | { ok: false; status: number; error: string }
 
 /**
+ * Every atproto token/refresh request must carry a client assertion whose
+ * audience is the AS issuer (see client-assertion.ts). Sessions created
+ * before the confidential-client migration (021) never had `as_issuer`
+ * persisted; derive it once via AS discovery and persist it, so every
+ * subsequent refresh is a plain DB read.
+ *
+ * This is NOT optional for old sessions: per the AT Protocol OAuth profile's
+ * reference AS implementation (@atproto/oauth-provider's `compareClientAuth`),
+ * every token/refresh request's auth method is checked against the AS's
+ * *live* fetch of client-metadata.json, with no grandfathering for sessions
+ * that were originally issued to a public (`none`-auth) client — it just
+ * explicitly *allows* such a session to "upgrade" by presenting an assertion.
+ * Skipping the assertion here (as this code used to do for `as_issuer ===
+ * null` rows) means every currently-active atproto session's very next
+ * refresh gets rejected the moment client-metadata.json goes confidential.
+ */
+async function resolveAsIssuer(
+  supabase: ReturnType<typeof getSupabase>,
+  session: OAuthSessionRow,
+): Promise<string> {
+  if (session.as_issuer) return session.as_issuer
+  const pdsUrl = await resolvePds(session.provider_account_id)
+  const asMeta = await discoverAuthServer(pdsUrl)
+  await supabase
+    .from('oauth_session')
+    .update({ as_issuer: asMeta.issuer })
+    .eq('provider', 'atproto')
+    .eq('provider_account_id', session.provider_account_id)
+  return asMeta.issuer
+}
+
+/**
  * Refresh an atproto session's upstream access token in place. Returns a typed
  * result (not a Response) so the caller can decide whether a failure is fatal
  * (atproto is the account's only linked provider) or recoverable (fall back to
@@ -963,6 +995,17 @@ async function refreshAtprotoToken(
     return { ok: false, status: 400, error: 'Incomplete atproto session' }
   }
 
+  let issuer: string
+  try {
+    issuer = await resolveAsIssuer(supabase, session)
+  } catch (error) {
+    return {
+      ok: false,
+      status: 502,
+      error: `Failed to resolve AS issuer: ${error instanceof Error ? error.message : String(error)}`,
+    }
+  }
+
   const { status, body: tokenResp } = await authServerPost(
     session.token_endpoint,
     {
@@ -972,7 +1015,7 @@ async function refreshAtprotoToken(
     },
     session.dpop_jwk,
     session.dpop_pub_jwk,
-    session.as_issuer ?? undefined,
+    issuer,
   )
   if (!tokenResp.access_token) {
     console.error('[auth-bridge] Token refresh failed:', status, tokenResp)

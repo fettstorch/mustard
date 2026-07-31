@@ -5,8 +5,10 @@
 -- oauth_login_state.as_issuer is gone.
 --
 -- Nullable: GitHub rows never set it, and pre-upgrade atproto rows (created
--- as a public client) are already dead by the time this ships (2-week cap) —
--- they simply fail to refresh, which the existing refresh-failure handling
--- already treats as "drop the dead session, fall back or fail" (see
--- refreshUpstreamAtproto in auth-bridge/index.ts).
+-- as a public client, before this column existed) start out NULL here.
+-- These are NOT assumed dead — Bluesky's AS explicitly allows a `none`-issued
+-- session to "upgrade" to a client assertion on refresh, it just requires one
+-- once client-metadata.json goes confidential. refreshAtprotoToken's
+-- resolveAsIssuer() lazily derives + persists this column via AS discovery on
+-- a row's first refresh after the upgrade, so no bulk backfill is needed.
 ALTER TABLE oauth_session ADD COLUMN IF NOT EXISTS as_issuer TEXT;
