@@ -23,10 +23,10 @@ graph TD
 | --- | -------------------- | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ | ------------ |
 | 1   | Data model           | `mustard_sessions` table (hashed refresh tokens, sliding expiry)                                 | Foundation: how we store a revocable session server-side instead of trusting the JWT alone | **approved** |
 | 2   | Session logic        | mint/rotate/revoke functions                                                                     | The actual rotation mechanics — why hashing, why a grace window                            | **approved** |
-| 3   | Refresh endpoint     | 24h JWT + dual-path `refresh` action (new refresh-token path _and_ one-time legacy-JWT exchange) | How existing users silently upgrade with no re-login                                       | pending      |
-| 4   | Confidential client  | `private_key_jwt` signing + `client-metadata.json` upgrade                                       | Lets Bluesky sessions survive long-term (needed for future PDS writes)                     | pending      |
-| 5   | Client storage       | `SupabaseAuth.ts` rewrite                                                                        | How the extension stores/rotates the pair, thundering-herd handling                        | pending      |
-| 6   | Wire-through + tests | Login/logout call sites, unit + e2e tests                                                        | Ties it together and proves it works                                                       | pending      |
+| 3   | Refresh endpoint     | 24h JWT + dual-path `refresh` action (new refresh-token path _and_ one-time legacy-JWT exchange) | How existing users silently upgrade with no re-login                                       | **approved** |
+| 4   | Confidential client  | `private_key_jwt` signing + `client-metadata.json` upgrade                                       | Lets Bluesky sessions survive long-term (needed for future PDS writes)                     | **approved** |
+| 5   | Client storage       | `SupabaseAuth.ts` rewrite                                                                        | How the extension stores/rotates the pair, thundering-herd handling                        | **approved** |
+| 6   | Wire-through + tests | Login/logout call sites, unit + e2e tests                                                        | Ties it together and proves it works                                                       | in progress  |
 
 ## Notes on existing scaffolding
 
