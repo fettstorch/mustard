@@ -52,4 +52,50 @@ export const test = base.extend<AuthenticatedFixture>({
   },
 })
 
+type SupabaseJwtCache = {
+  jwt: string
+  userId: string
+  expiresAt: number
+  refreshToken?: string // absent = legacy shape, matching a pre-overhaul cache entry
+}
+
+/**
+ * Override the extension's cached supabase_jwt entry for the already-injected
+ * test user. Lets a spec exercise a specific cache shape (legacy jwt-only, an
+ * expiring v2 pair, an already-revoked refreshToken, …) instead of the fresh
+ * legacy jwt `authenticatedContext` injects by default.
+ */
+export async function setSupabaseJwtCache(
+  context: BrowserContext,
+  cache: SupabaseJwtCache,
+): Promise<void> {
+  let serviceWorker = context.serviceWorkers()[0]
+  if (!serviceWorker) {
+    serviceWorker = await context.waitForEvent('serviceworker')
+  }
+  await serviceWorker.evaluate(async (value) => {
+    const extension = globalThis as typeof globalThis & {
+      chrome: { storage: { local: { set(items: Record<string, unknown>): Promise<void> } } }
+    }
+    await extension.chrome.storage.local.set({ supabase_jwt: value })
+  }, cache)
+}
+
+/** Read back the extension's current supabase_jwt cache entry (undefined once cleared). */
+export async function getSupabaseJwtCache(
+  context: BrowserContext,
+): Promise<SupabaseJwtCache | undefined> {
+  let serviceWorker = context.serviceWorkers()[0]
+  if (!serviceWorker) {
+    serviceWorker = await context.waitForEvent('serviceworker')
+  }
+  return serviceWorker.evaluate(async () => {
+    const extension = globalThis as typeof globalThis & {
+      chrome: { storage: { local: { get(key: string): Promise<Record<string, unknown>> } } }
+    }
+    const result = await extension.chrome.storage.local.get('supabase_jwt')
+    return result.supabase_jwt as SupabaseJwtCache | undefined
+  })
+}
+
 export { expect } from '@playwright/test'

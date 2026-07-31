@@ -77,6 +77,21 @@ async function seedUser(admin: SupabaseClient, user: TestUser): Promise<void> {
   })
   if (idError)
     throw new Error(`Could not seed identity for ${user.identity.handle}: ${idError.message}`)
+
+  // Mirror a real login: every account has a matching oauth_session row.
+  // auth-bridge's refresh path treats a userId with zero oauth_session rows
+  // as an anomaly (404 "No session found"), so this must exist for `refresh`
+  // to work against seeded test users at all.
+  const { error: sessionError } = await admin.from('oauth_session').insert({
+    provider: user.identity.provider,
+    provider_account_id: user.identity.providerAccountId,
+    user_id: user.userId,
+    access_token: 'e2e-fake-access-token',
+  })
+  if (sessionError)
+    throw new Error(
+      `Could not seed oauth_session for ${user.identity.handle}: ${sessionError.message}`,
+    )
 }
 
 async function deleteUser(admin: SupabaseClient, userId: string): Promise<void> {
@@ -264,6 +279,47 @@ export function authedClient(userId: string, status = getLocalSupabaseStatus()):
     auth: { autoRefreshToken: false, persistSession: false },
     global: { headers: { Authorization: `Bearer ${jwt}` } },
   })
+}
+
+// ─── auth-bridge session helpers (refresh/logout, bypassing the browser) ────
+
+export type MustardSessionPair = { jwt: string; expiresAt: number; refreshToken: string }
+
+/** POST directly to the local auth-bridge function. Returns the raw status so
+ * tests can assert on rejection shapes (e.g. an already-rotated-out token),
+ * not just the happy path. */
+export async function authBridgeCall(
+  body: Record<string, unknown>,
+  status = getLocalSupabaseStatus(),
+): Promise<{ status: number; body: Record<string, unknown> }> {
+  const res = await fetch(`${status.API_URL}/functions/v1/auth-bridge`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${status.ANON_KEY}` },
+    body: JSON.stringify(body),
+  })
+  return { status: res.status, body: await res.json() }
+}
+
+/**
+ * Mint a real jwt+refreshToken pair for `userId` via the one-time legacy
+ * exchange, by presenting an already-expired (but validly signed) legacy JWT
+ * — exactly what a pre-overhaul cached JWT looks like. Used to seed a genuine
+ * server-side mustard_sessions row for tests exercising rotation, reuse
+ * rejection, and logout.
+ */
+export async function exchangeLegacyJwtForSession(
+  userId: string,
+  status = getLocalSupabaseStatus(),
+): Promise<MustardSessionPair> {
+  const { jwt: expiredJwt } = createAuthE2eJwt(userId, Math.floor(Date.now() / 1000) - 2 * 60 * 60)
+  const { status: httpStatus, body } = await authBridgeCall(
+    { action: 'refresh', userId, expired_jwt: expiredJwt },
+    status,
+  )
+  if (httpStatus !== 200) {
+    throw new Error(`Legacy exchange failed (${httpStatus}): ${JSON.stringify(body)}`)
+  }
+  return body as MustardSessionPair
 }
 
 // ─── Function-readiness check ─────────────────────────────────────────────────
