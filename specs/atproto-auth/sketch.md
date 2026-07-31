@@ -203,9 +203,8 @@ short as possible.
 flowchart TD
     A["1. Merge this PR<br/>(metadata still public — inert)"] --> B["2. supabase db push<br/>(migrations 020-022, additive/safe, no rush)"]
     B --> C{"Low-traffic window"}
-    C --> D["3a. supabase functions deploy auth-bridge"]
-    D --> E["3b. Restore confidential docs/client-metadata.json,<br/>commit, push to main — immediately after 3a"]
-    E --> F["Monitor auth-bridge logs for<br/>'Client authentication method mismatch'"]
+    C --> D["3. scripts/go-live-atproto-confidential-client.sh<br/>(deploy auth-bridge, flip metadata, push — back-to-back)"]
+    D --> F["Monitor auth-bridge logs for<br/>'Client authentication method mismatch'"]
     F -->|clean| G[Done]
     F -->|errors persist past GH Pages propagation| H[Investigate before wider impact]
 ```
@@ -213,13 +212,13 @@ flowchart TD
 1. Merge this PR. Nothing live changes yet (see above).
 2. `supabase db push` — deploy migrations 020-022 whenever convenient; purely
    additive, old `auth-bridge` ignores the new table/column.
-3. At a chosen low-traffic window, run back-to-back (script both if possible
-   to minimize the gap):
-   - `supabase functions deploy auth-bridge` (and any other changed
-     functions)
-   - Restore the confidential `docs/client-metadata.json` (retrieve via
-     `git show <this-branch>:docs/client-metadata.json`, or from this PR's
-     diff before the revert commit) and push straight to `main`.
+3. At a chosen low-traffic window, run
+   `scripts/go-live-atproto-confidential-client.sh` from `main` — deploys
+   `auth-bridge` then immediately flips `docs/client-metadata.json` to
+   `docs/client-metadata.confidential.json`'s content and pushes, minimizing
+   the gap. (Not committed as `git show <branch>:...` from history — a PR
+   squash-merge would make that commit unreachable from `main`; the
+   confidential content instead lives as a permanent, inert sibling file.)
 4. Existing GitHub-linked sessions are unaffected throughout (GitHub never
    touches the confidential-client code path).
 5. Existing atproto sessions self-heal on their next refresh via

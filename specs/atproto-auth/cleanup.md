@@ -71,6 +71,23 @@ If a pre-upgrade row's PDS/AS has gone away since the account last logged in,
 existing dead-session handling (delete the row, fall back to another linked
 provider or fail if atproto was the only one) covers that case unchanged.
 
+## 3. Deploy-time scaffolding (delete once the go-live step has run)
+
+Three files exist purely to make the confidential-client cutover safe and
+testable; none of them belong in the repo once `main`'s
+`docs/client-metadata.json` is confidential:
+
+| File                                             | Purpose                                                                                                                                                         | Safe to delete once...                                                                                                |
+| ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `docs/client-metadata-test.json`                 | Throwaway second `client_id` for testing the confidential flow against a real AS without touching production                                                    | The go-live step has shipped and no further pre-prod testing is needed                                                |
+| `docs/client-metadata.confidential.json`         | Inert sibling holding the target content for `docs/client-metadata.json`, so cutover doesn't depend on a possibly-squash-merged commit surviving in git history | Immediately after `scripts/go-live-atproto-confidential-client.sh` runs — its job is done the moment it's copied over |
+| `scripts/go-live-atproto-confidential-client.sh` | One-shot cutover script (deploy `auth-bridge` + flip metadata back-to-back)                                                                                     | Same as above — it's a single-use migration script, not a repeatable tool                                             |
+
+No removal gate/waiting period needed for these — unlike the legacy-exchange
+path, they carry no user-facing compatibility risk. Delete in the same PR
+that confirms the go-live step succeeded (or immediately after, once
+`auth-bridge` logs show clean confidential-client traffic).
+
 ## Explicitly not in scope for this cleanup
 
 - The `did` column kept "for backward-compat" on `oauth_session` — pre-existing
