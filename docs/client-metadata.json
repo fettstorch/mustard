@@ -10,20 +10,6 @@
   "grant_types": ["authorization_code", "refresh_token"],
   "response_types": ["code"],
   "application_type": "web",
-  "token_endpoint_auth_method": "private_key_jwt",
-  "token_endpoint_auth_signing_alg": "ES256",
-  "dpop_bound_access_tokens": true,
-  "jwks": {
-    "keys": [
-      {
-        "kty": "EC",
-        "x": "eVS6-VtoJHgzCMlCxO9gwRgMTO4l1_Lzy7BXvcw0YHg",
-        "y": "xp25EKS6AFqF7gwp-fytwY4ODtknVjDWucH38kEdDc8",
-        "crv": "P-256",
-        "kid": "840b765f-8dab-4300-815f-c10b1a18774c",
-        "use": "sig",
-        "alg": "ES256"
-      }
-    ]
-  }
+  "token_endpoint_auth_method": "none",
+  "dpop_bound_access_tokens": true
 }

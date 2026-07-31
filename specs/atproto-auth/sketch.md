@@ -188,18 +188,48 @@ Constants: `JWT_TTL = 24h`, `REFRESH_TOKEN_TTL = 90d` (sliding),
 
 ## Migration & rollout
 
-1. Migration `020_mustard_sessions.sql` creates the table (service-role only).
-2. New client build: on first `getSupabaseJwt()` with a legacy cache entry
-   (no `refreshToken`), it calls `refresh` with the legacy shape; the server
-   verifies signature + sub + unexpired, creates a session row, deletes the dead
-   atproto `oauth_session` row (grandfathered as unanchored), returns the pair.
-   **No user-visible re-login.**
-3. Users whose legacy JWT already expired (>180 d since login) are already
-   force-logged-out by today's client — unchanged behavior.
-4. Anchoring to Bluesky starts at each user's next natural interactive login
-   (which creates a fresh confidential-client upstream session).
-5. Retire the legacy `refresh` shape later via the existing
-   `app_config.min_client_version` guard; then delete the legacy verifier.
+`docs/` publishes to GitHub Pages the instant it lands on `main` — no manual
+gate, no CI deploy step (checked: `ci.yml` only runs tests/build, nothing
+deploys migrations or functions). So **this PR ships
+`docs/client-metadata.json` reverted to its current-live public-client
+content** — merging it is inert, zero live behavior change. The confidential
+version (`private_key_jwt` + `jwks`) is retrievable from git history and only
+applied at step 3 below, back-to-back with the function deploy, to keep the
+unavoidable mismatch window (see the confidential-client-upgrade correction
+above: metadata and code must agree on auth method on _every_ request) as
+short as possible.
+
+```mermaid
+flowchart TD
+    A["1. Merge this PR<br/>(metadata still public — inert)"] --> B["2. supabase db push<br/>(migrations 020-022, additive/safe, no rush)"]
+    B --> C{"Low-traffic window"}
+    C --> D["3a. supabase functions deploy auth-bridge"]
+    D --> E["3b. Restore confidential docs/client-metadata.json,<br/>commit, push to main — immediately after 3a"]
+    E --> F["Monitor auth-bridge logs for<br/>'Client authentication method mismatch'"]
+    F -->|clean| G[Done]
+    F -->|errors persist past GH Pages propagation| H[Investigate before wider impact]
+```
+
+1. Merge this PR. Nothing live changes yet (see above).
+2. `supabase db push` — deploy migrations 020-022 whenever convenient; purely
+   additive, old `auth-bridge` ignores the new table/column.
+3. At a chosen low-traffic window, run back-to-back (script both if possible
+   to minimize the gap):
+   - `supabase functions deploy auth-bridge` (and any other changed
+     functions)
+   - Restore the confidential `docs/client-metadata.json` (retrieve via
+     `git show <this-branch>:docs/client-metadata.json`, or from this PR's
+     diff before the revert commit) and push straight to `main`.
+4. Existing GitHub-linked sessions are unaffected throughout (GitHub never
+   touches the confidential-client code path).
+5. Existing atproto sessions self-heal on their next refresh via
+   `resolveAsIssuer()` — no bulk backfill, no forced re-login, _except_ for
+   requests that land inside the brief mismatch window in step 3, which fail
+   with a 401 and prompt re-login (acceptable one-time cost, not a recurring
+   one).
+6. Retire the legacy `refresh` shape later via the existing
+   `app_config.min_client_version` guard once adoption evidence supports it
+   (see `cleanup.md`).
 
 ## Test plan
 
@@ -223,10 +253,16 @@ legacy-user scenario)
 - keeps credentials and returns null on a transient 503 refresh failure
 - rejects a legacy did-prefixed cache entry and returns null
 
-**Manual smoke** (real Bluesky, not automatable locally): confidential-client
-login end-to-end, silent upstream refresh after >24 h, revoke-on-Bluesky kicks
-an atproto-only session within ~a day, GitHub-linked account survives upstream
-death.
+**Manual smoke — done**, against a real AS (via the throwaway
+`docs/client-metadata-test.json` client_id, see below), all passing:
+confidential-client login end-to-end (PAR + assertion + token exchange),
+silent refresh rotation, rejected/invalid refresh token → forced re-login
+banner, and `resolveAsIssuer()`'s lazy derivation for a pre-upgrade
+(`as_issuer = null`) session.
+
+Not covered by manual smoke (lower risk, deferred to post-deploy monitoring):
+revoke-on-Bluesky propagation timing, GitHub-linked account surviving
+atproto-side death.
 
 ## Explicitly out of scope
 

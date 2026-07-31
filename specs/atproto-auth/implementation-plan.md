@@ -26,7 +26,7 @@ graph TD
 | 3   | Refresh endpoint     | 24h JWT + dual-path `refresh` action (new refresh-token path _and_ one-time legacy-JWT exchange) | How existing users silently upgrade with no re-login                                       | **approved** |
 | 4   | Confidential client  | `private_key_jwt` signing + `client-metadata.json` upgrade                                       | Lets Bluesky sessions survive long-term (needed for future PDS writes)                     | **approved** |
 | 5   | Client storage       | `SupabaseAuth.ts` rewrite                                                                        | How the extension stores/rotates the pair, thundering-herd handling                        | **approved** |
-| 6   | Wire-through + tests | Login/logout call sites, unit + e2e tests                                                        | Ties it together and proves it works                                                       | in progress  |
+| 6   | Wire-through + tests | Login/logout call sites, unit + e2e tests                                                        | Ties it together and proves it works                                                       | **approved** |
 
 ## Notes on existing scaffolding
 
