@@ -9,7 +9,13 @@ import { clientAssertionFormFields } from './client-assertion.ts'
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
-const ATPROTO_CLIENT_ID = 'https://fettstorch.github.io/mustard/client-metadata.json'
+// Overridable so a local `supabase functions serve` can point at a throwaway
+// second client_id (see docs/client-metadata-test.json) to exercise the
+// confidential-client flow against a real AS without ever touching the
+// production client_id's published metadata. Unset in production — falls
+// back to the real, deployed client_id.
+const ATPROTO_CLIENT_ID =
+  Deno.env.get('ATPROTO_CLIENT_ID') ?? 'https://fettstorch.github.io/mustard/client-metadata.json'
 const ATPROTO_SCOPE = 'atproto'
 const HANDLE_RESOLVER = 'https://bsky.social'
 const PLC_DIRECTORY = 'https://plc.directory'
