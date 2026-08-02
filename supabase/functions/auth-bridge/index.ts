@@ -1140,9 +1140,10 @@ async function handleRefreshV2(
   const rotated = await rotateSession(supabase, refreshToken)
   if (!rotated) return errorResponse('Invalid or expired refresh token — please log in again', 401)
 
-  const upstream = await refreshUpstreamAtproto(supabase, rotated.userId, { allowRecovery: false })
-  if (!upstream.ok) return upstream.response
-
+  // Mustard session rotation must not depend on the availability of an
+  // upstream provider. Refresh the atproto OAuth session when an operation
+  // actually needs it; otherwise a transient provider failure after this
+  // rotation would strand the client with the superseded token.
   console.log(`[auth-bridge] refresh: rotated session for ${rotated.userId}`)
   return jsonResponse(await mintSessionResponse(rotated))
 }

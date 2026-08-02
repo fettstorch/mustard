@@ -8,7 +8,14 @@ import { expect, test as browserTest } from './authenticated.fixture'
 import { setSupabaseJwtCache, getSupabaseJwtCache } from './authenticated.fixture'
 import { test as dbTest } from './local-supabase.fixture'
 import { TEST_USERS, createAuthE2eJwt } from './auth-test-data'
-import { authBridgeCall, deleteNote, exchangeLegacyJwtForSession, seedNote } from './local-supabase'
+import {
+  adminClient,
+  authBridgeCall,
+  deleteNote,
+  exchangeLegacyJwtForSession,
+  getLocalSupabaseStatus,
+  seedNote,
+} from './local-supabase'
 
 const fixtureUrl = 'http://127.0.0.1:4173/page.html'
 const { viewer } = TEST_USERS
@@ -99,6 +106,21 @@ dbTest.describe('server-side rotation mechanics', () => {
     // rotation keeps the session row, only the refresh token rotates).
     expect(status).toBe(200)
     expect(body.refreshToken).not.toBe(pair1.refreshToken)
+  })
+
+  dbTest('rotates independently of the upstream provider session', async () => {
+    const pair = await exchangeLegacyJwtForSession(viewer.userId)
+    const admin = adminClient(getLocalSupabaseStatus())
+    const { error } = await admin.from('oauth_session').delete().eq('user_id', viewer.userId)
+    expect(error).toBeNull()
+
+    const { status, body } = await authBridgeCall({
+      action: 'refresh',
+      refreshToken: pair.refreshToken,
+    })
+
+    expect(status).toBe(200)
+    expect(body.refreshToken).not.toBe(pair.refreshToken)
   })
 
   dbTest('rejects a refresh token once it is more than one rotation out of date', async () => {
