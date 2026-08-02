@@ -50,15 +50,17 @@ describe('SupabaseAuth', () => {
     expect(fetch).not.toHaveBeenCalled()
   })
 
-  it('clears mismatched session and jwt users without refreshing', async () => {
+  it('clears mismatched users and revokes the cached refresh session', async () => {
     await storeSupabaseJwt('jwt-other', FRESH, OTHER_USER_ID, 'refresh-other')
     vi.spyOn(browser.tabs, 'query').mockResolvedValue([])
-    const fetch = vi.fn<typeof globalThis.fetch>()
+    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(jsonResponse({ ok: true }))
     vi.stubGlobal('fetch', fetch)
 
     await expect(getSupabaseJwt()).resolves.toBeNull()
 
-    expect(fetch).not.toHaveBeenCalled()
+    expect(fetch).toHaveBeenCalledTimes(1)
+    const body = JSON.parse(fetch.mock.calls[0]?.[1]?.body as string)
+    expect(body).toEqual({ action: 'logout', refreshToken: 'refresh-other' })
     expect(await getSession()).toBeUndefined()
     const stored = await browser.storage.local.get(SUPABASE_JWT_KEY)
     expect(stored[SUPABASE_JWT_KEY]).toBeUndefined()
