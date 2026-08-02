@@ -16,6 +16,12 @@ export const test = base.extend<AuthenticatedFixture>({
       serviceWorker = await context.waitForEvent('serviceworker')
     }
 
+    // Persistent contexts include tabs created during extension installation
+    // (currently the onboarding page). Close them before injecting auth state:
+    // their content scripts can otherwise query with the test user and refill
+    // storage.session after the cache clear below, hiding data seeded by the test.
+    await Promise.all(context.pages().map((page) => page.close()))
+
     const token = createAuthE2eJwt(AUTH_E2E_USER.userId)
     await serviceWorker.evaluate(
       async ({ user, jwt, expiresAt }) => {
