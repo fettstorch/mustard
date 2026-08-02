@@ -11,12 +11,13 @@
 
 import { getSession, clearStoredSession } from './SessionStore'
 import { broadcastToAllTabs } from '@/shared/messaging'
-import { synchronize } from '@fettstorch/jule'
+import { retryable, synchronize } from '@fettstorch/jule'
 
 const STORAGE_KEY = 'supabase_jwt'
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
 const AUTH_BRIDGE_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/auth-bridge`
 const SESSION_REVOCATION_TIMEOUT_MS = 5_000
+const SESSION_REVOCATION_MAX_TRIES = 3
 
 interface CachedJwt {
   jwt: string
@@ -148,11 +149,17 @@ async function clearSupabaseJwt(): Promise<void> {
  */
 export async function revokeSupabaseSession(): Promise<void> {
   const cached = await getCachedJwt()
-  if (cached?.refreshToken) {
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), SESSION_REVOCATION_TIMEOUT_MS)
-    try {
-      await fetch(AUTH_BRIDGE_URL, {
+  // End the active local session first. Keep the refresh token only in this
+  // stack frame for a bounded best-effort server revocation; never persist a
+  // usable credential after logout merely so it can be retried later.
+  await clearSupabaseJwt()
+  if (!cached?.refreshToken) return
+
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), SESSION_REVOCATION_TIMEOUT_MS)
+  try {
+    await retryable(async ({ retry, tryCount }) => {
+      const response = await fetch(AUTH_BRIDGE_URL, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -160,17 +167,27 @@ export async function revokeSupabaseSession(): Promise<void> {
         },
         body: JSON.stringify({ action: 'logout', refreshToken: cached.refreshToken }),
         signal: controller.signal,
+      }).catch((error: unknown) => {
+        if (!controller.signal.aborted && tryCount < SESSION_REVOCATION_MAX_TRIES) {
+          retry({ backoffMs: 250 * tryCount })
+        }
+        throw error
       })
-    } catch (error) {
-      console.warn(
-        '[SupabaseAuth] Failed to revoke server-side session (logging out locally anyway):',
-        error,
-      )
-    } finally {
-      clearTimeout(timeout)
-    }
+
+      if (response.ok) return
+      if (isRetryableRevocationStatus(response.status) && tryCount < SESSION_REVOCATION_MAX_TRIES) {
+        retry({ backoffMs: 250 * tryCount })
+      }
+      throw new Error(`Server-side session revocation failed (${response.status})`)
+    })
+  } catch (error) {
+    console.warn(
+      '[SupabaseAuth] Failed to revoke server-side session (logged out locally anyway):',
+      error,
+    )
+  } finally {
+    clearTimeout(timeout)
   }
-  await clearSupabaseJwt()
 }
 
 // --- Private helpers ---
@@ -190,6 +207,10 @@ async function getCachedJwt(): Promise<CachedJwt | null> {
 function isExpiringSoon(expiresAt: number): boolean {
   const now = Math.floor(Date.now() / 1000)
   return now >= expiresAt - 60
+}
+
+function isRetryableRevocationStatus(status: number): boolean {
+  return status === 408 || status === 429 || status >= 500
 }
 
 /** Notify all tabs that the session has been cleared so content scripts can update. */

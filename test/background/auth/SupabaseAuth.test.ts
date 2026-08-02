@@ -169,18 +169,40 @@ describe('SupabaseAuth', () => {
 
   it('revokeSupabaseSession clears local credentials even if the network call fails', async () => {
     await storeSupabaseJwt('jwt-1', FRESH, USER_ID, 'refresh-1')
-    vi.stubGlobal(
-      'fetch',
-      vi.fn<typeof globalThis.fetch>().mockRejectedValue(new Error('network down')),
-    )
+    const fetch = vi.fn<typeof globalThis.fetch>().mockRejectedValue(new Error('network down'))
+    vi.stubGlobal('fetch', fetch)
 
     await revokeSupabaseSession()
 
+    expect(fetch).toHaveBeenCalledTimes(3)
     const stored = await browser.storage.local.get(SUPABASE_JWT_KEY)
     expect(stored[SUPABASE_JWT_KEY]).toBeUndefined()
   })
 
-  it('revokeSupabaseSession bounds a stalled network call before clearing locally', async () => {
+  it('revokeSupabaseSession retries retryable responses', async () => {
+    await storeSupabaseJwt('jwt-1', FRESH, USER_ID, 'refresh-1')
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(jsonResponse({}, 500))
+      .mockResolvedValueOnce(jsonResponse({ ok: true }))
+    vi.stubGlobal('fetch', fetch)
+
+    await revokeSupabaseSession()
+
+    expect(fetch).toHaveBeenCalledTimes(2)
+  })
+
+  it('revokeSupabaseSession does not retry non-retryable responses', async () => {
+    await storeSupabaseJwt('jwt-1', FRESH, USER_ID, 'refresh-1')
+    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(jsonResponse({}, 400))
+    vi.stubGlobal('fetch', fetch)
+
+    await revokeSupabaseSession()
+
+    expect(fetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('revokeSupabaseSession clears locally before bounding a stalled network call', async () => {
     vi.useFakeTimers()
     await storeSupabaseJwt('jwt-1', FRESH, USER_ID, 'refresh-1')
     vi.stubGlobal(
@@ -195,10 +217,11 @@ describe('SupabaseAuth', () => {
     )
 
     const logout = revokeSupabaseSession()
+    await vi.advanceTimersByTimeAsync(0)
+    const storedDuringRevoke = await browser.storage.local.get(SUPABASE_JWT_KEY)
+    expect(storedDuringRevoke[SUPABASE_JWT_KEY]).toBeUndefined()
+
     await vi.advanceTimersByTimeAsync(5_000)
     await logout
-
-    const stored = await browser.storage.local.get(SUPABASE_JWT_KEY)
-    expect(stored[SUPABASE_JWT_KEY]).toBeUndefined()
   })
 })
