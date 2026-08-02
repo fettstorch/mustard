@@ -118,8 +118,9 @@ export async function revokeSession(
   refreshToken: string,
 ): Promise<void> {
   const hash = await hashToken(refreshToken)
-  await supabase
+  const { error } = await supabase
     .from('mustard_sessions')
     .delete()
     .or(`refresh_token_hash.eq.${hash},prev_token_hash.eq.${hash}`)
+  if (error) throw new Error(`Failed to revoke session: ${error.message}`)
 }
