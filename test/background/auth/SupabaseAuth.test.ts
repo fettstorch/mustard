@@ -36,6 +36,7 @@ describe('SupabaseAuth', () => {
   })
 
   afterEach(() => {
+    vi.useRealTimers()
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
   })
@@ -174,6 +175,28 @@ describe('SupabaseAuth', () => {
     )
 
     await revokeSupabaseSession()
+
+    const stored = await browser.storage.local.get(SUPABASE_JWT_KEY)
+    expect(stored[SUPABASE_JWT_KEY]).toBeUndefined()
+  })
+
+  it('revokeSupabaseSession bounds a stalled network call before clearing locally', async () => {
+    vi.useFakeTimers()
+    await storeSupabaseJwt('jwt-1', FRESH, USER_ID, 'refresh-1')
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof globalThis.fetch>((_input, init) => {
+        return new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () =>
+            reject(new DOMException('Aborted', 'AbortError')),
+          )
+        })
+      }),
+    )
+
+    const logout = revokeSupabaseSession()
+    await vi.advanceTimersByTimeAsync(5_000)
+    await logout
 
     const stored = await browser.storage.local.get(SUPABASE_JWT_KEY)
     expect(stored[SUPABASE_JWT_KEY]).toBeUndefined()

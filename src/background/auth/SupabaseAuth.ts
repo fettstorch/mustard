@@ -16,6 +16,7 @@ import { synchronize } from '@fettstorch/jule'
 const STORAGE_KEY = 'supabase_jwt'
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
 const AUTH_BRIDGE_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/auth-bridge`
+const SESSION_REVOCATION_TIMEOUT_MS = 5_000
 
 interface CachedJwt {
   jwt: string
@@ -148,6 +149,8 @@ async function clearSupabaseJwt(): Promise<void> {
 export async function revokeSupabaseSession(): Promise<void> {
   const cached = await getCachedJwt()
   if (cached?.refreshToken) {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), SESSION_REVOCATION_TIMEOUT_MS)
     try {
       await fetch(AUTH_BRIDGE_URL, {
         method: 'POST',
@@ -156,12 +159,15 @@ export async function revokeSupabaseSession(): Promise<void> {
           Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
         },
         body: JSON.stringify({ action: 'logout', refreshToken: cached.refreshToken }),
+        signal: controller.signal,
       })
     } catch (error) {
       console.warn(
         '[SupabaseAuth] Failed to revoke server-side session (logging out locally anyway):',
         error,
       )
+    } finally {
+      clearTimeout(timeout)
     }
   }
   await clearSupabaseJwt()
