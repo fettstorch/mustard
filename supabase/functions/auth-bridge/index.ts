@@ -4,7 +4,13 @@ import {
   cleanupUnreferencedLinkPreviewThumbnail,
   isLinkPreviewThumbnailPath,
 } from '../_shared/link-preview-thumbnails.ts'
-import { createSession, rotateSession, revokeSession, type SessionPair } from './sessions.ts'
+import {
+  createSession,
+  rotateSession,
+  revokeSession,
+  revokeSessionById,
+  type SessionPair,
+} from './sessions.ts'
 import { clientAssertionFormFields } from './client-assertion.ts'
 
 // ─── Constants ──────────────────────────────────────────────────────────────
@@ -130,17 +136,27 @@ async function mintSessionResponse(
 // never authorize privileged mutations long after `exp`. The client refreshes
 // proactively (~60s before exp), so legitimate callers always send a live JWT.
 const ACCOUNT_ACTION_CLOCK_TOLERANCE_SEC = 60
-async function verifyJwtSub(jwt: string): Promise<string | null> {
+type VerifiedJwtSession = { userId: string; sessionId: string | null }
+
+async function verifyJwtSession(jwt: string): Promise<VerifiedJwtSession | null> {
   const jwtSecret = Deno.env.get('JWT_SIGNING_SECRET')
   if (!jwtSecret) throw new Error('JWT_SIGNING_SECRET not configured')
   try {
     const { payload } = await jose.jwtVerify(jwt, new TextEncoder().encode(jwtSecret), {
       clockTolerance: ACCOUNT_ACTION_CLOCK_TOLERANCE_SEC,
     })
-    return typeof payload.sub === 'string' ? payload.sub : null
+    if (typeof payload.sub !== 'string') return null
+    return {
+      userId: payload.sub,
+      sessionId: typeof payload.sid === 'string' ? payload.sid : null,
+    }
   } catch {
     return null
   }
+}
+
+async function verifyJwtSub(jwt: string): Promise<string | null> {
+  return (await verifyJwtSession(jwt))?.userId ?? null
 }
 
 // ─── Identity linking (provider-agnostic) ────────────────────────────────────
@@ -156,7 +172,7 @@ async function linkIdentity(
   providerAccountId: string,
   handle: string,
   currentJwt?: string,
-): Promise<string> {
+): Promise<{ userId: string; supersededSessionId: string | null }> {
   const supabase = getSupabase()
 
   // The account this identity should attach to, if the caller is already logged
@@ -166,11 +182,14 @@ async function linkIdentity(
   // secret rotation or a stale legacy token): the latter is a LINK attempt that
   // we must fail rather than silently fork into a brand-new account.
   let linkToUserId: string | null = null
+  let supersededSessionId: string | null = null
   if (currentJwt) {
-    linkToUserId = await verifyJwtSub(currentJwt)
-    if (!linkToUserId) {
+    const currentSession = await verifyJwtSession(currentJwt)
+    if (!currentSession) {
       throw new HttpError('Invalid currentJwt — cannot link identity. Please re-login.', 403)
     }
+    linkToUserId = currentSession.userId
+    supersededSessionId = currentSession.sessionId
   }
 
   // Is this (provider, providerAccountId) already claimed by some Mustard user?
@@ -216,7 +235,7 @@ async function linkIdentity(
     )
   if (identityError) throw new Error(`Failed to upsert identity: ${identityError.message}`)
 
-  return targetUserId
+  return { userId: targetUserId, supersededSessionId }
 }
 
 // ─── Identity management (list / disconnect) ─────────────────────────────────
@@ -744,7 +763,12 @@ async function handleAtprotoCallback(body: {
   // Link identity → get/create the Mustard userId (a UUID) BEFORE storing the
   // session (oauth_session.user_id is NOT NULL). The DID is recorded only as the
   // atproto identity's provider_account_id, never as the userId.
-  const userId = await linkIdentity('atproto', did, did, currentJwt)
+  const { userId, supersededSessionId } = await linkIdentity(
+    'atproto',
+    did,
+    did,
+    currentJwt,
+  )
 
   // Store/update the OAuth session using the new composite PK.
   const { error: sessionError } = await supabase.from('oauth_session').upsert({
@@ -767,6 +791,9 @@ async function handleAtprotoCallback(body: {
   await supabase.from('oauth_login_state').delete().eq('state', state)
 
   const session = await createSession(supabase, userId)
+  if (supersededSessionId) {
+    await revokeSessionById(supabase, supersededSessionId, userId)
+  }
   console.log(`[auth-bridge] atproto callback: success for ${did} (userId=${userId})`)
   return jsonResponse({ ...(await mintSessionResponse(session)), did, userId })
 }
@@ -908,7 +935,12 @@ async function handleGithubCallback(body: {
   // Resolve the Mustard userId BEFORE storing the session — oauth_session.user_id
   // is NOT NULL. `currentJwt` (from the extension service worker) links this new
   // GitHub identity to an already-logged-in account ("connect a second provider").
-  const userId = await linkIdentity('github', githubId, githubLogin, currentJwt)
+  const { userId, supersededSessionId } = await linkIdentity(
+    'github',
+    githubId,
+    githubLogin,
+    currentJwt,
+  )
 
   const { error: sessionError } = await supabase.from('oauth_session').upsert({
     provider: 'github',
@@ -924,6 +956,9 @@ async function handleGithubCallback(body: {
   await supabase.from('oauth_login_state').delete().eq('state', state)
 
   const session = await createSession(supabase, userId)
+  if (supersededSessionId) {
+    await revokeSessionById(supabase, supersededSessionId, userId)
+  }
   console.log(`[auth-bridge] github callback: success for ${githubLogin} (userId=${userId})`)
   return jsonResponse({
     ...(await mintSessionResponse(session)),

@@ -54,6 +54,20 @@ export async function createSession(
   return { sessionId: (data as { id: string }).id, userId, refreshToken }
 }
 
+/** Revoke one verified user's session by its JWT `sid` claim. */
+export async function revokeSessionById(
+  supabase: SupabaseClient,
+  sessionId: string,
+  userId: string,
+): Promise<void> {
+  const { error } = await supabase
+    .from('mustard_sessions')
+    .delete()
+    .eq('id', sessionId)
+    .eq('user_id', userId)
+  if (error) throw new Error(`Failed to revoke superseded session: ${error.message}`)
+}
+
 /**
  * Validate + rotate a refresh token. Returns the new session pair, or null if
  * the token is unknown, was rotated out beyond the grace window, or the
