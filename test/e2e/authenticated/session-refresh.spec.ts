@@ -92,6 +92,27 @@ browserTest.describe('client-visible session lifecycle', () => {
 })
 
 dbTest.describe('server-side rotation mechanics', () => {
+  dbTest('does not create an unreachable session for a legacy client', async () => {
+    const { jwt } = createAuthE2eJwt(viewer.userId, Math.floor(Date.now() / 1000) - 2 * 60 * 60)
+
+    const { status, body } = await authBridgeCall({
+      action: 'refresh',
+      userId: viewer.userId,
+      expired_jwt: jwt,
+    })
+
+    expect(status).toBe(200)
+    expect(body.refreshToken).toBeUndefined()
+
+    const admin = adminClient(getLocalSupabaseStatus())
+    const { count, error } = await admin
+      .from('mustard_sessions')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', viewer.userId)
+    expect(error).toBeNull()
+    expect(count).toBe(0)
+  })
+
   dbTest('rotates a valid refresh token and returns a fresh pair', async () => {
     const pair1 = await exchangeLegacyJwtForSession(viewer.userId)
 

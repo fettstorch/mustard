@@ -313,7 +313,7 @@ export async function exchangeLegacyJwtForSession(
 ): Promise<MustardSessionPair> {
   const { jwt: expiredJwt } = createAuthE2eJwt(userId, Math.floor(Date.now() / 1000) - 2 * 60 * 60)
   const { status: httpStatus, body } = await authBridgeCall(
-    { action: 'refresh', userId, expired_jwt: expiredJwt },
+    { action: 'refresh', userId, expired_jwt: expiredJwt, clientVersion: '2.9.0' },
     status,
   )
   if (httpStatus !== 200) {

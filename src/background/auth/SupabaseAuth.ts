@@ -63,7 +63,11 @@ export const getSupabaseJwt = synchronize(async (): Promise<string | null> => {
   // Legacy cache predating refresh tokens — one-time exchange. Once it
   // succeeds the cache gains a refreshToken and never hits this branch again.
   if (cached?.jwt) {
-    return await refreshSession(session.userId, { userId: session.userId, expired_jwt: cached.jwt })
+    return await refreshSession(session.userId, {
+      userId: session.userId,
+      expired_jwt: cached.jwt,
+      clientVersion: browser.runtime.getManifest().version,
+    })
   }
 
   return null
@@ -72,7 +76,7 @@ export const getSupabaseJwt = synchronize(async (): Promise<string | null> => {
 /** Shared refresh call for both the steady-state and one-time-legacy-exchange paths. */
 async function refreshSession(
   userId: string,
-  body: { refreshToken: string } | { userId: string; expired_jwt: string },
+  body: { refreshToken: string } | { userId: string; expired_jwt: string; clientVersion: string },
 ): Promise<string | null> {
   try {
     const response = await fetch(AUTH_BRIDGE_URL, {

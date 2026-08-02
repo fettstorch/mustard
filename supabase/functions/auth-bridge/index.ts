@@ -29,6 +29,10 @@ const STATE_TTL_SECONDS = 600
 // Short-lived capability, not a refresh credential — see mustard_sessions
 // (migration 020) for the actual (revocable, rotating) session.
 const SUPABASE_JWT_TTL_SECONDS = 24 * 60 * 60
+// v2.9.0 is the first client that persists the refresh token returned by the
+// legacy-JWT migration path. Older clients must not receive an orphaned
+// mustard_sessions row every time their 24-hour JWT expires.
+const REFRESH_TOKEN_CLIENT_VERSION = '2.9.0'
 
 // Mustard user_ids are UUIDs. Used to reject provider ids (DIDs etc.) that must
 // never be treated as user_ids.
@@ -96,11 +100,13 @@ async function listLinkPreviewThumbnailPaths(
 
 // ─── Supabase JWT ────────────────────────────────────────────────────────────
 
-// `sid` ties the JWT back to its mustard_sessions row (log correlation only —
-// authorization never trusts the JWT alone for anything but its short 24h life).
+// `sid` ties a v2.9+ JWT back to its mustard_sessions row (log correlation
+// only — authorization never trusts the JWT alone for anything but its short
+// 24h life). Legacy clients receive a JWT without `sid` because they cannot
+// retain the corresponding refresh token.
 async function mintSupabaseJwt(
   userId: string,
-  sessionId: string,
+  sessionId?: string,
 ): Promise<{ jwt: string; expiresAt: number }> {
   const jwtSecret = Deno.env.get('JWT_SIGNING_SECRET')
   if (!jwtSecret) throw new Error('JWT_SIGNING_SECRET not configured')
@@ -109,13 +115,27 @@ async function mintSupabaseJwt(
   const exp = now + SUPABASE_JWT_TTL_SECONDS
 
   const secret = new TextEncoder().encode(jwtSecret)
-  const jwt = await new jose.SignJWT({ sub: userId, role: 'authenticated', sid: sessionId })
+  const claims = { sub: userId, role: 'authenticated', ...(sessionId ? { sid: sessionId } : {}) }
+  const jwt = await new jose.SignJWT(claims)
     .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
     .setIssuedAt(now)
     .setExpirationTime(exp)
     .sign(secret)
 
   return { jwt, expiresAt: exp }
+}
+
+/** Numeric extension-version comparison for compatibility routing only. */
+function isClientVersionAtLeast(current: string | undefined, minimum: string): boolean {
+  if (!current || !/^\d+(\.\d+)*$/.test(current)) return false
+  const currentParts = current.split('.').map(Number)
+  const minimumParts = minimum.split('.').map(Number)
+  const length = Math.max(currentParts.length, minimumParts.length)
+  for (let index = 0; index < length; index++) {
+    const difference = (currentParts[index] ?? 0) - (minimumParts[index] ?? 0)
+    if (difference !== 0) return difference > 0
+  }
+  return true
 }
 
 /** Mint the `{jwt, expiresAt, refreshToken}` triple returned by login/refresh/exchange. */
@@ -1152,13 +1172,15 @@ async function handleRefreshV2(
  * One-time migration path: a pre-overhaul client has only its old (possibly
  * long-expired, under the previous 180-day scheme) JWT and no refresh token
  * yet. The JWT is proof of identity, not authorization — same lenient
- * verification rationale the old refresh endpoint had. Once exchanged, the
- * client has a refreshToken and never hits this path again.
+ * verification rationale the old refresh endpoint had. A v2.9+ client keeps
+ * the returned refreshToken and never hits this path again; older clients get
+ * another JWT without creating a session row they cannot use.
  */
 async function handleLegacyExchange(
   supabase: ReturnType<typeof getSupabase>,
   userId: string,
   expiredJwt: string,
+  clientVersion?: string,
 ): Promise<Response> {
   const jwtSecret = Deno.env.get('JWT_SIGNING_SECRET')
   if (!jwtSecret) throw new Error('JWT_SIGNING_SECRET not configured')
@@ -1176,6 +1198,11 @@ async function handleLegacyExchange(
   const upstream = await refreshUpstreamAtproto(supabase, userId, { allowRecovery: true })
   if (!upstream.ok) return upstream.response // only "no session found at all" (404)
 
+  if (!isClientVersionAtLeast(clientVersion, REFRESH_TOKEN_CLIENT_VERSION)) {
+    console.log(`[auth-bridge] legacy exchange: JWT-only response for client ${clientVersion ?? 'unknown'}`)
+    return jsonResponse(await mintSupabaseJwt(userId))
+  }
+
   const session = await createSession(supabase, userId)
   console.log(`[auth-bridge] legacy exchange: success for ${userId}`)
   return jsonResponse(await mintSessionResponse(session))
@@ -1185,11 +1212,17 @@ async function handleRefresh(body: {
   refreshToken?: string
   userId?: string
   expired_jwt?: string
+  clientVersion?: string
 }): Promise<Response> {
   const supabase = getSupabase()
   if (body.refreshToken) return await handleRefreshV2(supabase, body.refreshToken)
   if (body.userId && body.expired_jwt) {
-    return await handleLegacyExchange(supabase, body.userId, body.expired_jwt)
+    return await handleLegacyExchange(
+      supabase,
+      body.userId,
+      body.expired_jwt,
+      body.clientVersion,
+    )
   }
   return errorResponse('refreshToken, or userId + expired_jwt, are required', 400)
 }

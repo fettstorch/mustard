@@ -29,6 +29,9 @@ async function seedLegacyCache(jwt: string, expiresAt: number, userId: string): 
 describe('SupabaseAuth', () => {
   beforeEach(async () => {
     fakeBrowser.reset()
+    vi.spyOn(browser.runtime, 'getManifest').mockReturnValue({
+      version: '2.9.0',
+    } as Manifest.WebExtensionManifest)
     await storeSession({ userId: USER_ID, identities: [] })
   })
 
@@ -89,7 +92,12 @@ describe('SupabaseAuth', () => {
 
     await expect(getSupabaseJwt()).resolves.toBe('jwt-new')
     const body = JSON.parse(fetch.mock.calls[0]?.[1]?.body as string)
-    expect(body).toEqual({ action: 'refresh', userId: USER_ID, expired_jwt: 'jwt-legacy' })
+    expect(body).toEqual({
+      action: 'refresh',
+      userId: USER_ID,
+      expired_jwt: 'jwt-legacy',
+      clientVersion: '2.9.0',
+    })
 
     // The exchange leaves a steady-state cache — no more legacy branch on next call.
     const stored = await browser.storage.local.get(SUPABASE_JWT_KEY)
