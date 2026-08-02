@@ -161,7 +161,7 @@ Constants: `JWT_TTL = 24h`, `REFRESH_TOKEN_TTL = 90d` (sliding),
 ## Confidential-client upgrade
 
 - One-time: generate ES256 keypair (with `kid`). Private JWK →
-  `supabase secrets set ATPROTO_CLIENT_JWK=...`; public JWK → `jwks` array in
+  `supabase secrets set ATPROTO_CLIENT_PRIVATE_JWK=...`; public JWK → `jwks` array in
   `docs/client-metadata.json`; set
   `token_endpoint_auth_method: "private_key_jwt"` +
   `token_endpoint_auth_signing_alg: "ES256"`.
