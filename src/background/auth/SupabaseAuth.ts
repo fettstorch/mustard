@@ -46,6 +46,13 @@ export const getSupabaseJwt = synchronize(async (): Promise<string | null> => {
   if (!session) return null
 
   const cached = await getCachedJwt()
+  if (cached && cached.userId !== session.userId) {
+    await clearSupabaseJwt()
+    await clearStoredSession()
+    await broadcastSessionCleared()
+    return null
+  }
+
   if (cached && cached.userId === session.userId && !isExpiringSoon(cached.expiresAt)) {
     return cached.jwt
   }

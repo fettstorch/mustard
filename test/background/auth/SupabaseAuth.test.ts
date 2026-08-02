@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fakeBrowser } from 'wxt/testing/fake-browser'
-import { storeSession } from '../../../src/background/auth/SessionStore'
+import { getSession, storeSession } from '../../../src/background/auth/SessionStore'
 import {
   getSupabaseJwt,
   revokeSupabaseSession,
@@ -8,6 +8,7 @@ import {
 } from '../../../src/background/auth/SupabaseAuth'
 
 const USER_ID = '11111111-1111-4111-8111-111111111111'
+const OTHER_USER_ID = '22222222-2222-4222-8222-222222222222'
 const SUPABASE_JWT_KEY = 'supabase_jwt' // mirrors the module-private STORAGE_KEY
 
 const now = () => Math.floor(Date.now() / 1000)
@@ -33,6 +34,7 @@ describe('SupabaseAuth', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals()
+    vi.restoreAllMocks()
   })
 
   it('returns the cached jwt without a network call when not expiring soon', async () => {
@@ -42,6 +44,20 @@ describe('SupabaseAuth', () => {
 
     await expect(getSupabaseJwt()).resolves.toBe('jwt-1')
     expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it('clears mismatched session and jwt users without refreshing', async () => {
+    await storeSupabaseJwt('jwt-other', FRESH, OTHER_USER_ID, 'refresh-other')
+    vi.spyOn(browser.tabs, 'query').mockResolvedValue([])
+    const fetch = vi.fn<typeof globalThis.fetch>()
+    vi.stubGlobal('fetch', fetch)
+
+    await expect(getSupabaseJwt()).resolves.toBeNull()
+
+    expect(fetch).not.toHaveBeenCalled()
+    expect(await getSession()).toBeUndefined()
+    const stored = await browser.storage.local.get(SUPABASE_JWT_KEY)
+    expect(stored[SUPABASE_JWT_KEY]).toBeUndefined()
   })
 
   it('rotates via the cached refreshToken when the jwt is expiring soon', async () => {
