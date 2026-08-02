@@ -177,13 +177,13 @@ npm install
 
 To run the full backend locally (PostgreSQL + Edge Functions):
 
-`supabase functions serve` reads `supabase/functions/.env` automatically (it has no effect on deployed functions). That file is **gitignored** because it holds real GitHub OAuth client secrets — copy the committed template and fill in the GitHub values:
+`supabase functions serve` reads `supabase/functions/.env` automatically (it has no effect on deployed functions). That file is **gitignored** because it holds OAuth secrets — copy the committed template and fill in the values needed for the provider you are testing:
 
 ```sh
 cp supabase/functions/.env.example supabase/functions/.env
 ```
 
-The template ships with the fixed well-known local `JWT_SIGNING_SECRET` (the default for every local Supabase instance — not sensitive); only the GitHub fields need real values, and only if you're testing GitHub connect locally.
+The template ships with the fixed well-known local `JWT_SIGNING_SECRET` (the default for every local Supabase instance — not sensitive). GitHub login needs its OAuth app values. Bluesky login needs the confidential client's private JWK matching the public key in the selected client-metadata document.
 
 ```sh
 # Start Docker first, then:
@@ -232,6 +232,30 @@ For manifest changes, click the refresh icon on the extension card in `chrome://
 ```sh
 nr type-check
 ```
+
+### Live Bluesky OAuth E2E
+
+The normal authenticated E2E suite is deterministic and does not contact an OAuth provider. A separate smoke test drives the test account's real ATProto login and consent UI, then verifies both Mustard's stored session and the server-side ATProto OAuth session.
+
+Use a dedicated Bluesky account without 2FA. Keep its real account password in an environment variable; app passwords cannot complete the browser OAuth flow. The ignored `supabase/functions/.env` must contain `ATPROTO_CLIENT_PRIVATE_JWK` and the test metadata override shown in `.env.example`.
+
+```sh
+# .env.e2e.local (gitignored; extends the tracked .env.e2e)
+BLUESKY_E2E_HANDLE=mustard-test.bsky.social
+BLUESKY_E2E_PASSWORD=real-account-password
+```
+
+```sh
+npm run test:e2e:auth:bluesky
+```
+
+To run every browser suite with a single E2E build (unauthenticated, deterministic authenticated, and live ATProto OAuth):
+
+```sh
+npm run test:e2e:all
+```
+
+CI runs this test only for trusted same-repository branches, because GitHub does not expose repository secrets to fork pull requests. It requires three repository Actions secrets: `BLUESKY_E2E_HANDLE`, `BLUESKY_E2E_PASSWORD`, and `ATPROTO_CLIENT_PRIVATE_JWK`.
 
 ### Lint
 

@@ -29,6 +29,8 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "test:e2e:auth": "npm run build:e2e:auth && playwright test --config playwright.auth.config.ts",
+    "test:e2e:auth:bluesky": "npm run build:e2e:auth && playwright test --config playwright.bluesky-auth.config.ts",
+    "test:e2e:all": "npm run build:e2e:auth && playwright test && playwright test --config playwright.auth.config.ts && playwright test --config playwright.bluesky-auth.config.ts",
     "check": "npm run type-check && npm run lint && npm run format:check && npm run knip && npm run test && npm run build && npm run build:firefox && npm run lint:firefox"
   },
   "dependencies": {
