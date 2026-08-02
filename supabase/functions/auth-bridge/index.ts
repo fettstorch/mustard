@@ -1007,7 +1007,9 @@ interface OAuthSessionRow {
   dpop_pub_jwk: jose.JWK | null
 }
 
-type AtprotoRefreshResult = { ok: true } | { ok: false; status: number; error: string }
+type AtprotoRefreshResult =
+  | { ok: true }
+  | { ok: false; status: number; error: string; invalidSession: boolean }
 
 /**
  * Every atproto token/refresh request must carry a client assertion whose
@@ -1051,9 +1053,11 @@ async function refreshAtprotoToken(
   supabase: ReturnType<typeof getSupabase>,
   session: OAuthSessionRow,
 ): Promise<AtprotoRefreshResult> {
-  if (!session.refresh_token) return { ok: false, status: 400, error: 'No refresh token available' }
+  if (!session.refresh_token) {
+    return { ok: false, status: 400, error: 'No refresh token available', invalidSession: true }
+  }
   if (!session.token_endpoint || !session.dpop_jwk || !session.dpop_pub_jwk) {
-    return { ok: false, status: 400, error: 'Incomplete atproto session' }
+    return { ok: false, status: 400, error: 'Incomplete atproto session', invalidSession: true }
   }
 
   let issuer: string
@@ -1064,6 +1068,7 @@ async function refreshAtprotoToken(
       ok: false,
       status: 502,
       error: `Failed to resolve AS issuer: ${error instanceof Error ? error.message : String(error)}`,
+      invalidSession: false,
     }
   }
 
@@ -1084,10 +1089,14 @@ async function refreshAtprotoToken(
       ok: false,
       status: 502,
       error: `Token refresh failed: ${tokenResp.error_description || tokenResp.error || 'unknown'}`,
+      // OAuth `invalid_grant` means the refresh token itself is expired,
+      // revoked, or otherwise unusable. Other failures can be temporary or a
+      // client/server configuration problem and must not destroy the session.
+      invalidSession: tokenResp.error === 'invalid_grant',
     }
   }
   if (tokenResp.sub && tokenResp.sub !== session.provider_account_id) {
-    return { ok: false, status: 502, error: 'DID mismatch after refresh' }
+    return { ok: false, status: 502, error: 'DID mismatch after refresh', invalidSession: true }
   }
 
   const tokenExpiresAt = tokenResp.expires_in
@@ -1121,7 +1130,8 @@ type UpstreamRefreshResult = { ok: true } | { ok: false; response: Response }
  *  - legacy exchange (one-time upgrade of a pre-overhaul JWT): never fatal —
  *    onboarding an existing user onto the new session system must not be the
  *    moment they get logged out.
- * Either way, a dead atproto session is dropped so it stops being retried.
+ * A definitively invalid atproto session is dropped so it stops being retried;
+ * transient discovery/transport/provider failures preserve the row.
  */
 async function refreshUpstreamAtproto(
   supabase: ReturnType<typeof getSupabase>,
@@ -1138,15 +1148,21 @@ async function refreshUpstreamAtproto(
   const refreshed = await refreshAtprotoToken(supabase, atprotoSession)
   if (refreshed.ok) return { ok: true }
 
-  await supabase
-    .from('oauth_session')
-    .delete()
-    .eq('provider', 'atproto')
-    .eq('provider_account_id', atprotoSession.provider_account_id)
+  if (refreshed.invalidSession) {
+    await supabase
+      .from('oauth_session')
+      .delete()
+      .eq('provider', 'atproto')
+      .eq('provider_account_id', atprotoSession.provider_account_id)
+  }
 
   const hasFallback = rows.some((s) => s.provider !== 'atproto')
   if (hasFallback || allowRecovery) {
-    console.warn(`[auth-bridge] refresh: atproto session dead for ${userId}; continuing without it`)
+    console.warn(
+      refreshed.invalidSession
+        ? `[auth-bridge] refresh: atproto session dead for ${userId}; continuing without it`
+        : `[auth-bridge] refresh: atproto refresh temporarily failed for ${userId}; preserving session`,
+    )
     return { ok: true }
   }
   return { ok: false, response: errorResponse(refreshed.error, refreshed.status) }

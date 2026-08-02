@@ -33,11 +33,10 @@ Owner context: see `.agents/skills/atproto-supabase-auth/SKILL.md` for the curre
 - **Upgrade to confidential atproto client** (`private_key_jwt` + published
   `jwks`). Motivation: planned features will **write records to the user's PDS**,
   which needs a live Bluesky session long-term.
-- **Anchor Mustard session to the upstream atproto session**: upstream refreshed
-  silently server-side ~daily (piggybacks on the JWT refresh); definitive
-  upstream `invalid_grant` (revoked on Bluesky / expired) revokes the Mustard
-  session **iff atproto is the account's only provider** (GitHub-linked accounts
-  degrade gracefully — GitHub classic tokens never expire).
+- **Decouple Mustard and atproto refresh**: routine Mustard session rotation
+  never depends on Bluesky availability. Future PDS operations refresh the
+  atproto session when they actually need it; only definitive `invalid_grant`
+  deletes the stored atproto session.
 - **Silent migration, no re-login**: existing valid 180-day JWTs are exchanged
   one-time for a new jwt+refresh-token pair.
 - PDS-write features later require a scope upgrade (`atproto` → granular /
@@ -90,22 +89,12 @@ sequenceDiagram
     participant SA as SupabaseAuth (SW)
     participant AB as auth-bridge
     participant DB as mustard_sessions
-    participant AS as bsky.social
 
     SA->>AB: POST refresh {refreshToken}
     AB->>DB: lookup by sha256(token)
 
     alt token matches current (or prev within 10min grace)
         AB->>DB: rotate: new hash, expires_at = now+90d
-        opt atproto anchored & last upstream refresh > 24h
-            AB->>AS: refresh_token grant + client assertion + DPoP
-            alt invalid_grant & atproto is only provider
-                AB->>DB: revoke session
-                AB-->>SA: 403 (client clears creds, SESSION_EXPIRED)
-            else ok / other provider linked
-                AB->>AB: update or drop oauth_session row
-            end
-        end
         AB-->>SA: {jwt 24h, expiresAt, refreshToken NEW}
         SA->>SA: persist pair atomically
     else no match

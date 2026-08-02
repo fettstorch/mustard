@@ -14,9 +14,9 @@ logged out.
 
 - Server (`supabase/functions/auth-bridge/index.ts`):
   `handleLegacyExchange`, the `userId`+`expired_jwt` branch in `handleRefresh`,
-  and the `allowRecovery` parameter on `refreshUpstreamAtproto` (exists only to
-  make this path non-fatal; once it's gone, `allowRecovery` is always `false`
-  and the parameter can be deleted too).
+  and the current call to `refreshUpstreamAtproto`. Once this migration path is
+  gone, reassess the upstream-refresh helpers against the future PDS-write flow;
+  routine Mustard session rotation no longer calls them.
 - Client (`src/background/auth/SupabaseAuth.ts`): the "no `refreshToken` in
   cache → send legacy `{userId, expired_jwt}` shape" fallback in
   `getSupabaseJwt`.
@@ -66,10 +66,10 @@ and persists it to `oauth_session.as_issuer` the first time a pre-upgrade row
 is refreshed, then every subsequent refresh is a plain DB read. Noted here
 only so nobody spends time writing a one-off bulk-backfill script for it.
 
-If a pre-upgrade row's PDS/AS has gone away since the account last logged in,
-`resolveAsIssuer` fails and the refresh fails — `refreshUpstreamAtproto`'s
-existing dead-session handling (delete the row, fall back to another linked
-provider or fail if atproto was the only one) covers that case unchanged.
+If issuer discovery fails, the migration preserves the `oauth_session` row and
+continues creating the Mustard session. Discovery and transport failures do not
+prove that the refresh token is invalid; a future PDS operation can retry.
+Only definitive invalidation such as OAuth `invalid_grant` deletes the row.
 
 ## 3. Deploy-time scaffolding (delete once the go-live step has run)
 

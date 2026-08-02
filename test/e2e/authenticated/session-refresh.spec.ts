@@ -92,6 +92,45 @@ browserTest.describe('client-visible session lifecycle', () => {
 })
 
 dbTest.describe('server-side rotation mechanics', () => {
+  dbTest('preserves a pre-upgrade atproto session when issuer discovery fails', async () => {
+    const admin = adminClient(getLocalSupabaseStatus())
+    const { error: deleteError } = await admin
+      .from('oauth_session')
+      .delete()
+      .eq('user_id', viewer.userId)
+    expect(deleteError).toBeNull()
+
+    const { error: insertError } = await admin.from('oauth_session').insert({
+      provider: 'atproto',
+      provider_account_id: 'did:unsupported:temporary-discovery-failure',
+      user_id: viewer.userId,
+      access_token: 'still-potentially-valid-access-token',
+      refresh_token: 'still-potentially-valid-refresh-token',
+      token_endpoint: 'https://example.invalid/token',
+      dpop_jwk: {},
+      dpop_pub_jwk: {},
+      scope: 'atproto',
+      as_issuer: null,
+    })
+    expect(insertError).toBeNull()
+
+    const { status } = await authBridgeCall({
+      action: 'refresh',
+      userId: viewer.userId,
+      expired_jwt: expiredJwt(viewer.userId),
+      clientVersion: '2.9.0',
+    })
+    expect(status).toBe(200)
+
+    const { data: preserved, error: lookupError } = await admin
+      .from('oauth_session')
+      .select('provider_account_id')
+      .eq('user_id', viewer.userId)
+      .maybeSingle()
+    expect(lookupError).toBeNull()
+    expect(preserved?.provider_account_id).toBe('did:unsupported:temporary-discovery-failure')
+  })
+
   dbTest('does not create an unreachable session for a legacy client', async () => {
     const { jwt } = createAuthE2eJwt(viewer.userId, Math.floor(Date.now() / 1000) - 2 * 60 * 60)
 
