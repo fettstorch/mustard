@@ -60,6 +60,7 @@ export async function login(handle: string, currentJwt?: string): Promise<LoginR
     code,
     state,
     iss,
+    clientVersion: browser.runtime.getManifest().version,
     ...(currentJwt !== undefined ? { currentJwt } : {}),
   })
 

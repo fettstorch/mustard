@@ -146,6 +146,28 @@ async function mintSessionResponse(
   return { jwt, expiresAt, refreshToken: session.refreshToken }
 }
 
+/**
+ * Mint the strongest response shape the calling extension can retain. Clients
+ * before v2.9 receive a JWT only; creating a refresh session for them would
+ * leave an unreachable mustard_sessions row.
+ */
+async function mintClientSessionResponse(
+  supabase: ReturnType<typeof getSupabase>,
+  userId: string,
+  clientVersion?: string,
+  supersededSessionId?: string | null,
+): Promise<{ jwt: string; expiresAt: number; refreshToken?: string }> {
+  if (!isClientVersionAtLeast(clientVersion, REFRESH_TOKEN_CLIENT_VERSION)) {
+    return await mintSupabaseJwt(userId)
+  }
+
+  const session = await createSession(supabase, userId)
+  if (supersededSessionId) {
+    await revokeSessionById(supabase, supersededSessionId, userId)
+  }
+  return await mintSessionResponse(session)
+}
+
 // Verify a Supabase JWT we minted and return its `sub` (the Mustard userId),
 // or null if the signature/format is invalid OR the token is expired.
 //
@@ -725,8 +747,9 @@ async function handleAtprotoCallback(body: {
   state: string
   iss: string
   currentJwt?: string
+  clientVersion?: string
 }): Promise<Response> {
-  const { code, state, iss, currentJwt } = body
+  const { code, state, iss, currentJwt, clientVersion } = body
   if (!code || !state || !iss) return errorResponse('code, state, and iss are required', 400)
 
   console.log(`[auth-bridge] atproto callback: state=${state}`)
@@ -810,12 +833,14 @@ async function handleAtprotoCallback(body: {
 
   await supabase.from('oauth_login_state').delete().eq('state', state)
 
-  const session = await createSession(supabase, userId)
-  if (supersededSessionId) {
-    await revokeSessionById(supabase, supersededSessionId, userId)
-  }
+  const sessionResponse = await mintClientSessionResponse(
+    supabase,
+    userId,
+    clientVersion,
+    supersededSessionId,
+  )
   console.log(`[auth-bridge] atproto callback: success for ${did} (userId=${userId})`)
-  return jsonResponse({ ...(await mintSessionResponse(session)), did, userId })
+  return jsonResponse({ ...sessionResponse, did, userId })
 }
 
 // ─── GitHub strategy ──────────────────────────────────────────────────────────
@@ -888,8 +913,9 @@ async function handleGithubCallback(body: {
   code: string
   state: string
   currentJwt?: string
+  clientVersion?: string
 }): Promise<Response> {
-  const { code, state, currentJwt } = body
+  const { code, state, currentJwt, clientVersion } = body
   if (!code || !state) return errorResponse('code and state are required', 400)
 
   console.log(`[auth-bridge] github callback: state=${state}`)
@@ -975,13 +1001,15 @@ async function handleGithubCallback(body: {
 
   await supabase.from('oauth_login_state').delete().eq('state', state)
 
-  const session = await createSession(supabase, userId)
-  if (supersededSessionId) {
-    await revokeSessionById(supabase, supersededSessionId, userId)
-  }
+  const sessionResponse = await mintClientSessionResponse(
+    supabase,
+    userId,
+    clientVersion,
+    supersededSessionId,
+  )
   console.log(`[auth-bridge] github callback: success for ${githubLogin} (userId=${userId})`)
   return jsonResponse({
-    ...(await mintSessionResponse(session)),
+    ...sessionResponse,
     userId,
     provider: 'github',
     handle: githubLogin,
@@ -1216,12 +1244,10 @@ async function handleLegacyExchange(
 
   if (!isClientVersionAtLeast(clientVersion, REFRESH_TOKEN_CLIENT_VERSION)) {
     console.log(`[auth-bridge] legacy exchange: JWT-only response for client ${clientVersion ?? 'unknown'}`)
-    return jsonResponse(await mintSupabaseJwt(userId))
   }
 
-  const session = await createSession(supabase, userId)
   console.log(`[auth-bridge] legacy exchange: success for ${userId}`)
-  return jsonResponse(await mintSessionResponse(session))
+  return jsonResponse(await mintClientSessionResponse(supabase, userId, clientVersion))
 }
 
 async function handleRefresh(body: {

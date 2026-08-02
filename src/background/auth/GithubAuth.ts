@@ -47,6 +47,7 @@ export async function loginWithGithub(currentJwt?: string): Promise<GithubLoginR
     provider: 'github',
     code,
     state,
+    clientVersion: browser.runtime.getManifest().version,
     ...(currentJwt !== undefined ? { currentJwt } : {}),
   })
 
