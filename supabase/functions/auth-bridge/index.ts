@@ -1235,6 +1235,12 @@ async function handleLegacyExchange(
       clockTolerance: 365 * 24 * 60 * 60,
     })
     if (payload.sub !== userId) return errorResponse('JWT subject mismatch', 403)
+    // Only pre-v2.9 JWTs belong on this migration path. A JWT with a session
+    // id is backed by mustard_sessions and must not be able to recreate a
+    // session after its refresh token was explicitly revoked.
+    if (typeof payload.sid === 'string') {
+      return errorResponse('Session-backed JWT cannot be used for legacy exchange', 403)
+    }
   } catch {
     return errorResponse('Invalid JWT', 403)
   }
