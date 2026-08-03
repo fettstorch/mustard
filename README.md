@@ -153,19 +153,34 @@ flowchart LR
 
 ### Environment Variables
 
-The extension reads two env vars at build time via Vite:
+The extension reads three env vars at build time via Vite:
 
 | Variable                 | Description                                                           |
 | ------------------------ | --------------------------------------------------------------------- |
 | `VITE_SUPABASE_URL`      | Full Supabase project URL                                             |
 | `VITE_SUPABASE_ANON_KEY` | Supabase anon/public key (safe to commit — RLS policies protect data) |
+| `VITE_GIPHY_API_KEY`     | Public browser API key used by the Giphy integration                  |
 
-WXT/Vite automatically picks the right file based on the command:
+WXT/Vite automatically picks the right tracked file based on the command. Only
+`VITE_*` values are compiled into the extension, so these files must never hold
+private credentials:
 
-| File               | Used by                                                     |
-| ------------------ | ----------------------------------------------------------- |
-| `.env.development` | `nr dev:local` — points to local Supabase instance          |
-| `.env.production`  | `nr dev` and `nr build` — points to hosted Supabase project |
+| File               | Used by                                                                     |
+| ------------------ | --------------------------------------------------------------------------- |
+| `.env.development` | `npm run dev:local` — public config for local Supabase                      |
+| `.env.production`  | `npm run dev` and `npm run build` — public config for hosted services       |
+| `.env.e2e`         | `npm run build:e2e:auth` and authenticated E2Es — public local-stack config |
+
+Two ignored files keep the local secret consumers separate:
+
+| File                      | Used by                                                                  |
+| ------------------------- | ------------------------------------------------------------------------ |
+| `.env.e2e.local`          | Playwright only — live Bluesky test-account handle and password          |
+| `supabase/functions/.env` | Local Edge Functions — OAuth client credentials, private JWK, JWT secret |
+
+The committed `.env.e2e.local.example` and `supabase/functions/.env.example`
+document how to create both ignored files. CI does not use the ignored files;
+it combines `supabase/functions/.env.e2e` with GitHub repository secrets.
 
 ### Setup
 
@@ -240,9 +255,7 @@ The normal authenticated E2E suite is deterministic and does not contact an OAut
 Use a dedicated Bluesky account without 2FA. Keep its real account password in an environment variable; app passwords cannot complete the browser OAuth flow. The ignored `supabase/functions/.env` must contain `ATPROTO_CLIENT_PRIVATE_JWK` and the test metadata override shown in `.env.example`.
 
 ```sh
-# .env.e2e.local (gitignored; extends the tracked .env.e2e)
-BLUESKY_E2E_HANDLE=mustard-test.bsky.social
-BLUESKY_E2E_PASSWORD=real-account-password
+cp .env.e2e.local.example .env.e2e.local
 ```
 
 ```sh
@@ -254,6 +267,12 @@ To run every browser suite with a single E2E build (unauthenticated, determinist
 ```sh
 npm run test:e2e:all
 ```
+
+The authenticated E2E commands are self-contained: they run `supabase start`,
+read its current URL and anon key, start `supabase functions serve` with the
+default `supabase/functions/.env`, build once, and stop the Edge Function
+process afterward. The Docker-backed Supabase stack stays running for reuse;
+stop it explicitly with `supabase stop` when finished.
 
 CI runs this test only for trusted same-repository branches, because GitHub does not expose repository secrets to fork pull requests. It requires three repository Actions secrets: `BLUESKY_E2E_HANDLE`, `BLUESKY_E2E_PASSWORD`, and `ATPROTO_CLIENT_PRIVATE_JWK`.
 
