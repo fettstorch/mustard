@@ -101,10 +101,10 @@ async function listLinkPreviewThumbnailPaths(
 
 // ─── Supabase JWT ────────────────────────────────────────────────────────────
 
-// `sid` ties a v2.9+ JWT back to its mustard_sessions row (log correlation
-// only — authorization never trusts the JWT alone for anything but its short
-// 24h life). Legacy clients receive a JWT without `sid` because they cannot
-// retain the corresponding refresh token.
+// `sid` ties a v2.9+ JWT back to its mustard_sessions row. Account-management
+// actions require that row to be live, so explicit logout takes effect before
+// the JWT's short 24h expiry. Legacy clients receive a JWT without `sid`
+// because they cannot retain the corresponding refresh token.
 async function mintSupabaseJwt(
   userId: string,
   sessionId?: string,
@@ -170,7 +170,8 @@ async function mintClientSessionResponse(
 }
 
 // Verify a Supabase JWT we minted and return its `sub` (the Mustard userId),
-// or null if the signature/format is invalid OR the token is expired.
+// or null if the signature/format is invalid, the token is expired, or its v2
+// server-side session was revoked.
 //
 // This authorizes live account-management actions (link, disconnect, delete,
 // list, resolve), so it requires an UNEXPIRED token — only a small skew margin
@@ -184,18 +185,36 @@ type VerifiedJwtSession = { userId: string; sessionId: string | null }
 async function verifyJwtSession(jwt: string): Promise<VerifiedJwtSession | null> {
   const jwtSecret = Deno.env.get('JWT_SIGNING_SECRET')
   if (!jwtSecret) throw new Error('JWT_SIGNING_SECRET not configured')
+
+  let verified: VerifiedJwtSession
   try {
     const { payload } = await jose.jwtVerify(jwt, new TextEncoder().encode(jwtSecret), {
       clockTolerance: ACCOUNT_ACTION_CLOCK_TOLERANCE_SEC,
     })
     if (typeof payload.sub !== 'string') return null
-    return {
+    verified = {
       userId: payload.sub,
       sessionId: typeof payload.sid === 'string' ? payload.sid : null,
     }
   } catch {
     return null
   }
+
+  // sid-less JWTs are from pre-v2.9 clients. They have no mustard_sessions row
+  // to check and remain valid only for the migration window.
+  if (!verified.sessionId) return verified
+
+  const { data, error } = await getSupabase()
+    .from('mustard_sessions')
+    .select('id')
+    .eq('id', verified.sessionId)
+    .eq('user_id', verified.userId)
+    .gt('expires_at', new Date().toISOString())
+    .maybeSingle()
+  if (error) throw new Error(`Failed to verify live session: ${error.message}`)
+  if (!data) return null
+
+  return verified
 }
 
 async function verifyJwtSub(jwt: string): Promise<string | null> {

@@ -221,6 +221,12 @@ TTL, "refreshed" by re-verifying the same JWT with a huge clock tolerance).
   in `mustard_sessions`), so a service-worker restart racing an in-flight
   refresh doesn't strand the caller. A token more than one rotation old is
   always rejected, regardless of elapsed time.
+- **`sid` enforces logout for account actions**: v2.9 JWTs carrying a `sid`
+  must still match a live, unexpired `mustard_sessions` row before auth-bridge
+  permits account actions (including identity linking). A signed JWT alone
+  cannot attach an identity or otherwise revive a logged-out session during its
+  remaining 24-hour lifetime. Sid-less pre-v2.9 JWTs remain compatible only for
+  the rollout window.
 - **Concurrency**: `getSupabaseJwt()` is wrapped in `synchronize()` (from
   `@fettstorch/jule`) so concurrent callers share one in-flight refresh instead
   of racing to rotate the same token.

@@ -168,6 +168,20 @@ dbTest.describe('server-side rotation mechanics', () => {
     expect(body.error).toMatch(/session-backed jwt.*legacy exchange/i)
   })
 
+  dbTest('rejects a revoked v2 session JWT for account actions', async () => {
+    const pair = await exchangeLegacyJwtForSession(viewer.userId)
+    const logout = await authBridgeCall({ action: 'logout', refreshToken: pair.refreshToken })
+    expect(logout.status).toBe(200)
+
+    const { status, body } = await authBridgeCall({
+      action: 'list-identities',
+      currentJwt: pair.jwt,
+    })
+
+    expect(status).toBe(403)
+    expect(body.error).toMatch(/invalid jwt/i)
+  })
+
   dbTest('rotates a valid refresh token and returns a fresh pair', async () => {
     const pair1 = await exchangeLegacyJwtForSession(viewer.userId)
 
