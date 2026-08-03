@@ -6,8 +6,10 @@
 # declared auth method against every request; old-code+new-metadata or
 # new-code+old-metadata both break atproto login/refresh for the gap duration).
 #
-# Prerequisites: migrations 020-022 already applied (`supabase db push`),
-# logged in via `supabase login`, project linked via `supabase link`.
+# Prerequisites: migrations 020-022 already applied (`supabase db push`), the
+# linked production project has ATPROTO_CLIENT_PRIVATE_JWK set to the private key
+# matching docs/client-metadata.confidential.json, logged in via `supabase login`,
+# and project linked via `supabase link`.
 set -euo pipefail
 
 if [[ $(git branch --show-current) != "main" ]]; then
@@ -31,5 +33,5 @@ git commit -m "chore(auth): go live with atproto confidential client_id
 Deployed immediately after auth-bridge, per specs/atproto-auth/sketch.md."
 git push origin main
 
-echo "==> Done. Watch for auth errors: supabase functions logs auth-bridge --tail"
-echo "    Looking for: 'Client authentication method mismatch' (expected briefly, then zero)"
+echo "==> Done. Open Supabase Dashboard → Edge Functions → auth-bridge → Logs."
+echo "    Watch for client-authentication errors (expected briefly, then zero)."

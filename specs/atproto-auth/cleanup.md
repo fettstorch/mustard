@@ -7,8 +7,9 @@ re-deriving it from the diff. Nothing here is safe to remove at merge time.
 ## 1. Legacy JWT→session exchange path
 
 The only item with real removal risk. Kept so existing installs with a
-pre-overhaul cached JWT (no `refreshToken`) upgrade silently instead of being
-logged out.
+pre-overhaul cached JWT (no `refreshToken`) upgrade silently and immediately on
+their first v2.9 authenticated call instead of being logged out or waiting for
+the old 180-day JWT to approach expiry.
 
 **Where it lives:**
 
@@ -23,7 +24,8 @@ logged out.
 - Tests: the legacy-shape fixture option in
   `test/e2e/authenticated/authenticated.fixture.ts` and the
   "silently exchanges a legacy jwt-only storage state…" case in
-  `session-refresh.spec.ts`.
+  `session-refresh.spec.ts`, plus the valid-long-lived legacy-cache regression
+  in `test/background/auth/SupabaseAuth.test.ts`.
 - Docs: transitional note in the `atproto-supabase-auth` skill.
 
 **Why it's not just time-boxed:** the old JWT was accepted as identity proof
@@ -66,24 +68,27 @@ and persists it to `oauth_session.as_issuer` the first time a pre-upgrade row
 is refreshed, then every subsequent refresh is a plain DB read. Noted here
 only so nobody spends time writing a one-off bulk-backfill script for it.
 
+v2.9 triggers this opportunity promptly: a cache without a Mustard refresh
+token takes the legacy exchange before the valid-JWT fast path. Only upstream
+sessions still valid when that first v2.9 call occurs can upgrade; an already
+expired public-client session still requires interactive re-login.
+
 If issuer discovery fails, the migration preserves the `oauth_session` row and
 continues creating the Mustard session. Discovery and transport failures do not
 prove that the refresh token is invalid; a future PDS operation can retry.
 Only definitive invalidation such as OAuth `invalid_grant` deletes the row.
 
-## 3. Deploy-time scaffolding (delete once the go-live step has run)
+## 3. One-shot cutover scaffolding (delete once go-live succeeds)
 
-Three files exist purely to make the confidential-client cutover safe and
-testable; none of them belong in the repo once `main`'s
-`docs/client-metadata.json` is confidential:
+Two files exist purely to make the confidential-client cutover safe; neither
+belongs in the repo once `main`'s `docs/client-metadata.json` is confidential:
 
 | File                                             | Purpose                                                                                                                                                         | Safe to delete once...                                                                                                |
 | ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `docs/client-metadata-test.json`                 | Throwaway second `client_id` for testing the confidential flow against a real AS without touching production                                                    | The go-live step has shipped and no further pre-prod testing is needed                                                |
 | `docs/client-metadata.confidential.json`         | Inert sibling holding the target content for `docs/client-metadata.json`, so cutover doesn't depend on a possibly-squash-merged commit surviving in git history | Immediately after `scripts/go-live-atproto-confidential-client.sh` runs — its job is done the moment it's copied over |
 | `scripts/go-live-atproto-confidential-client.sh` | One-shot cutover script (deploy `auth-bridge` + flip metadata back-to-back)                                                                                     | Same as above — it's a single-use migration script, not a repeatable tool                                             |
 
-No removal gate/waiting period needed for these — unlike the legacy-exchange
+No removal gate/waiting period is needed for these — unlike the legacy-exchange
 path, they carry no user-facing compatibility risk. Delete in the same PR
 that confirms the go-live step succeeded (or immediately after, once
 `auth-bridge` logs show clean confidential-client traffic).
@@ -94,3 +99,6 @@ that confirms the go-live step succeeded (or immediately after, once
   debt from an earlier refactor, unrelated to this auth overhaul.
 - `specs/atproto-auth/sketch.md` and `implementation-plan.md` — keep as
   historical design record after rollout; not cleanup targets themselves.
+- `docs/client-metadata-test.json` — the dedicated confidential `client_id` used
+  by the live Bluesky OAuth CI job. It is now permanent test infrastructure, not
+  throwaway cutover scaffolding.

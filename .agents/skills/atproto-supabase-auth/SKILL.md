@@ -137,8 +137,8 @@ with the same identity-upsert → UUID → JWT mint.
 - **Identity verification**: after token exchange, auth-bridge independently
   resolves DID→PDS→AS to confirm the AS is authoritative for that DID — without
   it, a malicious AS could claim to authenticate any DID.
-- **Confidential client (`client-assertion.ts`)**: auth-bridge is registered as
-  a confidential client (`client-metadata.json` sets
+- **Confidential client (`client-assertion.ts`)**: after the one-time rollout,
+  auth-bridge is registered as a confidential client (`client-metadata.json` sets
   `token_endpoint_auth_method: "private_key_jwt"` + a `jwks`), so every PAR,
   token-exchange, and refresh call to an atproto AS carries a `private_key_jwt`
   assertion signed with `ATPROTO_CLIENT_PRIVATE_JWK` (an ES256 keypair, `aud` =
@@ -148,9 +148,21 @@ with the same identity-upsert → UUID → JWT mint.
   just for login. Distinct from DPoP: DPoP proves possession of a per-session
   key; the client assertion proves _auth-bridge itself_, reused across every
   user's session. See `specs/atproto-auth/sketch.md` for the full rationale.
+  Before that rollout, production `client-metadata.json` deliberately remains
+  public; `client-metadata.confidential.json` holds the staged replacement.
 
 ## Gotchas
 
+- **Keep the two refresh-token layers distinct**: the Mustard refresh token is
+  an opaque client-side credential for rotating short-lived Supabase JWTs;
+  the ATProto OAuth refresh token stays server-side in `oauth_session` and
+  refreshes the user's upstream Bluesky session. Client-version compatibility
+  and rollout claims must say explicitly which token they concern.
+- **Keep rollout artifacts synchronized**: when auth behavior, compatibility
+  gates, deployment ordering, or test scaffolding changes, update the PR rollout
+  description, `specs/atproto-auth/sketch.md`, `cleanup.md`, and the cutover
+  script wherever they are affected. Do not leave the executable rollout and
+  its operational documentation describing different states.
 - **DPoP nonce retry**: the AS rejects the first DPoP-signed request with
   `use_dpop_nonce` and returns the nonce in a header. Standard pattern: send with
   empty nonce, retry with the server-provided nonce.
@@ -170,15 +182,15 @@ default atproto):
 - `refresh` — dual path, dispatched on the request shape (`handleRefresh` in
   `index.ts`):
   - **v2** (`{ refreshToken }`): rotate the mustard session (`rotateSession`)
-    and mint a new 24h JWT. For atproto users this also best-effort-refreshes
-    the upstream token (`refreshUpstreamAtproto`); a failure there is only
-    fatal if the mustard session has no other way to stay useful (see
-    `allowRecovery` in `index.ts`).
+    and mint a new 24h JWT. Routine Mustard rotation is deliberately independent
+    of upstream atproto refresh; future PDS operations refresh upstream only
+    when they actually need it.
   - **legacy** (`{ userId, expired_jwt }`, no `refreshToken`): one-time
     exchange for a pre-overhaul cache that predates refresh tokens — verifies
-    the expired JWT (`clockTolerance` generous enough to cover the old 180-day
-    TTL) and mints a brand-new session, so an existing user upgrades silently
-    on their next call instead of being forced to re-login. See
+    JWT (`clockTolerance` generous enough to cover the old 180-day TTL) and
+    mints a brand-new session. v2.9 prioritizes this exchange over its valid-JWT
+    fast path, so a JWT-only cache upgrades on its first authenticated call even
+    when the old JWT is still far from expiry. See
     `specs/atproto-auth/cleanup.md` for when this path can be deleted.
 - `logout` — `{ refreshToken }`; revokes the mustard session
   (`revokeSession`/`mustard_sessions` row). Idempotent, always `200`.
@@ -224,7 +236,8 @@ TTL, "refreshed" by re-verifying the same JWT with a huge clock tolerance).
   clears local state even if the network call fails.
 - **Legacy migration (one-time, no forced re-login)**: a cache from before this
   overhaul has `{ jwt, userId, expiresAt }` with **no `refreshToken`**.
-  `getSupabaseJwt()` detects that shape and calls `refresh` with
+  `getSupabaseJwt()` detects that shape before its valid-JWT fast path and
+  immediately calls `refresh` with
   `{ userId, expired_jwt }` instead of `{ refreshToken }` — the one-time legacy
   exchange (`handleLegacyExchange` in auth-bridge) mints a real session from the
   old JWT alone. After that one exchange the cache is steady-state

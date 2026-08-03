@@ -55,21 +55,24 @@ export const getSupabaseJwt = synchronize(async (): Promise<string | null> => {
     return null
   }
 
+  // Legacy cache predating refresh tokens — one-time exchange. Do this before
+  // the valid-token fast path so an upgraded client migrates immediately even
+  // when its old 180-day JWT is still far from expiry. Once the exchange
+  // succeeds the cache gains a refreshToken and never hits this branch again.
+  if (cached && !cached.refreshToken) {
+    return await refreshSession(session.userId, {
+      userId: session.userId,
+      expired_jwt: cached.jwt,
+      clientVersion: browser.runtime.getManifest().version,
+    })
+  }
+
   if (cached && cached.userId === session.userId && !isExpiringSoon(cached.expiresAt)) {
     return cached.jwt
   }
 
   if (cached?.refreshToken) {
     return await refreshSession(session.userId, { refreshToken: cached.refreshToken })
-  }
-  // Legacy cache predating refresh tokens — one-time exchange. Once it
-  // succeeds the cache gains a refreshToken and never hits this branch again.
-  if (cached?.jwt) {
-    return await refreshSession(session.userId, {
-      userId: session.userId,
-      expired_jwt: cached.jwt,
-      clientVersion: browser.runtime.getManifest().version,
-    })
   }
 
   return null

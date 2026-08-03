@@ -15,6 +15,7 @@ const now = () => Math.floor(Date.now() / 1000)
 // isExpiringSoon triggers within 60s of expiry — EXPIRING is inside that window.
 const EXPIRING = now() + 30
 const FRESH = now() + 3600
+const LEGACY_LONG_LIVED = now() + 180 * 24 * 60 * 60
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status })
@@ -105,6 +106,26 @@ describe('SupabaseAuth', () => {
     // The exchange leaves a steady-state cache — no more legacy branch on next call.
     const stored = await browser.storage.local.get(SUPABASE_JWT_KEY)
     expect(stored[SUPABASE_JWT_KEY]).toMatchObject({ jwt: 'jwt-new', refreshToken: 'refresh-new' })
+  })
+
+  it('immediately exchanges a valid long-lived legacy jwt-only cache', async () => {
+    await seedLegacyCache('jwt-legacy', LEGACY_LONG_LIVED, USER_ID)
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValue(
+        jsonResponse({ jwt: 'jwt-new', expiresAt: FRESH, refreshToken: 'refresh-new' }),
+      )
+    vi.stubGlobal('fetch', fetch)
+
+    await expect(getSupabaseJwt()).resolves.toBe('jwt-new')
+    expect(fetch).toHaveBeenCalledTimes(1)
+    const body = JSON.parse(fetch.mock.calls[0]?.[1]?.body as string)
+    expect(body).toEqual({
+      action: 'refresh',
+      userId: USER_ID,
+      expired_jwt: 'jwt-legacy',
+      clientVersion: '2.9.0',
+    })
   })
 
   it('rejects a legacy did-prefixed cache entry and returns null without a network call', async () => {

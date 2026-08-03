@@ -182,25 +182,28 @@ gate, no CI deploy step (checked: `ci.yml` only runs tests/build, nothing
 deploys migrations or functions). So **this PR ships
 `docs/client-metadata.json` reverted to its current-live public-client
 content** — merging it is inert, zero live behavior change. The confidential
-version (`private_key_jwt` + `jwks`) is retrievable from git history and only
-applied at step 3 below, back-to-back with the function deploy, to keep the
+version (`private_key_jwt` + `jwks`) is staged in the inert
+`docs/client-metadata.confidential.json` sibling and only applied at step 3
+below, back-to-back with the function deploy, to keep the
 unavoidable mismatch window (see the confidential-client-upgrade correction
 above: metadata and code must agree on auth method on _every_ request) as
 short as possible.
 
 ```mermaid
 flowchart TD
-    A["1. Merge this PR<br/>(metadata still public — inert)"] --> B["2. supabase db push<br/>(migrations 020-022, additive/safe, no rush)"]
+    A["1. Merge this PR<br/>(metadata still public — inert)"] --> B["2. supabase db push + verify private-JWK secret<br/>(migrations additive/safe, no rush)"]
     B --> C{"Low-traffic window"}
     C --> D["3. scripts/go-live-atproto-confidential-client.sh<br/>(deploy auth-bridge, flip metadata, push — back-to-back)"]
-    D --> F["Monitor auth-bridge logs for<br/>'Client authentication method mismatch'"]
+    D --> F["Monitor Supabase Dashboard → auth-bridge → Logs<br/>for client-authentication errors"]
     F -->|clean| G[Done]
     F -->|errors persist past GH Pages propagation| H[Investigate before wider impact]
 ```
 
 1. Merge this PR. Nothing live changes yet (see above).
 2. `supabase db push` — deploy migrations 020-022 whenever convenient; purely
-   additive, old `auth-bridge` ignores the new table/column.
+   additive, old `auth-bridge` ignores the new table/column. Confirm the linked
+   production project also has `ATPROTO_CLIENT_PRIVATE_JWK` set and that it
+   matches the public JWK in `docs/client-metadata.confidential.json`.
 3. At a chosen low-traffic window, run
    `scripts/go-live-atproto-confidential-client.sh` from `main` — deploys
    `auth-bridge` then immediately flips `docs/client-metadata.json` to
@@ -210,11 +213,13 @@ flowchart TD
    confidential content instead lives as a permanent, inert sibling file.)
 4. Existing GitHub-linked sessions are unaffected throughout (GitHub never
    touches the confidential-client code path).
-5. Existing atproto sessions self-heal on their next refresh via
-   `resolveAsIssuer()` — no bulk backfill, no forced re-login, _except_ for
-   requests that land inside the brief mismatch window in step 3, which fail
-   with a 401 and prompt re-login (acceptable one-time cost, not a recurring
-   one).
+5. When v2.9 first sees a legacy JWT-only cache, it exchanges it immediately
+   even if the old 180-day JWT is still valid. That exchange gives a still-live
+   public-client atproto session its earliest opportunity to self-heal via
+   `resolveAsIssuer()` + a client assertion. v2.8 remains compatible but receives
+   JWT-only responses; already-expired upstream sessions still require re-login.
+   Requests inside the brief mismatch window in step 3 can also fail and prompt
+   re-login (acceptable one-time cost, not a recurring one).
 6. Retire the legacy `refresh` shape later via the existing
    `app_config.min_client_version` guard once adoption evidence supports it
    (see `cleanup.md`).
@@ -238,11 +243,12 @@ legacy-user scenario)
 **test/background/auth/SupabaseAuth.test.ts** (new — fast unit coverage)
 
 - serializes concurrent callers so only one refresh request hits auth-bridge
+- immediately exchanges a valid long-lived legacy JWT-only cache on first use
 - keeps credentials and returns null on a transient 503 refresh failure
 - rejects a legacy did-prefixed cache entry and returns null
 
-**Manual smoke — done**, against a real AS (via the throwaway
-`docs/client-metadata-test.json` client_id, see below), all passing:
+**Live OAuth smoke — automated in CI**, against a real AS via the dedicated
+`docs/client-metadata-test.json` client_id. The earlier manual smoke also passed:
 confidential-client login end-to-end (PAR + assertion + token exchange),
 silent refresh rotation, rejected/invalid refresh token → forced re-login
 banner, and `resolveAsIssuer()`'s lazy derivation for a pre-upgrade
