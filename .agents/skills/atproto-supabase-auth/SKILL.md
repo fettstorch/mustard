@@ -158,6 +158,10 @@ with the same identity-upsert → UUID → JWT mint.
   the ATProto OAuth refresh token stays server-side in `oauth_session` and
   refreshes the user's upstream Bluesky session. Client-version compatibility
   and rollout claims must say explicitly which token they concern.
+- **Persist a rotated upstream token before success**: an ATProto refresh can
+  replace the prior refresh token. Retry a transient `oauth_session` write
+  while the replacement is still in memory; if it cannot be stored, fail the
+  request rather than claim a successful migration with a stale credential.
 - **Keep rollout artifacts synchronized**: when auth behavior, compatibility
   gates, deployment ordering, or test scaffolding changes, update the PR rollout
   description, `specs/atproto-auth/sketch.md`, `cleanup.md`, and the cutover

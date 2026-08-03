@@ -12,6 +12,7 @@ import {
   type SessionPair,
 } from './sessions.ts'
 import { clientAssertionFormFields } from './client-assertion.ts'
+import { persistOAuthSession } from './persist-oauth-session.ts'
 import { requireQueryData } from './query-result.ts'
 
 // ─── Constants ──────────────────────────────────────────────────────────────
@@ -1151,16 +1152,19 @@ async function refreshAtprotoToken(
     ? new Date(Date.now() + (tokenResp.expires_in as number) * 1000).toISOString()
     : null
 
-  await supabase
-    .from('oauth_session')
-    .update({
-      access_token: tokenResp.access_token,
-      refresh_token: (tokenResp.refresh_token as string) || session.refresh_token,
-      token_expires_at: tokenExpiresAt,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('provider', 'atproto')
-    .eq('provider_account_id', session.provider_account_id)
+  await persistOAuthSession(async () => {
+    const { error } = await supabase
+      .from('oauth_session')
+      .update({
+        access_token: tokenResp.access_token,
+        refresh_token: (tokenResp.refresh_token as string) || session.refresh_token,
+        token_expires_at: tokenExpiresAt,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('provider', 'atproto')
+      .eq('provider_account_id', session.provider_account_id)
+    return { error }
+  })
 
   return { ok: true }
 }
