@@ -1,6 +1,7 @@
 import { mergeTests, type BrowserContext } from '@playwright/test'
 import { test as extensionTest } from '../extension.fixture'
-import { AUTH_E2E_USER, createAuthE2eJwt } from './auth-test-data'
+import { AUTH_E2E_USER } from './auth-test-data'
+import { exchangeLegacyJwtForSession } from './local-supabase'
 import { test as localSupabaseTest } from './local-supabase.fixture'
 
 const base = mergeTests(extensionTest, localSupabaseTest)
@@ -22,9 +23,9 @@ export const test = base.extend<AuthenticatedFixture>({
     // storage.session after the cache clear below, hiding data seeded by the test.
     await Promise.all(context.pages().map((page) => page.close()))
 
-    const token = createAuthE2eJwt(AUTH_E2E_USER.userId)
+    const token = await exchangeLegacyJwtForSession(AUTH_E2E_USER.userId)
     await serviceWorker.evaluate(
-      async ({ user, jwt, expiresAt }) => {
+      async ({ user, jwt, expiresAt, refreshToken }) => {
         const extension = globalThis as typeof globalThis & {
           chrome: {
             storage: {
@@ -47,6 +48,7 @@ export const test = base.extend<AuthenticatedFixture>({
             jwt,
             userId: user.userId,
             expiresAt,
+            refreshToken,
           },
         })
         await extension.chrome.storage.session.clear()

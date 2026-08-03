@@ -39,11 +39,19 @@ test.describe('failed remote-note deletion', () => {
     // Keep the session, but replace the access JWT after initial data load.
     // The delete call is then rejected by RLS, reproducing a remote failure.
     await serviceWorker.evaluate(async () => {
+      const { supabase_jwt: cachedJwt } = await chrome.storage.local.get('supabase_jwt')
+      if (!cachedJwt?.refreshToken) {
+        throw new Error(
+          'Expected the authenticated fixture to have migrated to a refresh-token session',
+        )
+      }
+
       await chrome.storage.local.set({
         supabase_jwt: {
+          ...cachedJwt,
           jwt: 'not-a-valid-jwt',
           userId: '11111111-1111-4111-8111-111111111111',
-          expiresAt: Date.now() + 60 * 60 * 1000,
+          expiresAt: Math.floor(Date.now() / 1000) + 60 * 60,
         },
       })
     })

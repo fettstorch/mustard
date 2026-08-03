@@ -2,7 +2,7 @@ import { chromium, type BrowserContext, test as base } from '@playwright/test'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import type { TestUser } from './authenticated/auth-test-data'
-import { createAuthE2eJwt } from './authenticated/auth-test-data'
+import { exchangeLegacyJwtForSession } from './authenticated/local-supabase'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const extensionPath = path.resolve(__dirname, '../../dist/chrome')
@@ -20,11 +20,11 @@ export type ExtensionFixtures = {
 export async function loginAs(context: BrowserContext, user: TestUser): Promise<void> {
   let sw = context.serviceWorkers()[0]
   if (!sw) sw = await context.waitForEvent('serviceworker')
-  const token = createAuthE2eJwt(user.userId)
+  const token = await exchangeLegacyJwtForSession(user.userId)
   await sw.evaluate(
     async (args: {
       session: { userId: string; identities: TestUser['identity'][] }
-      jwt: { jwt: string; userId: string; expiresAt: number }
+      jwt: { jwt: string; userId: string; expiresAt: number; refreshToken: string }
     }) => {
       const ext = globalThis as typeof globalThis & {
         chrome: {
@@ -42,7 +42,7 @@ export async function loginAs(context: BrowserContext, user: TestUser): Promise<
     },
     {
       session: { userId: user.userId, identities: [user.identity] },
-      jwt: { jwt: token.jwt, userId: user.userId, expiresAt: token.expiresAt },
+      jwt: { ...token, userId: user.userId },
     },
   )
 }
