@@ -12,6 +12,7 @@ import {
   type SessionPair,
 } from './sessions.ts'
 import { clientAssertionFormFields } from './client-assertion.ts'
+import { requireQueryData } from './query-result.ts'
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -1166,8 +1167,8 @@ async function refreshUpstreamAtproto(
   userId: string,
   { allowRecovery }: { allowRecovery: boolean },
 ): Promise<UpstreamRefreshResult> {
-  const { data: sessions } = await supabase.from('oauth_session').select('*').eq('user_id', userId)
-  const rows = (sessions ?? []) as OAuthSessionRow[]
+  const result = await supabase.from('oauth_session').select('*').eq('user_id', userId)
+  const rows = (requireQueryData(result) ?? []) as OAuthSessionRow[]
   if (rows.length === 0) return { ok: false, response: errorResponse('No session found', 404) }
 
   const atprotoSession = rows.find((s) => s.provider === 'atproto') ?? null
