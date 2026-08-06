@@ -534,7 +534,17 @@ export default defineBackground(() => {
       try {
         const result = await login(message.handle, message.currentJwt)
         await storeSupabaseJwt(result.jwt, result.expiresAt, result.userId, result.refreshToken)
-        await syncSessionIdentities(result.jwt, result.userId)
+        // Enrich the minimal session persisted by the ATProto flow. If that
+        // follow-up request fails, roll back the just-created credentials so a
+        // login the UI reports as failed cannot leave a server session behind.
+        try {
+          const session = await syncSessionIdentities(result.jwt, result.userId)
+          if (!session) throw new Error('ATProto login returned no linked identities')
+        } catch (error) {
+          await revokeSupabaseSession()
+          await logout(result.userId)
+          throw error
+        }
         await invalidateRemoteIndexCache()
         broadcastSessionChanged(result.userId)
         updateActionBadge()
