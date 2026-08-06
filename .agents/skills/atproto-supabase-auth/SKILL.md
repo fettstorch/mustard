@@ -234,7 +234,10 @@ TTL, "refreshed" by re-verifying the same JWT with a huge clock tolerance).
   permits account actions (including identity linking). A signed JWT alone
   cannot attach an identity or otherwise revive a logged-out session during its
   remaining 24-hour lifetime. Sid-less pre-v2.9 JWTs remain compatible only for
-  the rollout window.
+  the rollout window. A linking callback can return the JWT-only compatibility
+  shape only when its presented `currentJwt` is itself sid-less; a sid-backed
+  session always receives a replacement session, even if it claims an older
+  client version.
 - **Concurrency**: `getSupabaseJwt()` is wrapped in `synchronize()` (from
   `@fettstorch/jule`) so concurrent callers share one in-flight refresh instead
   of racing to rotate the same token.

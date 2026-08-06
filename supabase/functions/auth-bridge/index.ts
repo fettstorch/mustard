@@ -14,6 +14,11 @@ import {
 import { clientAssertionFormFields } from './client-assertion.ts'
 import { persistOAuthSession } from './persist-oauth-session.ts'
 import { requireQueryData } from './query-result.ts'
+import {
+  isClientVersionAtLeast,
+  REFRESH_TOKEN_CLIENT_VERSION,
+  shouldMintRefreshSession,
+} from './client-session-compatibility.ts'
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -31,11 +36,6 @@ const STATE_TTL_SECONDS = 600
 // Short-lived capability, not a refresh credential — see mustard_sessions
 // (migration 020) for the actual (revocable, rotating) session.
 const SUPABASE_JWT_TTL_SECONDS = 24 * 60 * 60
-// v2.9.0 is the first client that persists the refresh token returned by the
-// legacy-JWT migration path. Older clients must not receive an orphaned
-// mustard_sessions row every time their 24-hour JWT expires.
-const REFRESH_TOKEN_CLIENT_VERSION = '2.9.0'
-
 // Mustard user_ids are UUIDs. Used to reject provider ids (DIDs etc.) that must
 // never be treated as user_ids.
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -127,19 +127,6 @@ async function mintSupabaseJwt(
   return { jwt, expiresAt: exp }
 }
 
-/** Numeric extension-version comparison for compatibility routing only. */
-function isClientVersionAtLeast(current: string | undefined, minimum: string): boolean {
-  if (!current || !/^\d+(\.\d+)*$/.test(current)) return false
-  const currentParts = current.split('.').map(Number)
-  const minimumParts = minimum.split('.').map(Number)
-  const length = Math.max(currentParts.length, minimumParts.length)
-  for (let index = 0; index < length; index++) {
-    const difference = (currentParts[index] ?? 0) - (minimumParts[index] ?? 0)
-    if (difference !== 0) return difference > 0
-  }
-  return true
-}
-
 /** Mint the `{jwt, expiresAt, refreshToken}` triple returned by login/refresh/exchange. */
 async function mintSessionResponse(
   session: SessionPair,
@@ -159,7 +146,7 @@ async function mintClientSessionResponse(
   clientVersion?: string,
   supersededSessionId?: string | null,
 ): Promise<{ jwt: string; expiresAt: number; refreshToken?: string }> {
-  if (!isClientVersionAtLeast(clientVersion, REFRESH_TOKEN_CLIENT_VERSION)) {
+  if (!shouldMintRefreshSession(clientVersion, supersededSessionId)) {
     return await mintSupabaseJwt(userId)
   }
 
