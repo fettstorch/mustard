@@ -49,8 +49,8 @@ export const getSupabaseJwt = synchronize(async (): Promise<string | null> => {
 
   const cached = await getCachedJwt()
   if (cached && cached.userId !== session.userId) {
-    await clearStoredSession()
     await revokeSupabaseSession()
+    await clearStoredSession()
     await broadcastSessionCleared()
     return null
   }
