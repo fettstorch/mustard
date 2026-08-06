@@ -509,8 +509,17 @@ export default defineBackground(() => {
         const result = await loginWithGithub(jwt)
         await storeSupabaseJwt(result.jwt, result.expiresAt, result.userId, result.refreshToken)
         // Enrich the session with the full identity set (github login may have
-        // linked into an existing multi-provider account).
-        await syncSessionIdentities(result.jwt, result.userId)
+        // linked into an existing multi-provider account). If that follow-up
+        // request fails, the just-stored refresh credential must not outlive a
+        // login the UI reports as failed.
+        try {
+          const session = await syncSessionIdentities(result.jwt, result.userId)
+          if (!session) throw new Error('GitHub login returned no linked identities')
+        } catch (error) {
+          await revokeSupabaseSession()
+          await logout(result.userId)
+          throw error
+        }
         await invalidateRemoteIndexCache()
         broadcastSessionChanged(result.userId)
         updateActionBadge()
