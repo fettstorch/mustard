@@ -570,8 +570,8 @@ export default defineBackground(() => {
 
     ATPROTO_LOGOUT: async (message) => {
       try {
-        await logout(message.userId)
         await revokeSupabaseSession()
+        await logout(message.userId)
         await clearNativeNotificationState()
         await invalidateRemoteIndexCache()
         mutualsService.clear()
