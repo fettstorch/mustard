@@ -2,18 +2,20 @@
 
 ## Layers
 
-| Layer             | Command            | What it proves                                                |
-| ----------------- | ------------------ | ------------------------------------------------------------- |
-| **Type check**    | `nr type-check`    | TypeScript compiles cleanly                                   |
-| **Lint**          | `nr lint`          | oxlint rules pass (read-only)                                 |
-| **Format**        | `nr format:check`  | oxfmt formatting is consistent                                |
-| **Dead code**     | `nr knip`          | No unused exports, files, or deps                             |
-| **Unit tests**    | `nr test`          | Pure logic is correct without a browser                       |
-| **Chrome build**  | `nr build`         | Extension bundles without errors                              |
-| **Firefox build** | `nr build:firefox` | Firefox variant bundles cleanly                               |
-| **Firefox lint**  | `nr lint:firefox`  | Mozilla package checks find no blocking errors                |
-| **E2E smoke**     | `nr test:e2e`      | Extension loads in real Chromium, popup + content script work |
-| **E2E auth**      | `nr test:e2e:auth` | Login-gated flows work against local Supabase                 |
+| Layer                   | Command                    | What it proves                                                |
+| ----------------------- | -------------------------- | ------------------------------------------------------------- |
+| **Type check**          | `nr type-check`            | TypeScript compiles cleanly                                   |
+| **Lint**                | `nr lint`                  | oxlint rules pass (read-only)                                 |
+| **Format**              | `nr format:check`          | oxfmt formatting is consistent                                |
+| **Dead code**           | `nr knip`                  | No unused exports, files, or deps                             |
+| **Unit tests**          | `nr test`                  | Pure logic is correct without a browser                       |
+| **Chrome build**        | `nr build`                 | Extension bundles without errors                              |
+| **Firefox build**       | `nr build:firefox`         | Firefox variant bundles cleanly                               |
+| **Firefox lint**        | `nr lint:firefox`          | Mozilla package checks find no blocking errors                |
+| **E2E smoke**           | `nr test:e2e`              | Extension loads in real Chromium, popup + content script work |
+| **E2E auth**            | `nr test:e2e:auth`         | Login-gated flows and sessions work against local Supabase    |
+| **Live Bluesky OAuth**  | `nr test:e2e:auth:bluesky` | A real provider login creates both session layers             |
+| **Every browser suite** | `nr test:e2e:all`          | Builds once, then runs smoke, local auth, and live OAuth      |
 
 Run everything in one shot (except E2E):
 
@@ -38,6 +40,10 @@ Test files live under `test/`, mirroring the source path they cover:
 | `src/shared/remote-mutation.ts`                               | `test/shared/remote-mutation.test.ts`                | Which messages mutate remote state                                |
 | `src/shared/mentions.ts`                                      | `test/shared/mentions.test.ts`                       | Sentinel regex, mention extraction, deduplication, shortAccountId |
 | `src/background/business/service/MustardNotesServiceLocal.ts` | `test/background/…/MustardNotesServiceLocal.test.ts` | Create / query / update / delete / index persistence              |
+| `src/background/auth/SupabaseAuth.ts`                         | `test/background/auth/SupabaseAuth.test.ts`          | Cache migration, refresh retries, rotation, logout, concurrency   |
+| OAuth client-version compatibility                            | `test/background/auth/OAuthClientVersion.test.ts`    | v2.8 JWT-only and v2.9 refresh-token response handling            |
+| auth-bridge persistence helpers                               | `test/auth-bridge/*.test.ts`                         | Query-result and upstream token-persistence failure handling      |
+| Local E2E orchestration                                       | `test/scripts/run-local-e2e.test.ts`                 | Suite selection and the single-build execution plan               |
 
 ## Extension E2E smoke tests (Playwright + Chromium)
 
@@ -65,9 +71,10 @@ Tests:
 `dist/firefox`. It validates the packaged extension metadata and scans the bundle
 for AMO-relevant problems. It complements oxlint, which checks the source code.
 
-The current Vue-generated bundle produces four `UNSAFE_VAR_ASSIGNMENT` warnings
-for framework `innerHTML` code. The command fails on errors but reports those
-warnings without treating them as release blockers.
+The Vue-generated bundle can produce `UNSAFE_VAR_ASSIGNMENT` warnings for
+framework `innerHTML` code. The command fails on errors but reports those
+warnings without treating them as release blockers; avoid documenting an exact
+count because generated chunking changes it.
 
 ### Failure artifacts
 
@@ -94,24 +101,30 @@ flowchart LR
   Local --> Assert[Assert via DB + UI]
 ```
 
-### Prerequisites
+### Run it
 
-Start the local stack and Edge Functions in separate terminals:
+Create the ignored local Edge Function environment once. The deterministic
+suite only requires its fixed local `JWT_SIGNING_SECRET`; GitHub credentials are
+needed only for manual GitHub OAuth testing, and AT Protocol values only for the
+live Bluesky suite:
 
 ```sh
-supabase start
-supabase functions serve --env-file supabase/functions/.env.e2e
+cp supabase/functions/.env.example supabase/functions/.env
 ```
 
-Then run:
+Then run the suite directly:
 
 ```sh
 nr test:e2e:auth
 ```
 
 > **Always use `nr test:e2e:auth`, not `npx playwright test --config playwright.auth.config.ts` directly.**  
-> The script rebuilds the extension with `--mode e2e` first, baking in the local Supabase URL.  
-> Running Playwright directly skips the build and silently tests a stale or wrong-mode bundle.
+> The command starts or reuses local Supabase, reads its actual URL and anon key,
+> starts Edge Functions with `supabase/functions/.env`, builds the extension in
+> E2E mode, runs Playwright, and stops the Edge Function process. Running
+> Playwright directly skips that setup and can silently test a stale or
+> wrong-mode bundle. The Docker-backed Supabase stack stays running for reuse;
+> stop it explicitly with `supabase stop` when finished.
 
 ### Test users
 
@@ -128,11 +141,16 @@ Tests that need specific DB state seed and clean it per-test via helpers in
 
 ### Test files
 
-| File                        | What it covers                                                                                                                                                             |
-| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `authenticated.spec.ts`     | Popup recognises seeded session; publishes a remote note; reloads and restores it                                                                                          |
-| `social-visibility.spec.ts` | Follow-graph visibility, repost bridge, unrepost revocation, repostersByNoteId                                                                                             |
-| `engagement.spec.ts`        | Comment-notification fan-out to authors and prior participants, self-comment exclusion, recipient deduplication, cascade delete, mention notifications, author popup badge |
+| File                        | What it covers                                                                                    |
+| --------------------------- | ------------------------------------------------------------------------------------------------- |
+| `authenticated.spec.ts`     | Seeded session, remote publishing/restoration, rate-limit feedback                                |
+| `session-refresh.spec.ts`   | v2.8 JWT-only → v2.9 session migration, rotation, grace, revocation, and logout                   |
+| `social-visibility.spec.ts` | Follow visibility, repost bridges/revocation, and reposter attribution                            |
+| `engagement.spec.ts`        | Comment and mention notifications, joined threads, deletion, deduplication, and popup badges      |
+| `hidden-notes.spec.ts`      | Hidden-note gallery, focus-triggered session refresh, and read-only behavior                      |
+| `link-preview.spec.ts`      | Verified thumbnail writes, content-addressed deduplication, rendering, and dismissal              |
+| `rate-limits.spec.ts`       | Write limits, atomic/concurrent enforcement, service-role exemption, and mention-recipient limits |
+| `delete-failure.spec.ts`    | A rejected remote deletion leaves the local note and thread usable                                |
 
 ### Anon key
 
@@ -141,20 +159,59 @@ value for local development. In CI, the key is extracted from `supabase status`
 after `supabase start` and injected as `VITE_SUPABASE_ANON_KEY` — Vite picks up
 process-env variables that are prefixed with `VITE_` regardless of `.env` files.
 
+## Live Bluesky OAuth E2E
+
+This separate smoke test contacts the real AT Protocol authorization server. It
+drives login and consent for a dedicated account, then verifies both layers:
+the browser receives a Mustard JWT/refresh-token pair, while Supabase stores the
+corresponding `mustard_sessions` and upstream `oauth_session` rows. It does not
+create or modify records in the account's PDS.
+
+Create the two ignored files from their documented templates:
+
+```sh
+cp supabase/functions/.env.example supabase/functions/.env
+cp .env.e2e.local.example .env.e2e.local
+```
+
+- `supabase/functions/.env` needs `JWT_SIGNING_SECRET`,
+  `ATPROTO_CLIENT_PRIVATE_JWK`, and the test metadata URL as
+  `ATPROTO_CLIENT_ID`. The private key must match the public JWK in that metadata.
+- `.env.e2e.local` needs the dedicated account's `BLUESKY_E2E_HANDLE` and real
+  account password. App passwords and accounts with 2FA cannot complete this
+  browser OAuth flow.
+
+Run only the live login or every browser suite with one build:
+
+```sh
+nr test:e2e:auth:bluesky
+nr test:e2e:all
+```
+
+The live test allows up to two minutes per test, uses longer assertion timeouts,
+and retries once in CI. It deliberately disables traces, screenshots, and video
+so a password cannot leak into failure artifacts.
+
 ### CI jobs
 
 ```mermaid
 flowchart LR
   quality --> smoke[extension-e2e]
   quality --> auth[extension-e2e-auth]
+  quality --> live[extension-e2e-bluesky-auth]
   smoke --> |headless Chromium| pass1[✓]
   auth --> supabase[supabase start]
   supabase --> fn[functions serve]
-  fn --> run[nr test:e2e:auth]
+  fn --> run[authenticated Playwright suite]
   run --> pass2[✓]
+  live --> provider[real Bluesky OAuth]
+  provider --> pass3[✓]
 ```
 
-All three jobs run in parallel (smoke and auth both need `quality`). The auth job
-installs the Supabase CLI, starts a full local stack, launches Edge Functions in
-the background, and runs the authenticated suite. It always calls `supabase stop`
-in the `always()` step to avoid Docker resource leaks.
+After `quality` passes, the smoke, deterministic-auth, and live-Bluesky jobs run
+in parallel. Both auth jobs start an isolated local Supabase stack and always
+stop it afterward. The live job has a 15-minute job timeout and runs only for
+`main` pushes and same-repository pull requests because GitHub does not expose
+repository secrets to forks. It requires the repository Actions secrets
+`BLUESKY_E2E_HANDLE`, `BLUESKY_E2E_PASSWORD`, and
+`ATPROTO_CLIENT_PRIVATE_JWK`.

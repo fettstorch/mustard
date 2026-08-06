@@ -1,61 +1,29 @@
-# Supabase Backend Setup
+# Supabase Backend
 
-This directory contains the Supabase backend for Mustard: database migrations and Edge Functions.
+This directory contains Mustard's database migrations, local Supabase
+configuration, and Edge Functions. The authoritative setup instructions live in:
 
-## Initial Setup
+- [`README.md`](../README.md#local-supabase) for local development and E2E
+  environment files
+- [`SUPABASE_SETUP.md`](../SUPABASE_SETUP.md) for hosted project setup,
+  migrations, secrets, deployment, and troubleshooting
+- [`specs/atproto-auth/sketch.md`](../specs/atproto-auth/sketch.md#migration--rollout)
+  for the one-time confidential AT Protocol client rollout
 
-### 1. Create Supabase Project
+## Contents
 
-1. Go to [supabase.com](https://supabase.com) and sign in (or create account)
-2. Click "New Project"
-3. Fill in:
-   - **Name**: `mustard` (or your choice)
-   - **Database Password**: Choose a strong password (save it!)
-   - **Region**: Choose closest to you
-4. Wait for project to be created (~2 minutes)
+- `migrations/` — the complete, ordered database schema. Use
+  `supabase migration up` locally or `supabase db push` for a linked project;
+  do not apply individual files manually.
+- `functions/auth-bridge/` — Bluesky/GitHub OAuth BFF, identity linking,
+  short-lived JWT minting, and rotating Mustard sessions.
+- `functions/get-index-v2/` — authenticated multi-provider follow index.
+- `functions/link-preview-thumbnail/` — verified, content-addressed thumbnail
+  upload and cleanup.
+- `functions/.env.example` — template for the ignored local Edge Function
+  secrets file, `functions/.env`.
+- `functions/.env.e2e` — tracked, non-secret baseline used only by CI's local
+  authenticated suites.
 
-### 2. Get API Credentials
-
-1. In your project dashboard, go to **Settings** → **API**
-2. Copy these values:
-   - **Project URL** (e.g., `https://xxxxx.supabase.co`)
-   - **anon public** key (long string starting with `eyJ...`)
-
-### 3. Configure Extension
-
-Add these to your `.env.local` file (create it from `.env.example`):
-
-```bash
-VITE_SUPABASE_URL=https://xxxxx.supabase.co
-VITE_SUPABASE_ANON_KEY=eyJ...
-```
-
-The extension will use these to call Edge Functions.
-
-## Directory Structure
-
-- `migrations/` - SQL migrations for database schema
-- `functions/` - Edge Functions (Deno TypeScript)
-  - `_shared/` - Shared utilities (auth, db helpers)
-  - `notes/` - Notes API endpoints
-  - `index/` - Index API endpoint
-
-## Development
-
-Edge Functions run on Supabase's servers. To deploy:
-
-```bash
-# Install Supabase CLI (if not already installed)
-npm install -g supabase
-
-# Login
-supabase login
-
-# Link to your project
-supabase link --project-ref your-project-ref
-
-# Deploy a function
-supabase functions deploy notes
-```
-
-For local development, you can use `supabase start` to run a local instance.
+Never place private keys, OAuth client secrets, or live account credentials in
+tracked environment files.
