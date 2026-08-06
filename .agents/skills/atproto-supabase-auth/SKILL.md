@@ -150,6 +150,10 @@ with the same identity-upsert → UUID → JWT mint.
   user's session. See `specs/atproto-auth/sketch.md` for the full rationale.
   Before that rollout, production `client-metadata.json` deliberately remains
   public; `client-metadata.confidential.json` holds the staged replacement.
+  Merging the code does not publish the extension. Cut over auth-bridge and the
+  metadata first, verify the live metadata plus a real Bluesky login, and only
+  then publish v2.9; the old backend cannot return the refresh-token response
+  shape that v2.9 expects.
 
 ## Gotchas
 

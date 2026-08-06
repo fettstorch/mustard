@@ -34,4 +34,6 @@ Deployed immediately after auth-bridge, per specs/atproto-auth/sketch.md."
 git push origin main
 
 echo "==> Done. Open Supabase Dashboard → Edge Functions → auth-bridge → Logs."
-echo "    Watch for client-authentication errors (expected briefly, then zero)."
+echo "    Wait until the live client-metadata.json reports private_key_jwt, then"
+echo "    smoke-test Bluesky login and watch for client-authentication errors."
+echo "    Publish extension v2.9 only after those checks are clean."

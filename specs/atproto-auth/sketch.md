@@ -1,10 +1,10 @@
 # Auth Overhaul: Short-lived JWTs + Refresh Tokens + Confidential ATProto Client
 
-Status: **sketch approved-in-discussion, not yet implemented**
+Status: **implemented; awaiting production rollout**
 Owner context: see `.agents/skills/atproto-supabase-auth/SKILL.md` for the current
-(pre-overhaul) architecture. This spec describes the target state and migration.
+architecture. This spec records the implemented design and its migration.
 
-## Why (current problems)
+## Why (pre-overhaul problems)
 
 - `auth-bridge` mints one Supabase JWT with a **180-day TTL**
   (`SUPABASE_JWT_TTL_SECONDS` in `supabase/functions/auth-bridge/index.ts`), and
@@ -63,7 +63,7 @@ graph TD
     end
 
     subgraph external [External]
-        CM[docs/client-metadata.json<br/>altered: jwks + private_key_jwt]
+        CM[docs/client-metadata.confidential.json<br/>staged target for client-metadata.json]
         AS[bsky.social Auth Server]
     end
 
@@ -101,7 +101,7 @@ sequenceDiagram
         AB-->>SA: 403 → client logout
     end
 
-    Note over SA,AB: Legacy migration: {userId, expired_jwt} instead of refreshToken.<br/>Verify sig + sub + UNEXPIRED → create session row → same response.<br/>Dead public-client atproto oauth_session row is dropped (unanchored until next login).
+    Note over SA,AB: Legacy migration: {userId, expired_jwt} instead of refreshToken.<br/>Verify sig + sub with the retained migration tolerance → create session row.<br/>Only definitive invalid_grant drops an upstream session; transient failures preserve it.
 ```
 
 ## DTOs
@@ -111,12 +111,12 @@ sequenceDiagram
 { action: 'refresh',
   refreshToken: string }          // added — v2 path
 // legacy shape { userId, expired_jwt } kept until min_client_version retires it,
-// but now requires an UNEXPIRED jwt (drops the 365d clockTolerance)
+// retaining the old 365d post-expiry tolerance only for this migration path
 
 // refresh / callback response (altered)
 { jwt: string
   expiresAt: number
-  refreshToken: string }          // added: opaque, rotated on every refresh
+  refreshToken?: string }         // present for v2.9+; omitted for older clients
 
 // logout request (new)
 { action: 'logout', refreshToken: string }   // deletes session row; idempotent 200
@@ -145,7 +145,8 @@ sequenceDiagram
 ```
 
 Constants: `JWT_TTL = 24h`, `REFRESH_TOKEN_TTL = 90d` (sliding),
-`ROTATION_GRACE = 10min`, `UPSTREAM_REFRESH_INTERVAL = 24h`.
+`ROTATION_GRACE = 10min`. Routine Mustard rotation is decoupled from upstream
+ATProto refresh; future PDS operations refresh upstream only when needed.
 
 ## Confidential-client upgrade
 
@@ -194,9 +195,10 @@ flowchart TD
     A["1. Merge this PR<br/>(metadata still public — inert)"] --> B["2. supabase db push + verify private-JWK secret<br/>(migrations additive/safe, no rush)"]
     B --> C{"Low-traffic window"}
     C --> D["3. scripts/go-live-atproto-confidential-client.sh<br/>(deploy auth-bridge, flip metadata, push — back-to-back)"]
-    D --> F["Monitor Supabase Dashboard → auth-bridge → Logs<br/>for client-authentication errors"]
-    F -->|clean| G[Done]
-    F -->|errors persist past GH Pages propagation| H[Investigate before wider impact]
+    D --> E["4. Wait for live metadata propagation,<br/>smoke-test Bluesky auth, inspect logs"]
+    E -->|clean| F["5. Publish extension v2.9"]
+    E -->|errors persist| G[Investigate before releasing v2.9]
+    F --> H[Monitor legacy-exchange adoption]
 ```
 
 1. Merge this PR. Nothing live changes yet (see above).
@@ -211,16 +213,22 @@ flowchart TD
    the gap. (Not committed as `git show <branch>:...` from history — a PR
    squash-merge would make that commit unreachable from `main`; the
    confidential content instead lives as a permanent, inert sibling file.)
-4. Existing GitHub-linked sessions are unaffected throughout (GitHub never
-   touches the confidential-client code path).
-5. When v2.9 first sees a legacy JWT-only cache, it exchanges it immediately
+4. Wait until the live `client-metadata.json` actually reports
+   `private_key_jwt`, smoke-test a real Bluesky login, and confirm auth-bridge
+   logs are free of persistent client-authentication errors. GitHub-linked
+   sessions are unaffected throughout because GitHub never touches this path.
+5. Only after step 4 is clean, publish extension v2.9. There is no automated
+   extension release on merge. Releasing v2.9 before the new backend is live
+   would leave it talking to the old response shape, which cannot return the
+   Mustard refresh token v2.9 expects.
+6. When v2.9 first sees a legacy JWT-only cache, it exchanges it immediately
    even if the old 180-day JWT is still valid. That exchange gives a still-live
    public-client atproto session its earliest opportunity to self-heal via
    `resolveAsIssuer()` + a client assertion. v2.8 remains compatible but receives
    JWT-only responses; already-expired upstream sessions still require re-login.
    Requests inside the brief mismatch window in step 3 can also fail and prompt
    re-login (acceptable one-time cost, not a recurring one).
-6. Retire the legacy `refresh` shape later via the existing
+7. Retire the legacy `refresh` shape later via the existing
    `app_config.min_client_version` guard once adoption evidence supports it
    (see `cleanup.md`).
 

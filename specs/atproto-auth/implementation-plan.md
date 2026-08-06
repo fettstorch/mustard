@@ -28,20 +28,12 @@ graph TD
 | 5   | Client storage       | `SupabaseAuth.ts` rewrite                                                                        | How the extension stores/rotates the pair, thundering-herd handling                        | **approved** |
 | 6   | Wire-through + tests | Login/logout call sites, unit + e2e tests                                                        | Ties it together and proves it works                                                       | **approved** |
 
-## Notes on existing scaffolding
+## Completion note
 
-These files already exist on disk from an earlier (too-fast) pass and were
-**not** reverted (they're untracked, so `git checkout`/revert didn't touch
-them). Treat them as drafts to review/rebuild properly within their
-corresponding step above, not as done:
-
-- `supabase/migrations/020_mustard_sessions.sql` → Step 1
-- `supabase/functions/auth-bridge/sessions.ts` → Step 2
-- `supabase/functions/auth-bridge/client-assertion.ts` → Step 4
-
-A local `supabase/functions/.env` was also created with a real generated
-ES256 keypair for the confidential-client upgrade (gitignored, never
-committed). Relevant again at Step 4.
+All six approved steps are implemented. The initial draft scaffolding became
+the reviewed production files in migrations 020-022 and
+`supabase/functions/auth-bridge/`; the remaining work is the staged production
+rollout documented in `sketch.md`, not implementation of these steps.
 
 ## Rules for this plan (from the prio-learning skill)
 
