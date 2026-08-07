@@ -20,8 +20,6 @@ if ! git diff --quiet || ! git diff --cached --quiet; then
   echo "Working tree not clean — commit or stash first." >&2
   exit 1
 fi
-git pull --ff-only origin main
-
 echo "==> Deploying auth-bridge..."
 supabase functions deploy auth-bridge
 
