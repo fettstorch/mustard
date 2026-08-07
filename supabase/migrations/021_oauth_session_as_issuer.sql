@@ -1,0 +1,14 @@
+-- The confidential-client upgrade (private_key_jwt) needs the AS issuer at
+-- REFRESH time too, not just at the initial callback: the client assertion's
+-- `aud` must be the issuer (per https://atproto.com/specs/oauth), and refresh
+-- reuses the stored oauth_session row long after the login flow's
+-- oauth_login_state.as_issuer is gone.
+--
+-- Nullable: GitHub rows never set it, and pre-upgrade atproto rows (created
+-- as a public client, before this column existed) start out NULL here.
+-- These are NOT assumed dead — Bluesky's AS explicitly allows a `none`-issued
+-- session to "upgrade" to a client assertion on refresh, it just requires one
+-- once client-metadata.json goes confidential. refreshAtprotoToken's
+-- resolveAsIssuer() lazily derives + persists this column via AS discovery on
+-- a row's first refresh after the upgrade, so no bulk backfill is needed.
+ALTER TABLE oauth_session ADD COLUMN IF NOT EXISTS as_issuer TEXT;

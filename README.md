@@ -107,27 +107,48 @@ flowchart LR
 ### Backend (Supabase)
 
 - **PostgreSQL Database**: `users` + `identities` (the UUID account model),
-  published `notes`/`comments`/`notifications`, and `oauth_*` auth state — all
-  protected by RLS policies
+  published `notes`/`comments`/`notifications`, upstream `oauth_*` state, and
+  revocable `mustard_sessions` — protected by RLS or service-role-only access
 - **Storage**: globally content-addressed, bounded link-preview thumbnails;
   identical WebP bytes are shared across every author's published notes
 - **Edge Functions**:
   - `auth-bridge`: multi-provider BFF OAuth (Bluesky + GitHub), mints Supabase
-    JWTs and links/unlinks provider identities to a Mustard account UUID
+    JWTs, manages rotating Mustard sessions, and links/unlinks provider
+    identities to a Mustard account UUID
   - `get-index-v2`: strict per-user JWT (verified with `jose`), resolves the
     viewer's Bluesky **and** GitHub follows to Mustard userIds and returns their
     notes index
   - `link-preview-thumbnail`: verifies an owned note reference and the WebP's
     SHA-256 before privileged global Storage uploads and reference-safe cleanup
-  - `get-index`: legacy anon-key version, kept until the version guard retires
-    old clients
 - **Authentication**: custom JWT strategy where the subject is an **opaque
   account UUID** (`users.id`); provider-specific ids live only in `identities`
 
+#### Session lifecycle
+
+- For v2.9 clients, `auth-bridge` issues a short-lived Supabase JWT (24 hours)
+  plus an opaque Mustard refresh token. Only a hash of the refresh token is
+  stored in the service-role-only `mustard_sessions` table.
+- Refreshing rotates the token and extends the session's 90-day sliding expiry.
+  A ten-minute, one-generation grace window protects an in-flight refresh from
+  a browser service-worker restart; older token generations are rejected.
+- The JWT carries the session id in its `sid` claim. Account-management actions
+  require that session to still be live, so logout revokes the server-side
+  session immediately rather than waiting for the JWT to expire.
+- This Mustard refresh token is separate from the upstream AT Protocol refresh
+  token. The latter never leaves `auth-bridge` and is refreshed only when a
+  Bluesky operation needs it.
+- Pre-v2.9 JWT-only caches are exchanged once for a real Mustard session. While
+  v2.8 remains supported, its requests continue to receive JWT-only responses
+  and do not create unreachable `mustard_sessions` rows. The temporary
+  compatibility paths and their removal gates are documented in
+  [`specs/atproto-auth/cleanup.md`](./specs/atproto-auth/cleanup.md).
+
 ### Data Flow
 
-1. User logs in via Bluesky or GitHub OAuth → `auth-bridge` upserts an identity,
-   resolves it to a Mustard account UUID, and mints a Supabase JWT (`sub = UUID`)
+1. User logs in via Bluesky or GitHub OAuth → `auth-bridge` upserts an identity
+   and resolves it to a Mustard account UUID. A v2.9 client receives a
+   short-lived Supabase JWT (`sub = UUID`, `sid = Mustard session`) plus a
+   rotating refresh token.
 2. User navigates to page → Extension calls `get-index-v2` with the UUID + JWT
 3. `get-index-v2` looks up the user's linked identities, fetches their Bluesky +
    GitHub follows, maps those follows back to Mustard userIds via `identities`,
@@ -153,19 +174,34 @@ flowchart LR
 
 ### Environment Variables
 
-The extension reads two env vars at build time via Vite:
+The extension reads three env vars at build time via Vite:
 
 | Variable                 | Description                                                           |
 | ------------------------ | --------------------------------------------------------------------- |
 | `VITE_SUPABASE_URL`      | Full Supabase project URL                                             |
 | `VITE_SUPABASE_ANON_KEY` | Supabase anon/public key (safe to commit — RLS policies protect data) |
+| `VITE_GIPHY_API_KEY`     | Public browser API key used by the Giphy integration                  |
 
-WXT/Vite automatically picks the right file based on the command:
+WXT/Vite automatically picks the right tracked file based on the command. Only
+`VITE_*` values are compiled into the extension, so these files must never hold
+private credentials:
 
-| File               | Used by                                                     |
-| ------------------ | ----------------------------------------------------------- |
-| `.env.development` | `nr dev:local` — points to local Supabase instance          |
-| `.env.production`  | `nr dev` and `nr build` — points to hosted Supabase project |
+| File               | Used by                                                                     |
+| ------------------ | --------------------------------------------------------------------------- |
+| `.env.development` | `npm run dev:local` — public config for local Supabase                      |
+| `.env.production`  | `npm run dev` and `npm run build` — public config for hosted services       |
+| `.env.e2e`         | `npm run build:e2e:auth` and authenticated E2Es — public local-stack config |
+
+Two ignored files keep the local secret consumers separate:
+
+| File                      | Used by                                                                  |
+| ------------------------- | ------------------------------------------------------------------------ |
+| `.env.e2e.local`          | Playwright only — live Bluesky test-account handle and password          |
+| `supabase/functions/.env` | Local Edge Functions — OAuth client credentials, private JWK, JWT secret |
+
+The committed `.env.e2e.local.example` and `supabase/functions/.env.example`
+document how to create both ignored files. CI does not use the ignored files;
+it combines `supabase/functions/.env.e2e` with GitHub repository secrets.
 
 ### Setup
 
@@ -177,13 +213,13 @@ npm install
 
 To run the full backend locally (PostgreSQL + Edge Functions):
 
-`supabase functions serve` reads `supabase/functions/.env` automatically (it has no effect on deployed functions). That file is **gitignored** because it holds real GitHub OAuth client secrets — copy the committed template and fill in the GitHub values:
+`supabase functions serve` reads `supabase/functions/.env` automatically (it has no effect on deployed functions). That file is **gitignored** because it holds OAuth secrets — copy the committed template and fill in the values needed for the provider you are testing:
 
 ```sh
 cp supabase/functions/.env.example supabase/functions/.env
 ```
 
-The template ships with the fixed well-known local `JWT_SIGNING_SECRET` (the default for every local Supabase instance — not sensitive); only the GitHub fields need real values, and only if you're testing GitHub connect locally.
+The template ships with the fixed well-known local `JWT_SIGNING_SECRET` (the default for every local Supabase instance — not sensitive). GitHub login needs its OAuth app values. Bluesky login needs the confidential client's private JWK matching the public key in the selected client-metadata document.
 
 ```sh
 # Start Docker first, then:
@@ -233,6 +269,34 @@ For manifest changes, click the refresh icon on the extension card in `chrome://
 nr type-check
 ```
 
+### Live Bluesky OAuth E2E
+
+The normal authenticated E2E suite is deterministic and does not contact an OAuth provider. A separate smoke test drives the test account's real ATProto login and consent UI, then verifies both Mustard's stored session and the server-side ATProto OAuth session.
+
+Use a dedicated Bluesky account without 2FA. Keep its real account password in an environment variable; app passwords cannot complete the browser OAuth flow. The ignored `supabase/functions/.env` must contain `ATPROTO_CLIENT_PRIVATE_JWK` and the test metadata override shown in `supabase/functions/.env.example`.
+
+```sh
+cp .env.e2e.local.example .env.e2e.local
+```
+
+```sh
+npm run test:e2e:auth:bluesky
+```
+
+To run every browser suite with a single E2E build (unauthenticated, deterministic authenticated, and live ATProto OAuth):
+
+```sh
+npm run test:e2e:all
+```
+
+The authenticated E2E commands are self-contained: they run `supabase start`,
+read its current URL and anon key, start `supabase functions serve` with the
+default `supabase/functions/.env`, build once, and stop the Edge Function
+process afterward. The Docker-backed Supabase stack stays running for reuse;
+stop it explicitly with `supabase stop` when finished.
+
+CI runs this test only for trusted same-repository branches, because GitHub does not expose repository secrets to fork pull requests. It requires three repository Actions secrets: `BLUESKY_E2E_HANDLE`, `BLUESKY_E2E_PASSWORD`, and `ATPROTO_CLIENT_PRIVATE_JWK`.
+
 ### Lint
 
 ```sh
@@ -252,6 +316,12 @@ nr build:firefox
 
 The Supabase CLI is required. Install it globally or use npx:
 
+> These commands describe a new project or steady-state deployments after the
+> confidential-client cutover. On the existing production project, do **not**
+> deploy `auth-bridge` from this generic sequence while the live metadata still
+> declares a public client. Apply migrations and set the private JWK first, then
+> use the synchronized rollout linked under **Set Edge Function Secrets**.
+
 ```sh
 # Install Supabase CLI (if not installed)
 npm install -g supabase
@@ -265,7 +335,7 @@ supabase link --project-ref YOUR_PROJECT_REF
 # Deploy Edge Functions
 supabase functions deploy auth-bridge
 supabase functions deploy get-index-v2
-supabase functions deploy get-index   # legacy, until old clients are retired
+supabase functions deploy link-preview-thumbnail
 ```
 
 `auth-bridge` also needs the GitHub OAuth secrets set in the cloud (one app per
@@ -278,23 +348,29 @@ supabase secrets set GITHUB_CLIENT_ID=... GITHUB_CLIENT_SECRET=... \
 
 ### Set Edge Function Secrets
 
-The `auth-bridge` function needs the JWT signing secret:
+The `auth-bridge` function needs the Supabase JWT signing secret and, for
+Bluesky, the private half of the confidential AT Protocol client key:
 
 ```sh
 supabase secrets set JWT_SIGNING_SECRET=your-jwt-secret-from-supabase-dashboard
+supabase secrets set ATPROTO_CLIENT_PRIVATE_JWK='{"kty":"EC",...}'
 ```
 
 Find your JWT secret in Supabase Dashboard → Settings → API → JWT Settings → JWT Secret.
+The private JWK must match the public JWK in the deployed AT Protocol client
+metadata and must never be committed. For an existing Mustard production
+deployment, do not deploy the confidential `auth-bridge` and flip the metadata
+independently: follow the synchronized rollout in
+[`specs/atproto-auth/sketch.md`](./specs/atproto-auth/sketch.md#migration--rollout)
+and use `scripts/go-live-atproto-confidential-client.sh`.
 
 ### Database Migration
 
-Apply the notes table schema:
+Apply every pending migration in order:
 
 ```sh
 supabase db push
 ```
-
-Or run the SQL manually from `supabase/migrations/001_create_notes.sql`.
 
 See [SUPABASE_SETUP.md](./SUPABASE_SETUP.md) for detailed setup instructions.
 
@@ -327,7 +403,7 @@ supabase/
 ├── functions/
 │   ├── auth-bridge/      # Multi-provider OAuth (Bluesky + GitHub) + JWT minting
 │   ├── get-index-v2/     # Strict per-user JWT; multi-provider follow index
-│   └── get-index/        # Legacy anon-key follows + notes index
+│   └── link-preview-thumbnail/ # Verified thumbnail upload/cleanup
 └── migrations/           # Database schema (users/identities, oauth_*, app_config, …)
 ```
 

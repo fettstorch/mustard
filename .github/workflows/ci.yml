@@ -159,3 +159,66 @@ jobs:
           name: test-results-auth
           path: test-results/
           retention-days: 7
+
+  extension-e2e-bluesky-auth:
+    name: Extension E2E (Live Bluesky OAuth)
+    # Repository secrets are intentionally unavailable to fork pull requests.
+    # Run the live account only for trusted same-repository branches.
+    if: >-
+      github.event_name == 'push' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    needs: quality
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Start local Supabase
+        run: supabase start
+
+      - name: Export local Supabase anon key
+        run: |
+          ANON_KEY=$(supabase status -o env | grep '^ANON_KEY=' | sed 's/ANON_KEY="\(.*\)"/\1/')
+          echo "VITE_SUPABASE_ANON_KEY=${ANON_KEY}" >> "$GITHUB_ENV"
+
+      - name: Start Edge Functions with confidential test client
+        env:
+          ATPROTO_CLIENT_PRIVATE_JWK: ${{ secrets.ATPROTO_CLIENT_PRIVATE_JWK }}
+        run: |
+          if [ -z "$ATPROTO_CLIENT_PRIVATE_JWK" ]; then
+            echo "::error::ATPROTO_CLIENT_PRIVATE_JWK repository secret is not configured"
+            exit 1
+          fi
+          cp supabase/functions/.env.e2e "$RUNNER_TEMP/bluesky-auth-e2e.env"
+          printf 'ATPROTO_CLIENT_ID=%s\n' 'https://fettstorch.github.io/mustard/client-metadata-test.json' >> "$RUNNER_TEMP/bluesky-auth-e2e.env"
+          printf 'ATPROTO_CLIENT_PRIVATE_JWK=%s\n' "$ATPROTO_CLIENT_PRIVATE_JWK" >> "$RUNNER_TEMP/bluesky-auth-e2e.env"
+          supabase functions serve --env-file "$RUNNER_TEMP/bluesky-auth-e2e.env" &
+          echo "Edge Functions started in background (PID $!)"
+
+      - name: Install Playwright Chromium
+        run: npx playwright install chromium --with-deps
+
+      - name: Build extension for live auth E2E
+        run: npm run build:e2e:auth
+
+      - name: Run live Bluesky OAuth E2E
+        env:
+          BLUESKY_E2E_HANDLE: ${{ secrets.BLUESKY_E2E_HANDLE }}
+          BLUESKY_E2E_PASSWORD: ${{ secrets.BLUESKY_E2E_PASSWORD }}
+        run: npx playwright test --config playwright.bluesky-auth.config.ts
+
+      - name: Stop Supabase
+        if: always()
+        run: supabase stop --no-backup

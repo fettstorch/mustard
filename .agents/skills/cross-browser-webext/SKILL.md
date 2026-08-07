@@ -165,6 +165,11 @@ in several ways:
   is on-demand, file-level `beforeEach` data setup finishes before the extension
   starts and can warm its remote-index cache. Keep one-off rate-limit accounts
   self-contained with their existing transient-user hooks.
+- `authenticatedContext` must close tabs created during extension installation
+  before injecting the test session and clearing `storage.session`. Otherwise
+  the onboarding content script can query as the injected user and repopulate
+  the remote-index cache with stale data after the clear, making later note
+  assertions race-dependent.
 
 ## Stable extension identity (needed for OAuth redirect URIs)
 

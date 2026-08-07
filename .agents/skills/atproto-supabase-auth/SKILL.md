@@ -4,10 +4,12 @@ description: >-
   Multi-provider OAuth (Bluesky/AT Protocol + GitHub) and Supabase auth
   architecture for the Mustard extension. Covers the BFF auth-bridge pattern,
   the UUID account model + identities table, account linking/unlinking,
-  opaque-token constraints, DPoP/PKCE/PAR, identity verification, Supabase JWT
-  minting + refresh + logout, and legacy DID migration. Use when working on
-  login/logout, account linking, the auth-bridge edge function, SupabaseAuth,
-  JWT handling, OAuth redirect flows, or session broadcasting.
+  opaque-token constraints, DPoP/PKCE/PAR, the atproto confidential-client
+  upgrade (private_key_jwt), identity verification, short-lived Supabase JWTs
+  backed by rotating server-side refresh tokens (mustard_sessions), session
+  revocation, and legacy migration. Use when working on login/logout, account
+  linking, the auth-bridge edge function, SupabaseAuth, JWT/refresh-token
+  handling, OAuth redirect flows, or session broadcasting.
 ---
 
 # Multi-Provider OAuth + Supabase Auth (BFF)
@@ -79,9 +81,10 @@ sequenceDiagram
     SW->>Bridge: POST {action: "initiate", handle}
     Bridge->>AS: Resolve handle→DID→PDS→AS
     Bridge->>Bridge: Generate DPoP keypair + PKCE
-    Bridge->>AS: PAR request + DPoP proof
+    Bridge->>Bridge: Sign client assertion (private_key_jwt, aud=AS issuer)
+    Bridge->>AS: PAR request + DPoP proof + client assertion
     AS-->>Bridge: {request_uri}
-    Bridge->>DB: Store state, code_verifier, DPoP keys
+    Bridge->>DB: Store state, code_verifier, DPoP keys, as_issuer
     Bridge-->>SW: {authUrl, state}
 
     Note over SW,AS: Step 2: User Authentication
@@ -94,15 +97,17 @@ sequenceDiagram
     Note over SW,AS: Step 3: Callback (server-side)
     SW->>Bridge: POST {action: "callback", code, state, iss}
     Bridge->>DB: Look up state → code_verifier, DPoP keys
-    Bridge->>AS: Token exchange + DPoP proof + PKCE verifier
+    Bridge->>Bridge: Sign client assertion (aud=AS issuer)
+    Bridge->>AS: Token exchange + DPoP proof + PKCE verifier + client assertion
     AS-->>Bridge: {access_token, refresh_token, sub: DID}
     Bridge->>Bridge: Verify DID→PDS→AS matches issuer
     Bridge->>DB: Upsert identity → users.id (UUID);<br/>link to current JWT's user if linking
-    Bridge->>DB: Store oauth_session (tokens, DPoP keys, user_id)
-    Bridge->>Bridge: Mint Supabase JWT (sub: UUID)
-    Bridge-->>SW: {jwt, expiresAt, userId, did}
+    Bridge->>DB: Store oauth_session (tokens, DPoP keys, as_issuer, user_id)
+    Bridge->>DB: createSession() → mustard_sessions row (hashed refresh token)
+    Bridge->>Bridge: Mint Supabase JWT (sub: UUID, sid: session id, 24h TTL)
+    Bridge-->>SW: {jwt, expiresAt, refreshToken, userId, did}
 
-    SW->>SW: Cache JWT, sync identities, broadcast SESSION_CHANGED
+    SW->>SW: Cache {jwt, refreshToken}, sync identities, broadcast SESSION_CHANGED
     SW-->>Popup: {userId, did}
     Popup->>User: Show "Logged in"
 ```
@@ -132,9 +137,40 @@ with the same identity-upsert → UUID → JWT mint.
 - **Identity verification**: after token exchange, auth-bridge independently
   resolves DID→PDS→AS to confirm the AS is authoritative for that DID — without
   it, a malicious AS could claim to authenticate any DID.
+- **Confidential client (`client-assertion.ts`)**: after the one-time rollout,
+  auth-bridge is registered as a confidential client (`client-metadata.json` sets
+  `token_endpoint_auth_method: "private_key_jwt"` + a `jwks`), so every PAR,
+  token-exchange, and refresh call to an atproto AS carries a `private_key_jwt`
+  assertion signed with `ATPROTO_CLIENT_PRIVATE_JWK` (an ES256 keypair, `aud` =
+  the AS issuer). This is what makes the confidential-client's longer upstream
+  atproto session lifetime (vs. 2 weeks for a public client) available — needed
+  because Mustard's atproto session outlives auth (e.g. future PDS writes), not
+  just for login. Distinct from DPoP: DPoP proves possession of a per-session
+  key; the client assertion proves _auth-bridge itself_, reused across every
+  user's session. See `specs/atproto-auth/sketch.md` for the full rationale.
+  Before that rollout, production `client-metadata.json` deliberately remains
+  public; `client-metadata.confidential.json` holds the staged replacement.
+  Merging the code does not publish the extension. Cut over auth-bridge and the
+  metadata first, verify the live metadata plus a real Bluesky login, and only
+  then publish v2.9; the old backend cannot return the refresh-token response
+  shape that v2.9 expects.
 
 ## Gotchas
 
+- **Keep the two refresh-token layers distinct**: the Mustard refresh token is
+  an opaque client-side credential for rotating short-lived Supabase JWTs;
+  the ATProto OAuth refresh token stays server-side in `oauth_session` and
+  refreshes the user's upstream Bluesky session. Client-version compatibility
+  and rollout claims must say explicitly which token they concern.
+- **Persist a rotated upstream token before success**: an ATProto refresh can
+  replace the prior refresh token. Retry a transient `oauth_session` write
+  while the replacement is still in memory; if it cannot be stored, fail the
+  request rather than claim a successful migration with a stale credential.
+- **Keep rollout artifacts synchronized**: when auth behavior, compatibility
+  gates, deployment ordering, or test scaffolding changes, update the PR rollout
+  description, `specs/atproto-auth/sketch.md`, `cleanup.md`, and the cutover
+  script wherever they are affected. Do not leave the executable rollout and
+  its operational documentation describing different states.
 - **DPoP nonce retry**: the AS rejects the first DPoP-signed request with
   `use_dpop_nonce` and returns the nonce in a header. Standard pattern: send with
   empty nonce, retry with the server-provided nonce.
@@ -151,10 +187,21 @@ One Edge Function, routed by `body.action` (legacy callers omit `provider` →
 default atproto):
 
 - `initiate` / `callback` — OAuth login or linking (atproto + github).
-- `refresh` — mint a fresh JWT for the UUID; for atproto also refresh the
-  upstream token. Verifies `payload.sub === userId` and looks up `oauth_session`
-  by `user_id`. GitHub classic OAuth tokens don't expire, so refresh just
-  re-mints the JWT.
+- `refresh` — dual path, dispatched on the request shape (`handleRefresh` in
+  `index.ts`):
+  - **v2** (`{ refreshToken }`): rotate the mustard session (`rotateSession`)
+    and mint a new 24h JWT. Routine Mustard rotation is deliberately independent
+    of upstream atproto refresh; future PDS operations refresh upstream only
+    when they actually need it.
+  - **legacy** (`{ userId, expired_jwt }`, no `refreshToken`): one-time
+    exchange for a pre-overhaul cache that predates refresh tokens — verifies
+    JWT (`clockTolerance` generous enough to cover the old 180-day TTL) and
+    mints a brand-new session. v2.9 prioritizes this exchange over its valid-JWT
+    fast path, so a JWT-only cache upgrades on its first authenticated call even
+    when the old JWT is still far from expiry. See
+    `specs/atproto-auth/cleanup.md` for when this path can be deleted.
+- `logout` — `{ refreshToken }`; revokes the mustard session
+  (`revokeSession`/`mustard_sessions` row). Idempotent, always `200`.
 - `list-identities` — all identities for the JWT's user (options "Connected
   Accounts").
 - `disconnect` — unlink a provider; deletes the account if it was the last.
@@ -166,18 +213,60 @@ default atproto):
 
 ## Supabase JWT lifecycle
 
-- `SupabaseAuth.ts` caches the JWT (`{ jwt, userId, expiresAt }`) with a 1h TTL;
-  refresh goes through auth-bridge using the expired JWT as proof.
+The Supabase JWT is now a **thin, short-lived capability** (24h TTL, `sid`
+claim = a `mustard_sessions.id`), not a long-lived credential in its own right.
+The actual session — revocable, rotating — lives server-side in
+`mustard_sessions`, keyed by a hashed opaque refresh token. This replaced the
+old model (still relevant for understanding old code/data: JWTs with a 180-day
+TTL, "refreshed" by re-verifying the same JWT with a huge clock tolerance).
+
+- `SupabaseAuth.ts` caches `{ jwt, userId, expiresAt, refreshToken }`. Within
+  60s of `expiresAt` it calls `refresh` with the cached `refreshToken`
+  (`sessions.ts`'s `rotateSession`) and stores the **new** rotated pair —
+  every refresh invalidates the previous refresh token.
+- **Rotation grace window**: `rotateSession` accepts the _immediately previous_
+  token hash for 10 minutes after rotation (`prev_token_hash`/`prev_valid_until`
+  in `mustard_sessions`), so a service-worker restart racing an in-flight
+  refresh doesn't strand the caller. A token more than one rotation old is
+  always rejected, regardless of elapsed time.
+- **`sid` enforces logout for account actions**: v2.9 JWTs carrying a `sid`
+  must still match a live, unexpired `mustard_sessions` row before auth-bridge
+  permits account actions (including identity linking). A signed JWT alone
+  cannot attach an identity or otherwise revive a logged-out session during its
+  remaining 24-hour lifetime. Sid-less pre-v2.9 JWTs remain compatible only for
+  the rollout window. A linking callback can return the JWT-only compatibility
+  shape only when its presented `currentJwt` is itself sid-less; a sid-backed
+  session always receives a replacement session, even if it claims an older
+  client version.
+- **Concurrency**: `getSupabaseJwt()` is wrapped in `synchronize()` (from
+  `@fettstorch/jule`) so concurrent callers share one in-flight refresh instead
+  of racing to rotate the same token.
 - **Refresh 4xx/502 = logout**: a non-transient refresh failure means the
   server-side session is gone — clear the stored session + JWT and broadcast
   `SESSION_CHANGED(null)` + `SESSION_EXPIRED`. **Do NOT clear on other 5xx**
-  (transient server errors).
-- **Legacy DID sessions/caches** (pre multi-provider migration) have a DID where
-  the UUID should be. Migration `011` did `DELETE FROM oauth_session`, so there
-  is nothing to refresh against and AT Protocol re-auth is interactive-only —
-  **a silent re-login is impossible**. `getSupabaseJwt()` detects a `did:`-prefixed
-  `session.userId`, and `getCachedJwt()` rejects a `did:`/`userId`-less cache;
-  both wipe local creds and fire `SESSION_EXPIRED` to force a one-time re-login.
+  (transient server errors) — keep the (now-unusable-until-retry) credentials
+  and let the next call retry.
+- **Logout is explicit**: `revokeSupabaseSession()` (not `clearSupabaseJwt`,
+  which is module-private) posts `{ action: "logout", refreshToken }` to
+  auth-bridge to delete the server-side row, then clears local state — so a
+  stolen/cached refresh token can't outlive an intentional logout. Always
+  clears local state even if the network call fails.
+- **Legacy migration (one-time, no forced re-login)**: a cache from before this
+  overhaul has `{ jwt, userId, expiresAt }` with **no `refreshToken`**.
+  `getSupabaseJwt()` detects that shape before its valid-JWT fast path and
+  immediately calls `refresh` with
+  `{ userId, expired_jwt }` instead of `{ refreshToken }` — the one-time legacy
+  exchange (`handleLegacyExchange` in auth-bridge) mints a real session from the
+  old JWT alone. After that one exchange the cache is steady-state
+  (`refreshToken` present) and never hits this branch again. See
+  `specs/atproto-auth/cleanup.md` for the removal plan/gates.
+- **Legacy DID sessions/caches** (pre multi-provider migration, older than the
+  above) have a DID where the UUID should be. Migration `011` did
+  `DELETE FROM oauth_session`, so there is nothing to refresh against and AT
+  Protocol re-auth is interactive-only — **a silent re-login is impossible**.
+  `getSupabaseJwt()` detects a `did:`-prefixed `session.userId`, and
+  `getCachedJwt()` rejects a `did:`/`userId`-less cache; both wipe local creds
+  and fire `SESSION_EXPIRED` to force a one-time re-login.
 - `SESSION_CHANGED` is broadcast to all tabs on login/logout so content scripts
   re-query notes without a page reload.
 
@@ -188,6 +277,21 @@ default atproto):
   place provider ids live; unique on `(provider, provider_account_id)`.
 - `oauth_login_state`: temporary PAR/PKCE/DPoP state during login (~10 min TTL);
   `provider` column distinguishes atproto vs github.
-- `oauth_session`: server-side token storage for refresh, PK
+- `oauth_session`: server-side upstream-provider token storage for refresh, PK
   `(provider, provider_account_id)` + `user_id` FK. atproto-only columns
-  (DPoP keys, `token_endpoint`) are nullable so github rows can omit them.
+  (DPoP keys, `token_endpoint`, `as_issuer`) are nullable so github rows can
+  omit them. `as_issuer` (migration `021`) is the AS issuer URL, needed at
+  refresh time (not just callback time) as the client assertion's `aud`. Rows
+  predating migration `021` start with `as_issuer = NULL`; `refreshAtprotoToken`'s
+  `resolveAsIssuer()` derives it via AS discovery and persists it lazily on
+  first refresh (no bulk backfill) — this is load-bearing, not an
+  optimization: the reference AS (`@atproto/oauth-provider`, run by
+  `bsky.social`) checks every request's auth method against the _live_
+  client-metadata document, so a session can't skip the client assertion just
+  because it predates the confidential-client upgrade.
+- `mustard_sessions` (migration `020`): Mustard's **own** session, independent
+  of provider. PK `id` (== the JWT's `sid` claim), `user_id` FK, a hashed
+  opaque refresh token (`refresh_token_hash`, never the raw token), a one-
+  generation-back `prev_token_hash`/`prev_valid_until` for the rotation grace
+  window, and a sliding `expires_at` (90d from `createSession`, or from every
+  `rotateSession`). Service-role only, no client-facing RLS policy.

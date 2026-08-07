@@ -37,7 +37,11 @@ import {
   resolveGithubAccounts,
   getGithubMentionCandidates,
 } from '@/background/auth/AuthBridge'
-import { clearSupabaseJwt, storeSupabaseJwt, getSupabaseJwt } from '@/background/auth/SupabaseAuth'
+import {
+  storeSupabaseJwt,
+  getSupabaseJwt,
+  revokeSupabaseSession,
+} from '@/background/auth/SupabaseAuth'
 import { MustardProfileServiceBsky } from '@/background/business/service/MustardProfileServiceBsky'
 import type { UserProfile, LinkedIdentity } from '@/shared/model/UserProfile'
 import { MustardMutualsServiceBsky } from '@/background/business/service/MustardMutualsServiceBsky'
@@ -503,10 +507,19 @@ export default defineBackground(() => {
         // so the user's existing Mustard account is linked to GitHub.
         const jwt = message.currentJwt ?? (await getSupabaseJwt()) ?? undefined
         const result = await loginWithGithub(jwt)
-        await storeSupabaseJwt(result.jwt, result.expiresAt, result.userId)
+        await storeSupabaseJwt(result.jwt, result.expiresAt, result.userId, result.refreshToken)
         // Enrich the session with the full identity set (github login may have
-        // linked into an existing multi-provider account).
-        await syncSessionIdentities(result.jwt, result.userId)
+        // linked into an existing multi-provider account). If that follow-up
+        // request fails, the just-stored refresh credential must not outlive a
+        // login the UI reports as failed.
+        try {
+          const session = await syncSessionIdentities(result.jwt, result.userId)
+          if (!session) throw new Error('GitHub login returned no linked identities')
+        } catch (error) {
+          await revokeSupabaseSession()
+          await logout(result.userId)
+          throw error
+        }
         await invalidateRemoteIndexCache()
         broadcastSessionChanged(result.userId)
         updateActionBadge()
@@ -520,8 +533,18 @@ export default defineBackground(() => {
     ATPROTO_LOGIN: async (message) => {
       try {
         const result = await login(message.handle, message.currentJwt)
-        await storeSupabaseJwt(result.jwt, result.expiresAt, result.userId)
-        await syncSessionIdentities(result.jwt, result.userId)
+        await storeSupabaseJwt(result.jwt, result.expiresAt, result.userId, result.refreshToken)
+        // Enrich the minimal session persisted by the ATProto flow. If that
+        // follow-up request fails, roll back the just-created credentials so a
+        // login the UI reports as failed cannot leave a server session behind.
+        try {
+          const session = await syncSessionIdentities(result.jwt, result.userId)
+          if (!session) throw new Error('ATProto login returned no linked identities')
+        } catch (error) {
+          await revokeSupabaseSession()
+          await logout(result.userId)
+          throw error
+        }
         await invalidateRemoteIndexCache()
         broadcastSessionChanged(result.userId)
         updateActionBadge()
@@ -566,8 +589,8 @@ export default defineBackground(() => {
 
     ATPROTO_LOGOUT: async (message) => {
       try {
+        await revokeSupabaseSession()
         await logout(message.userId)
-        await clearSupabaseJwt()
         await clearNativeNotificationState()
         await invalidateRemoteIndexCache()
         mutualsService.clear()
@@ -591,7 +614,7 @@ export default defineBackground(() => {
           // Last identity removed → the account (and all its content) is gone.
           // Tear down local state exactly like a logout.
           await logout(session?.userId ?? '')
-          await clearSupabaseJwt()
+          await revokeSupabaseSession()
           await clearNativeNotificationState()
           mutualsService.clear()
           broadcastSessionChanged(null)

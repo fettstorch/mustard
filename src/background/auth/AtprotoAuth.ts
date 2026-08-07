@@ -14,7 +14,13 @@ export function atprotoDid(session: StoredSession): string | undefined {
   return session.identities.find((i) => i.provider === 'atproto')?.providerAccountId
 }
 
-type LoginResult = { userId: string; did: string; jwt: string; expiresAt: number }
+type LoginResult = {
+  userId: string
+  did: string
+  jwt: string
+  expiresAt: number
+  refreshToken: string
+}
 
 /**
  * Start atproto login flow: auth-bridge does PAR, user authenticates, auth-bridge
@@ -54,6 +60,7 @@ export async function login(handle: string, currentJwt?: string): Promise<LoginR
     code,
     state,
     iss,
+    clientVersion: browser.runtime.getManifest().version,
     ...(currentJwt !== undefined ? { currentJwt } : {}),
   })
 
@@ -67,5 +74,11 @@ export async function login(handle: string, currentJwt?: string): Promise<LoginR
     identities: [{ provider: 'atproto', providerAccountId: did, handle }],
   })
 
-  return { userId, did, jwt: result.jwt as string, expiresAt: result.expiresAt as number }
+  return {
+    userId,
+    did,
+    jwt: result.jwt as string,
+    expiresAt: result.expiresAt as number,
+    refreshToken: result.refreshToken as string,
+  }
 }

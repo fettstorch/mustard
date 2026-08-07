@@ -4,16 +4,38 @@ import {
   cleanupUnreferencedLinkPreviewThumbnail,
   isLinkPreviewThumbnailPath,
 } from '../_shared/link-preview-thumbnails.ts'
+import {
+  createSession,
+  rotateSession,
+  revokeSession,
+  revokeSessionById,
+  type SessionPair,
+} from './sessions.ts'
+import { clientAssertionFormFields } from './client-assertion.ts'
+import { persistOAuthSession } from './persist-oauth-session.ts'
+import { requireQueryData } from './query-result.ts'
+import {
+  isClientVersionAtLeast,
+  REFRESH_TOKEN_CLIENT_VERSION,
+  shouldMintRefreshSession,
+} from './client-session-compatibility.ts'
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
-const ATPROTO_CLIENT_ID = 'https://fettstorch.github.io/mustard/client-metadata.json'
+// Overridable so a local `supabase functions serve` can point at a throwaway
+// second client_id (see docs/client-metadata-test.json) to exercise the
+// confidential-client flow against a real AS without ever touching the
+// production client_id's published metadata. Unset in production — falls
+// back to the real, deployed client_id.
+const ATPROTO_CLIENT_ID =
+  Deno.env.get('ATPROTO_CLIENT_ID') ?? 'https://fettstorch.github.io/mustard/client-metadata.json'
 const ATPROTO_SCOPE = 'atproto'
 const HANDLE_RESOLVER = 'https://bsky.social'
 const PLC_DIRECTORY = 'https://plc.directory'
 const STATE_TTL_SECONDS = 600
-const SUPABASE_JWT_TTL_SECONDS = 180 * 24 * 60 * 60
-
+// Short-lived capability, not a refresh credential — see mustard_sessions
+// (migration 020) for the actual (revocable, rotating) session.
+const SUPABASE_JWT_TTL_SECONDS = 24 * 60 * 60
 // Mustard user_ids are UUIDs. Used to reject provider ids (DIDs etc.) that must
 // never be treated as user_ids.
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -80,7 +102,14 @@ async function listLinkPreviewThumbnailPaths(
 
 // ─── Supabase JWT ────────────────────────────────────────────────────────────
 
-async function mintSupabaseJwt(userId: string): Promise<{ jwt: string; expiresAt: number }> {
+// `sid` ties a v2.9+ JWT back to its mustard_sessions row. Account-management
+// actions require that row to be live, so explicit logout takes effect before
+// the JWT's short 24h expiry. Legacy clients receive a JWT without `sid`
+// because they cannot retain the corresponding refresh token.
+async function mintSupabaseJwt(
+  userId: string,
+  sessionId?: string,
+): Promise<{ jwt: string; expiresAt: number }> {
   const jwtSecret = Deno.env.get('JWT_SIGNING_SECRET')
   if (!jwtSecret) throw new Error('JWT_SIGNING_SECRET not configured')
 
@@ -88,7 +117,8 @@ async function mintSupabaseJwt(userId: string): Promise<{ jwt: string; expiresAt
   const exp = now + SUPABASE_JWT_TTL_SECONDS
 
   const secret = new TextEncoder().encode(jwtSecret)
-  const jwt = await new jose.SignJWT({ sub: userId, role: 'authenticated' })
+  const claims = { sub: userId, role: 'authenticated', ...(sessionId ? { sid: sessionId } : {}) }
+  const jwt = await new jose.SignJWT(claims)
     .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
     .setIssuedAt(now)
     .setExpirationTime(exp)
@@ -97,8 +127,39 @@ async function mintSupabaseJwt(userId: string): Promise<{ jwt: string; expiresAt
   return { jwt, expiresAt: exp }
 }
 
+/** Mint the `{jwt, expiresAt, refreshToken}` triple returned by login/refresh/exchange. */
+async function mintSessionResponse(
+  session: SessionPair,
+): Promise<{ jwt: string; expiresAt: number; refreshToken: string }> {
+  const { jwt, expiresAt } = await mintSupabaseJwt(session.userId, session.sessionId)
+  return { jwt, expiresAt, refreshToken: session.refreshToken }
+}
+
+/**
+ * Mint the strongest response shape the calling extension can retain. Clients
+ * before v2.9 receive a JWT only; creating a refresh session for them would
+ * leave an unreachable mustard_sessions row.
+ */
+async function mintClientSessionResponse(
+  supabase: ReturnType<typeof getSupabase>,
+  userId: string,
+  clientVersion?: string,
+  supersededSessionId?: string | null,
+): Promise<{ jwt: string; expiresAt: number; refreshToken?: string }> {
+  if (!shouldMintRefreshSession(clientVersion, supersededSessionId)) {
+    return await mintSupabaseJwt(userId)
+  }
+
+  const session = await createSession(supabase, userId)
+  if (supersededSessionId) {
+    await revokeSessionById(supabase, supersededSessionId, userId)
+  }
+  return await mintSessionResponse(session)
+}
+
 // Verify a Supabase JWT we minted and return its `sub` (the Mustard userId),
-// or null if the signature/format is invalid OR the token is expired.
+// or null if the signature/format is invalid, the token is expired, or its v2
+// server-side session was revoked.
 //
 // This authorizes live account-management actions (link, disconnect, delete,
 // list, resolve), so it requires an UNEXPIRED token — only a small skew margin
@@ -107,17 +168,45 @@ async function mintSupabaseJwt(userId: string): Promise<{ jwt: string; expiresAt
 // never authorize privileged mutations long after `exp`. The client refreshes
 // proactively (~60s before exp), so legitimate callers always send a live JWT.
 const ACCOUNT_ACTION_CLOCK_TOLERANCE_SEC = 60
-async function verifyJwtSub(jwt: string): Promise<string | null> {
+type VerifiedJwtSession = { userId: string; sessionId: string | null }
+
+async function verifyJwtSession(jwt: string): Promise<VerifiedJwtSession | null> {
   const jwtSecret = Deno.env.get('JWT_SIGNING_SECRET')
   if (!jwtSecret) throw new Error('JWT_SIGNING_SECRET not configured')
+
+  let verified: VerifiedJwtSession
   try {
     const { payload } = await jose.jwtVerify(jwt, new TextEncoder().encode(jwtSecret), {
       clockTolerance: ACCOUNT_ACTION_CLOCK_TOLERANCE_SEC,
     })
-    return typeof payload.sub === 'string' ? payload.sub : null
+    if (typeof payload.sub !== 'string') return null
+    verified = {
+      userId: payload.sub,
+      sessionId: typeof payload.sid === 'string' ? payload.sid : null,
+    }
   } catch {
     return null
   }
+
+  // sid-less JWTs are from pre-v2.9 clients. They have no mustard_sessions row
+  // to check and remain valid only for the migration window.
+  if (!verified.sessionId) return verified
+
+  const { data, error } = await getSupabase()
+    .from('mustard_sessions')
+    .select('id')
+    .eq('id', verified.sessionId)
+    .eq('user_id', verified.userId)
+    .gt('expires_at', new Date().toISOString())
+    .maybeSingle()
+  if (error) throw new Error(`Failed to verify live session: ${error.message}`)
+  if (!data) return null
+
+  return verified
+}
+
+async function verifyJwtSub(jwt: string): Promise<string | null> {
+  return (await verifyJwtSession(jwt))?.userId ?? null
 }
 
 // ─── Identity linking (provider-agnostic) ────────────────────────────────────
@@ -133,7 +222,7 @@ async function linkIdentity(
   providerAccountId: string,
   handle: string,
   currentJwt?: string,
-): Promise<string> {
+): Promise<{ userId: string; supersededSessionId: string | null }> {
   const supabase = getSupabase()
 
   // The account this identity should attach to, if the caller is already logged
@@ -143,11 +232,14 @@ async function linkIdentity(
   // secret rotation or a stale legacy token): the latter is a LINK attempt that
   // we must fail rather than silently fork into a brand-new account.
   let linkToUserId: string | null = null
+  let supersededSessionId: string | null = null
   if (currentJwt) {
-    linkToUserId = await verifyJwtSub(currentJwt)
-    if (!linkToUserId) {
+    const currentSession = await verifyJwtSession(currentJwt)
+    if (!currentSession) {
       throw new HttpError('Invalid currentJwt — cannot link identity. Please re-login.', 403)
     }
+    linkToUserId = currentSession.userId
+    supersededSessionId = currentSession.sessionId
   }
 
   // Is this (provider, providerAccountId) already claimed by some Mustard user?
@@ -193,7 +285,7 @@ async function linkIdentity(
     )
   if (identityError) throw new Error(`Failed to upsert identity: ${identityError.message}`)
 
-  return targetUserId
+  return { userId: targetUserId, supersededSessionId }
 }
 
 // ─── Identity management (list / disconnect) ─────────────────────────────────
@@ -548,19 +640,27 @@ function isDpopNonceError(
   )
 }
 
+// `assertionAudience` (the AS `issuer`, not the endpoint URL) is set on every
+// call now that auth-bridge is a confidential client — PAR, token exchange,
+// and refresh must all carry a `private_key_jwt` client assertion alongside
+// the (unrelated) per-session DPoP proof. Omitted only in tests/dry-runs.
 async function authServerPost(
   url: string,
   formData: Record<string, string>,
   privateJwk: jose.JWK,
   publicJwk: jose.JWK,
+  assertionAudience?: string,
 ): Promise<{ status: number; body: Record<string, unknown> }> {
   let nonce = ''
   for (let attempt = 0; attempt < 2; attempt++) {
     const dpop = await createDpopProof('POST', url, privateJwk, publicJwk, nonce || undefined)
+    const body = assertionAudience
+      ? { ...formData, ...(await clientAssertionFormFields(ATPROTO_CLIENT_ID, assertionAudience)) }
+      : formData
     const resp = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded', DPoP: dpop },
-      body: new URLSearchParams(formData).toString(),
+      body: new URLSearchParams(body).toString(),
     })
     const respBody = await resp.json()
     if (isDpopNonceError(resp.status, resp.headers, respBody)) {
@@ -620,6 +720,7 @@ async function handleAtprotoInitiate(body: {
     },
     privateJwk,
     publicJwk,
+    asMeta.issuer,
   )
   if (!parResp.request_uri) {
     console.error('[auth-bridge] PAR failed:', status, parResp)
@@ -654,8 +755,9 @@ async function handleAtprotoCallback(body: {
   state: string
   iss: string
   currentJwt?: string
+  clientVersion?: string
 }): Promise<Response> {
-  const { code, state, iss, currentJwt } = body
+  const { code, state, iss, currentJwt, clientVersion } = body
   if (!code || !state || !iss) return errorResponse('code, state, and iss are required', 400)
 
   console.log(`[auth-bridge] atproto callback: state=${state}`)
@@ -684,6 +786,7 @@ async function handleAtprotoCallback(body: {
     },
     loginState.dpop_jwk,
     loginState.dpop_pub_jwk,
+    iss,
   )
   if (!tokenResp.access_token) {
     console.error('[auth-bridge] Token exchange failed:', status, tokenResp)
@@ -711,7 +814,12 @@ async function handleAtprotoCallback(body: {
   // Link identity → get/create the Mustard userId (a UUID) BEFORE storing the
   // session (oauth_session.user_id is NOT NULL). The DID is recorded only as the
   // atproto identity's provider_account_id, never as the userId.
-  const userId = await linkIdentity('atproto', did, did, currentJwt)
+  const { userId, supersededSessionId } = await linkIdentity(
+    'atproto',
+    did,
+    did,
+    currentJwt,
+  )
 
   // Store/update the OAuth session using the new composite PK.
   const { error: sessionError } = await supabase.from('oauth_session').upsert({
@@ -724,6 +832,7 @@ async function handleAtprotoCallback(body: {
     access_token: tokenResp.access_token,
     refresh_token: (tokenResp.refresh_token as string) || null,
     token_endpoint: loginState.token_endpoint,
+    as_issuer: iss,
     scope: grantedScope,
     token_expires_at: tokenExpiresAt,
     updated_at: new Date().toISOString(),
@@ -732,9 +841,14 @@ async function handleAtprotoCallback(body: {
 
   await supabase.from('oauth_login_state').delete().eq('state', state)
 
-  const { jwt, expiresAt } = await mintSupabaseJwt(userId)
+  const sessionResponse = await mintClientSessionResponse(
+    supabase,
+    userId,
+    clientVersion,
+    supersededSessionId,
+  )
   console.log(`[auth-bridge] atproto callback: success for ${did} (userId=${userId})`)
-  return jsonResponse({ jwt, expiresAt, did, userId })
+  return jsonResponse({ ...sessionResponse, did, userId })
 }
 
 // ─── GitHub strategy ──────────────────────────────────────────────────────────
@@ -807,8 +921,9 @@ async function handleGithubCallback(body: {
   code: string
   state: string
   currentJwt?: string
+  clientVersion?: string
 }): Promise<Response> {
-  const { code, state, currentJwt } = body
+  const { code, state, currentJwt, clientVersion } = body
   if (!code || !state) return errorResponse('code and state are required', 400)
 
   console.log(`[auth-bridge] github callback: state=${state}`)
@@ -874,7 +989,12 @@ async function handleGithubCallback(body: {
   // Resolve the Mustard userId BEFORE storing the session — oauth_session.user_id
   // is NOT NULL. `currentJwt` (from the extension service worker) links this new
   // GitHub identity to an already-logged-in account ("connect a second provider").
-  const userId = await linkIdentity('github', githubId, githubLogin, currentJwt)
+  const { userId, supersededSessionId } = await linkIdentity(
+    'github',
+    githubId,
+    githubLogin,
+    currentJwt,
+  )
 
   const { error: sessionError } = await supabase.from('oauth_session').upsert({
     provider: 'github',
@@ -889,11 +1009,15 @@ async function handleGithubCallback(body: {
 
   await supabase.from('oauth_login_state').delete().eq('state', state)
 
-  const { jwt, expiresAt } = await mintSupabaseJwt(userId)
+  const sessionResponse = await mintClientSessionResponse(
+    supabase,
+    userId,
+    clientVersion,
+    supersededSessionId,
+  )
   console.log(`[auth-bridge] github callback: success for ${githubLogin} (userId=${userId})`)
   return jsonResponse({
-    jwt,
-    expiresAt,
+    ...sessionResponse,
     userId,
     provider: 'github',
     handle: githubLogin,
@@ -913,12 +1037,47 @@ interface OAuthSessionRow {
   access_token: string | null
   refresh_token: string | null
   token_endpoint: string | null
+  as_issuer: string | null
   token_expires_at: string | null
   dpop_jwk: jose.JWK | null
   dpop_pub_jwk: jose.JWK | null
 }
 
-type AtprotoRefreshResult = { ok: true } | { ok: false; status: number; error: string }
+type AtprotoRefreshResult =
+  | { ok: true }
+  | { ok: false; status: number; error: string; invalidSession: boolean }
+
+/**
+ * Every atproto token/refresh request must carry a client assertion whose
+ * audience is the AS issuer (see client-assertion.ts). Sessions created
+ * before the confidential-client migration (021) never had `as_issuer`
+ * persisted; derive it once via AS discovery and persist it, so every
+ * subsequent refresh is a plain DB read.
+ *
+ * This is NOT optional for old sessions: per the AT Protocol OAuth profile's
+ * reference AS implementation (@atproto/oauth-provider's `compareClientAuth`),
+ * every token/refresh request's auth method is checked against the AS's
+ * *live* fetch of client-metadata.json, with no grandfathering for sessions
+ * that were originally issued to a public (`none`-auth) client — it just
+ * explicitly *allows* such a session to "upgrade" by presenting an assertion.
+ * Skipping the assertion here (as this code used to do for `as_issuer ===
+ * null` rows) means every currently-active atproto session's very next
+ * refresh gets rejected the moment client-metadata.json goes confidential.
+ */
+async function resolveAsIssuer(
+  supabase: ReturnType<typeof getSupabase>,
+  session: OAuthSessionRow,
+): Promise<string> {
+  if (session.as_issuer) return session.as_issuer
+  const pdsUrl = await resolvePds(session.provider_account_id)
+  const asMeta = await discoverAuthServer(pdsUrl)
+  await supabase
+    .from('oauth_session')
+    .update({ as_issuer: asMeta.issuer })
+    .eq('provider', 'atproto')
+    .eq('provider_account_id', session.provider_account_id)
+  return asMeta.issuer
+}
 
 /**
  * Refresh an atproto session's upstream access token in place. Returns a typed
@@ -930,9 +1089,23 @@ async function refreshAtprotoToken(
   supabase: ReturnType<typeof getSupabase>,
   session: OAuthSessionRow,
 ): Promise<AtprotoRefreshResult> {
-  if (!session.refresh_token) return { ok: false, status: 400, error: 'No refresh token available' }
+  if (!session.refresh_token) {
+    return { ok: false, status: 400, error: 'No refresh token available', invalidSession: true }
+  }
   if (!session.token_endpoint || !session.dpop_jwk || !session.dpop_pub_jwk) {
-    return { ok: false, status: 400, error: 'Incomplete atproto session' }
+    return { ok: false, status: 400, error: 'Incomplete atproto session', invalidSession: true }
+  }
+
+  let issuer: string
+  try {
+    issuer = await resolveAsIssuer(supabase, session)
+  } catch (error) {
+    return {
+      ok: false,
+      status: 502,
+      error: `Failed to resolve AS issuer: ${error instanceof Error ? error.message : String(error)}`,
+      invalidSession: false,
+    }
   }
 
   const { status, body: tokenResp } = await authServerPost(
@@ -944,6 +1117,7 @@ async function refreshAtprotoToken(
     },
     session.dpop_jwk,
     session.dpop_pub_jwk,
+    issuer,
   )
   if (!tokenResp.access_token) {
     console.error('[auth-bridge] Token refresh failed:', status, tokenResp)
@@ -951,88 +1125,173 @@ async function refreshAtprotoToken(
       ok: false,
       status: 502,
       error: `Token refresh failed: ${tokenResp.error_description || tokenResp.error || 'unknown'}`,
+      // OAuth `invalid_grant` means the refresh token itself is expired,
+      // revoked, or otherwise unusable. Other failures can be temporary or a
+      // client/server configuration problem and must not destroy the session.
+      invalidSession: tokenResp.error === 'invalid_grant',
     }
   }
   if (tokenResp.sub && tokenResp.sub !== session.provider_account_id) {
-    return { ok: false, status: 502, error: 'DID mismatch after refresh' }
+    return { ok: false, status: 502, error: 'DID mismatch after refresh', invalidSession: true }
   }
 
   const tokenExpiresAt = tokenResp.expires_in
     ? new Date(Date.now() + (tokenResp.expires_in as number) * 1000).toISOString()
     : null
 
-  await supabase
-    .from('oauth_session')
-    .update({
-      access_token: tokenResp.access_token,
-      refresh_token: (tokenResp.refresh_token as string) || session.refresh_token,
-      token_expires_at: tokenExpiresAt,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('provider', 'atproto')
-    .eq('provider_account_id', session.provider_account_id)
+  await persistOAuthSession(async () => {
+    const { error } = await supabase
+      .from('oauth_session')
+      .update({
+        access_token: tokenResp.access_token,
+        refresh_token: (tokenResp.refresh_token as string) || session.refresh_token,
+        token_expires_at: tokenExpiresAt,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('provider', 'atproto')
+      .eq('provider_account_id', session.provider_account_id)
+    return { error }
+  })
 
   return { ok: true }
 }
 
-async function handleRefresh(body: { userId?: string; expired_jwt: string }): Promise<Response> {
-  const { userId, expired_jwt } = body
-  if (!userId || !expired_jwt) return errorResponse('userId and expired_jwt are required', 400)
+type UpstreamRefreshResult = { ok: true } | { ok: false; response: Response }
 
+/**
+ * Best-effort refresh of the user's upstream atproto session (github's classic
+ * token never expires, so there's nothing to do for a github-only account).
+ *
+ * `allowRecovery` controls what happens when atproto is dead AND was the
+ * user's only linked provider:
+ *  - v2 rotate (steady state): fatal — matches today's behavior ("your
+ *    Bluesky session died, please log back in").
+ *  - legacy exchange (one-time upgrade of a pre-overhaul JWT): never fatal —
+ *    onboarding an existing user onto the new session system must not be the
+ *    moment they get logged out.
+ * A definitively invalid atproto session is dropped so it stops being retried;
+ * transient discovery/transport/provider failures preserve the row.
+ */
+async function refreshUpstreamAtproto(
+  supabase: ReturnType<typeof getSupabase>,
+  userId: string,
+  { allowRecovery }: { allowRecovery: boolean },
+): Promise<UpstreamRefreshResult> {
+  const result = await supabase.from('oauth_session').select('*').eq('user_id', userId)
+  const rows = (requireQueryData(result) ?? []) as OAuthSessionRow[]
+  if (rows.length === 0) return { ok: false, response: errorResponse('No session found', 404) }
+
+  const atprotoSession = rows.find((s) => s.provider === 'atproto') ?? null
+  if (!atprotoSession) return { ok: true }
+
+  const refreshed = await refreshAtprotoToken(supabase, atprotoSession)
+  if (refreshed.ok) return { ok: true }
+
+  if (refreshed.invalidSession) {
+    await supabase
+      .from('oauth_session')
+      .delete()
+      .eq('provider', 'atproto')
+      .eq('provider_account_id', atprotoSession.provider_account_id)
+  }
+
+  const hasFallback = rows.some((s) => s.provider !== 'atproto')
+  if (hasFallback || allowRecovery) {
+    console.warn(
+      refreshed.invalidSession
+        ? `[auth-bridge] refresh: atproto session dead for ${userId}; continuing without it`
+        : `[auth-bridge] refresh: atproto refresh temporarily failed for ${userId}; preserving session`,
+    )
+    return { ok: true }
+  }
+  return { ok: false, response: errorResponse(refreshed.error, refreshed.status) }
+}
+
+/** Steady-state refresh: rotate a live Mustard session's refresh token. */
+async function handleRefreshV2(
+  supabase: ReturnType<typeof getSupabase>,
+  refreshToken: string,
+): Promise<Response> {
+  const rotated = await rotateSession(supabase, refreshToken)
+  if (!rotated) return errorResponse('Invalid or expired refresh token — please log in again', 401)
+
+  // Mustard session rotation must not depend on the availability of an
+  // upstream provider. Refresh the atproto OAuth session when an operation
+  // actually needs it; otherwise a transient provider failure after this
+  // rotation would strand the client with the superseded token.
+  console.log(`[auth-bridge] refresh: rotated session for ${rotated.userId}`)
+  return jsonResponse(await mintSessionResponse(rotated))
+}
+
+/**
+ * One-time migration path: a pre-overhaul client has only its old (possibly
+ * long-expired, under the previous 180-day scheme) JWT and no refresh token
+ * yet. The JWT is proof of identity, not authorization — same lenient
+ * verification rationale the old refresh endpoint had. A v2.9+ client keeps
+ * the returned refreshToken and never hits this path again; older clients get
+ * another JWT without creating a session row they cannot use.
+ */
+async function handleLegacyExchange(
+  supabase: ReturnType<typeof getSupabase>,
+  userId: string,
+  expiredJwt: string,
+  clientVersion?: string,
+): Promise<Response> {
   const jwtSecret = Deno.env.get('JWT_SIGNING_SECRET')
   if (!jwtSecret) throw new Error('JWT_SIGNING_SECRET not configured')
 
-  // Refresh treats the JWT as PROOF OF IDENTITY, not authorization: an expired
-  // token is the normal case here ("mine died, mint me a new one"). This is the
-  // ONLY path allowed to accept an expired JWT — hence the large tolerance. All
-  // privileged mutations go through verifyJwtSub, which requires it unexpired.
   try {
-    const { payload } = await jose.jwtVerify(expired_jwt, new TextEncoder().encode(jwtSecret), {
+    const { payload } = await jose.jwtVerify(expiredJwt, new TextEncoder().encode(jwtSecret), {
       clockTolerance: 365 * 24 * 60 * 60,
     })
     if (payload.sub !== userId) return errorResponse('JWT subject mismatch', 403)
+    // Only pre-v2.9 JWTs belong on this migration path. A JWT with a session
+    // id is backed by mustard_sessions and must not be able to recreate a
+    // session after its refresh token was explicitly revoked.
+    if (typeof payload.sid === 'string') {
+      return errorResponse('Session-backed JWT cannot be used for legacy exchange', 403)
+    }
   } catch {
     return errorResponse('Invalid JWT', 403)
   }
 
-  console.log(`[auth-bridge] refresh: ${userId}`)
-  const supabase = getSupabase()
+  console.log(`[auth-bridge] legacy exchange: ${userId}`)
+  const upstream = await refreshUpstreamAtproto(supabase, userId, { allowRecovery: true })
+  if (!upstream.ok) return upstream.response // only "no session found at all" (404)
 
-  // A user may have several linked sessions (atproto + github). The Mustard JWT
-  // only encodes the userId, so minting it never requires a live upstream token.
-  // We refresh atproto best-effort to keep follow-fetching working, but a dead
-  // atproto session must NOT lock out an account that still has another working
-  // provider (e.g. github, whose classic OAuth token doesn't expire).
-  const { data: sessions } = await supabase.from('oauth_session').select('*').eq('user_id', userId)
-
-  const rows = (sessions ?? []) as OAuthSessionRow[]
-  if (rows.length === 0) return errorResponse('No session found', 404)
-
-  const atprotoSession = rows.find((s) => s.provider === 'atproto') ?? null
-  if (atprotoSession) {
-    const refreshed = await refreshAtprotoToken(supabase, atprotoSession)
-    if (!refreshed.ok) {
-      // Drop the dead atproto session so it stops being retried.
-      await supabase
-        .from('oauth_session')
-        .delete()
-        .eq('provider', 'atproto')
-        .eq('provider_account_id', atprotoSession.provider_account_id)
-      // Only fatal when atproto was the sole linked provider; otherwise fall
-      // through and mint the JWT from the remaining identity.
-      const hasFallback = rows.some((s) => s.provider !== 'atproto')
-      if (!hasFallback) return errorResponse(refreshed.error, refreshed.status)
-      console.warn(
-        `[auth-bridge] refresh: atproto session dead for ${userId}; falling back to another linked provider`,
-      )
-    }
+  if (!isClientVersionAtLeast(clientVersion, REFRESH_TOKEN_CLIENT_VERSION)) {
+    console.log(`[auth-bridge] legacy exchange: JWT-only response for client ${clientVersion ?? 'unknown'}`)
   }
-  // github (and any future no-expiry provider) needs no upstream refresh — its
-  // token is reused as-is, so we go straight to minting the Mustard JWT.
 
-  const { jwt, expiresAt } = await mintSupabaseJwt(userId)
-  console.log(`[auth-bridge] refresh: success for ${userId}`)
-  return jsonResponse({ jwt, expiresAt })
+  console.log(`[auth-bridge] legacy exchange: success for ${userId}`)
+  return jsonResponse(await mintClientSessionResponse(supabase, userId, clientVersion))
+}
+
+async function handleRefresh(body: {
+  refreshToken?: string
+  userId?: string
+  expired_jwt?: string
+  clientVersion?: string
+}): Promise<Response> {
+  const supabase = getSupabase()
+  if (body.refreshToken) return await handleRefreshV2(supabase, body.refreshToken)
+  if (body.userId && body.expired_jwt) {
+    return await handleLegacyExchange(
+      supabase,
+      body.userId,
+      body.expired_jwt,
+      body.clientVersion,
+    )
+  }
+  return errorResponse('refreshToken, or userId + expired_jwt, are required', 400)
+}
+
+/** Explicit server-side revocation — deletes the session row so the refresh token can't be reused. */
+async function handleLogout(body: { refreshToken?: string }): Promise<Response> {
+  const { refreshToken } = body
+  if (!refreshToken) return errorResponse('refreshToken is required', 400)
+  await revokeSession(getSupabase(), refreshToken)
+  return jsonResponse({ ok: true })
 }
 
 // ─── Main handler ─────────────────────────────────────────────────────────────
@@ -1065,6 +1324,9 @@ Deno.serve(async (req) => {
       case 'refresh':
         return await handleRefresh(body)
 
+      case 'logout':
+        return await handleLogout(body)
+
       case 'list-identities':
         return await handleListIdentities(body)
 
@@ -1082,7 +1344,7 @@ Deno.serve(async (req) => {
 
       default:
         return errorResponse(
-          'Invalid action. Use: initiate, callback, refresh, list-identities, disconnect, resolve-identities, resolve-accounts, or github-mention-candidates',
+          'Invalid action. Use: initiate, callback, refresh, logout, list-identities, disconnect, resolve-identities, resolve-accounts, or github-mention-candidates',
           400,
         )
     }
