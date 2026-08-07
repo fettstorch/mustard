@@ -148,12 +148,10 @@ with the same identity-upsert → UUID → JWT mint.
   just for login. Distinct from DPoP: DPoP proves possession of a per-session
   key; the client assertion proves _auth-bridge itself_, reused across every
   user's session. See `specs/atproto-auth/sketch.md` for the full rationale.
-  Before that rollout, production `client-metadata.json` deliberately remains
-  public; `client-metadata.confidential.json` holds the staged replacement.
-  Merging the code does not publish the extension. Cut over auth-bridge and the
-  metadata first, verify the live metadata plus a real Bluesky login, and only
-  then publish v2.9; the old backend cannot return the refresh-token response
-  shape that v2.9 expects.
+  Production `client-metadata.json` is confidential and publishes the matching
+  public JWK. The one-time coordinated rollout is complete; do not revert the
+  metadata to public or re-run its retired cutover procedure. The historical
+  rollout record lives in `specs/atproto-auth/sketch.md`.
 
 ## Gotchas
 
@@ -166,11 +164,9 @@ with the same identity-upsert → UUID → JWT mint.
   replace the prior refresh token. Retry a transient `oauth_session` write
   while the replacement is still in memory; if it cannot be stored, fail the
   request rather than claim a successful migration with a stale credential.
-- **Keep rollout artifacts synchronized**: when auth behavior, compatibility
-  gates, deployment ordering, or test scaffolding changes, update the PR rollout
-  description, `specs/atproto-auth/sketch.md`, `cleanup.md`, and the cutover
-  script wherever they are affected. Do not leave the executable rollout and
-  its operational documentation describing different states.
+- **Keep auth documentation synchronized**: when auth behavior, compatibility
+  gates, deployment ordering, or test scaffolding changes, update
+  `specs/atproto-auth/sketch.md` and `cleanup.md` wherever they are affected.
 - **DPoP nonce retry**: the AS rejects the first DPoP-signed request with
   `use_dpop_nonce` and returns the nonce in a header. Standard pattern: send with
   empty nonce, retry with the server-provided nonce.

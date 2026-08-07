@@ -1,6 +1,6 @@
 # Auth Overhaul: Short-lived JWTs + Refresh Tokens + Confidential ATProto Client
 
-Status: **implemented; awaiting production rollout**
+Status: **deployed to production and released as v2.9.0 (2026-08-07)**
 Owner context: see `.agents/skills/atproto-supabase-auth/SKILL.md` for the current
 architecture. This spec records the implemented design and its migration.
 
@@ -63,7 +63,7 @@ graph TD
     end
 
     subgraph external [External]
-        CM[docs/client-metadata.confidential.json<br/>staged target for client-metadata.json]
+        CM[docs/client-metadata.json<br/>live confidential client metadata]
         AS[bsky.social Auth Server]
     end
 
@@ -178,49 +178,40 @@ ATProto refresh; future PDS operations refresh upstream only when needed.
 
 ## Migration & rollout
 
-`docs/` publishes to GitHub Pages the instant it lands on `main` — no manual
-gate, no CI deploy step (checked: `ci.yml` only runs tests/build, nothing
-deploys migrations or functions). So **this PR ships
-`docs/client-metadata.json` reverted to its current-live public-client
-content** — merging it is inert, zero live behavior change. The confidential
-version (`private_key_jwt` + `jwks`) is staged in the inert
-`docs/client-metadata.confidential.json` sibling and only applied at step 3
-below, back-to-back with the function deploy, to keep the
+The rollout below was completed on 2026-08-07. `docs/` publishes to GitHub
+Pages the instant it lands on `main` — no manual gate, no CI deploy step
+(checked: `ci.yml` only runs tests/build, nothing deploys migrations or
+functions). The rollout therefore deployed `auth-bridge` and changed the live
+`docs/client-metadata.json` to `private_key_jwt` back-to-back, keeping the
 unavoidable mismatch window (see the confidential-client-upgrade correction
-above: metadata and code must agree on auth method on _every_ request) as
-short as possible.
+above: metadata and code must agree on auth method on every request) as short
+as possible. The one-shot staged metadata file and cutover script were removed
+after the successful smoke test; do not repeat this procedure.
 
 ```mermaid
 flowchart TD
-    A["1. Merge this PR<br/>(metadata still public — inert)"] --> B["2. supabase db push + verify private-JWK secret<br/>(migrations additive/safe, no rush)"]
+    A["1. Merged PR<br/>(metadata still public — inert)"] --> B["2. Applied DB migrations + verified private-JWK secret<br/>(additive/safe)"]
     B --> C{"Low-traffic window"}
-    C --> D["3. scripts/go-live-atproto-confidential-client.sh<br/>(deploy auth-bridge, flip metadata, push — back-to-back)"]
-    D --> E["4. Wait for live metadata propagation,<br/>smoke-test Bluesky auth, inspect logs"]
-    E -->|clean| F["5. Publish extension v2.9"]
-    E -->|errors persist| G[Investigate before releasing v2.9]
+    C --> D["3. Deployed auth-bridge and flipped metadata<br/>(back-to-back)"]
+    D --> E["4. Verified live metadata,<br/>smoke-tested Bluesky auth, inspected logs"]
+    E -->|clean| F["5. Published extension v2.9.0"]
+    E -->|errors persist| G[Would investigate before release]
     F --> H[Monitor legacy-exchange adoption]
 ```
 
-1. Merge this PR. Nothing live changes yet (see above).
-2. `supabase db push` — deploy migrations 020-022 whenever convenient; purely
-   additive, old `auth-bridge` ignores the new table/column. Confirm the linked
-   production project also has `ATPROTO_CLIENT_PRIVATE_JWK` set and that it
-   matches the public JWK in `docs/client-metadata.confidential.json`.
-3. At a chosen low-traffic window, run
-   `scripts/go-live-atproto-confidential-client.sh` from `main` — deploys
-   `auth-bridge` then immediately flips `docs/client-metadata.json` to
-   `docs/client-metadata.confidential.json`'s content and pushes, minimizing
-   the gap. (Not committed as `git show <branch>:...` from history — a PR
-   squash-merge would make that commit unreachable from `main`; the
-   confidential content instead lives as a permanent, inert sibling file.)
-4. Wait until the live `client-metadata.json` actually reports
-   `private_key_jwt`, smoke-test a real Bluesky login, and confirm auth-bridge
-   logs are free of persistent client-authentication errors. GitHub-linked
-   sessions are unaffected throughout because GitHub never touches this path.
-5. Only after step 4 is clean, publish extension v2.9. There is no automated
-   extension release on merge. Releasing v2.9 before the new backend is live
-   would leave it talking to the old response shape, which cannot return the
-   Mustard refresh token v2.9 expects.
+1. Merging the PR was inert because the live metadata remained public.
+2. `supabase db push` applied migrations 020-022. They are purely additive, so
+   the old `auth-bridge` ignored the new table.
+3. During a low-traffic window, `auth-bridge` was deployed and the live
+   `docs/client-metadata.json` was changed to the confidential configuration
+   back-to-back.
+4. The live metadata reported `private_key_jwt`; a real Bluesky login succeeded
+   and auth-bridge logs had no client-authentication errors. GitHub-linked
+   sessions were unaffected because GitHub never touches this path.
+5. Extension v2.9.0 was then published. There is no automated extension release
+   on merge; releasing it before the backend was live would have left it talking
+   to the old response shape, which cannot return the Mustard refresh token
+   v2.9 expects.
 6. When v2.9 first sees a legacy JWT-only cache, it exchanges it immediately
    even if the old 180-day JWT is still valid. That exchange gives a still-live
    public-client atproto session its earliest opportunity to self-heal via

@@ -78,20 +78,15 @@ continues creating the Mustard session. Discovery and transport failures do not
 prove that the refresh token is invalid; a future PDS operation can retry.
 Only definitive invalidation such as OAuth `invalid_grant` deletes the row.
 
-## 3. One-shot cutover scaffolding (delete once go-live succeeds)
+## 3. One-shot cutover scaffolding — completed
 
-Two files exist purely to make the confidential-client cutover safe; neither
-belongs in the repo once `main`'s `docs/client-metadata.json` is confidential:
-
-| File                                             | Purpose                                                                                                                                                         | Safe to delete once...                                                                                                |
-| ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `docs/client-metadata.confidential.json`         | Inert sibling holding the target content for `docs/client-metadata.json`, so cutover doesn't depend on a possibly-squash-merged commit surviving in git history | Immediately after `scripts/go-live-atproto-confidential-client.sh` runs — its job is done the moment it's copied over |
-| `scripts/go-live-atproto-confidential-client.sh` | One-shot cutover script (deploy `auth-bridge` + flip metadata back-to-back)                                                                                     | Same as above — it's a single-use migration script, not a repeatable tool                                             |
-
-No removal gate/waiting period is needed for these — unlike the legacy-exchange
-path, they carry no user-facing compatibility risk. Delete in the same PR
-that confirms the go-live step succeeded (or immediately after, once
-`auth-bridge` logs show clean confidential-client traffic).
+The confidential-client rollout succeeded on 2026-08-07: live metadata reported
+`private_key_jwt`, a real Bluesky login succeeded, and `auth-bridge` logs had no
+client-authentication errors. The now-obsolete
+`docs/client-metadata.confidential.json` and
+`scripts/go-live-atproto-confidential-client.sh` were removed immediately
+afterward. Do not restore or re-run them: production already uses the
+confidential `docs/client-metadata.json`.
 
 ## Explicitly not in scope for this cleanup
 

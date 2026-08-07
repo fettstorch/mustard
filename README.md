@@ -358,11 +358,10 @@ supabase secrets set ATPROTO_CLIENT_PRIVATE_JWK='{"kty":"EC",...}'
 
 Find your JWT secret in Supabase Dashboard → Settings → API → JWT Settings → JWT Secret.
 The private JWK must match the public JWK in the deployed AT Protocol client
-metadata and must never be committed. For an existing Mustard production
-deployment, do not deploy the confidential `auth-bridge` and flip the metadata
-independently: follow the synchronized rollout in
-[`specs/atproto-auth/sketch.md`](./specs/atproto-auth/sketch.md#migration--rollout)
-and use `scripts/go-live-atproto-confidential-client.sh`.
+metadata and must never be committed. Production already uses the confidential
+client; keep that secret and the public JWK in `docs/client-metadata.json` in
+sync. The completed one-time rollout is recorded in
+[`specs/atproto-auth/sketch.md`](./specs/atproto-auth/sketch.md#migration--rollout).
 
 ### Database Migration
 
