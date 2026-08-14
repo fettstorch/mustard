@@ -5,15 +5,18 @@ import { readFileSync } from 'node:fs'
 import type { Plugin } from 'vite'
 
 /**
- * Converts PNG imports from src/assets/icons/ to base64 data URIs at transform time.
- * Bypasses host page img-src CSP in both dev and production.
+ * Inlines icon imports from src/assets/icons/ as base64 data URIs at transform
+ * time. Bypasses host page img-src CSP in both dev and production. Handles PNG
+ * (kept only where WebP is unsupported, e.g. notification icons) and WebP.
  */
 const inlineIcons: Plugin = {
   name: 'inline-icons',
   transform(_code, id) {
-    if (!id.includes('/assets/icons/') || !id.endsWith('.png')) return
+    if (!id.includes('/assets/icons/')) return
+    const mime = id.endsWith('.png') ? 'image/png' : id.endsWith('.webp') ? 'image/webp' : null
+    if (!mime) return
     const data = readFileSync(id)
-    return `export default "data:image/png;base64,${data.toString('base64')}"`
+    return `export default "data:${mime};base64,${data.toString('base64')}"`
   },
 }
 

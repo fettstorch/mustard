@@ -1,15 +1,15 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import ClickableEl from './ClickableEl.vue'
-import xIconUrl from '@/assets/icons/close_x_red_48.png'
-import upvoteIconUrl from '@/assets/icons/upvote_blue_48.png'
-import eyeOpenIconUrl from '@/assets/icons/eye_open_48.png'
-import eyeClosedIconUrl from '@/assets/icons/eye_closed_48.png'
-import saveIconUrl from '@/assets/icons/save_disk_48.png'
-import trashIconUrl from '@/assets/icons/delete_bin_48.png'
-import publishIconUrl from '@/assets/icons/publish_arrow_blue_48.png'
-import publishedIconUrl from '@/assets/icons/published_cloud_check_48.png'
-import repostIconUrl from '@/assets/icons/repost_arrow_blue_120.png'
+import xIconUrl from '@/assets/icons/close_x_red_48.webp'
+import upvoteIconUrl from '@/assets/icons/upvote_blue_48.webp'
+import eyeOpenIconUrl from '@/assets/icons/eye_open_48.webp'
+import eyeClosedIconUrl from '@/assets/icons/eye_closed_48.webp'
+import saveIconUrl from '@/assets/icons/save_disk_48.webp'
+import trashIconUrl from '@/assets/icons/delete_bin_48.webp'
+import publishIconUrl from '@/assets/icons/publish_arrow_blue_48.webp'
+import publishedIconUrl from '@/assets/icons/published_cloud_check_48.webp'
+import repostIconUrl from '@/assets/icons/repost_arrow_blue_120.webp'
 
 const props = defineProps<{
   icon:

@@ -3,7 +3,7 @@ import { ref, watch, computed, onUnmounted, useTemplateRef } from 'vue'
 import { getDebouncer } from '@fettstorch/jule'
 // GIPHY requires a "Powered By GIPHY" attribution mark wherever the API is used.
 // Static "Light Backgrounds" logo mark — suited to the bright mustard gradient.
-import giphyAttributionUrl from '@/assets/giphy-attribution.png'
+import giphyAttributionUrl from '@/assets/giphy-attribution.webp'
 
 type Gif = {
   id: string

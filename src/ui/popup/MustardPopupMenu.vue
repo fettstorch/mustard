@@ -135,7 +135,7 @@ function openOptions() {
   browser.runtime.openOptionsPage()
 }
 
-const gearIconUrl = browser.runtime.getURL('/gear_128.png')
+const gearIconUrl = browser.runtime.getURL('/gear_128.webp')
 const logoUrl = browser.runtime.getURL('/mustard_bottle_smile_512.png')
 </script>
 
