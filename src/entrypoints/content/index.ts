@@ -14,6 +14,7 @@ import {
   RATE_LIMIT_ERROR_CODE,
 } from '@/shared/messaging'
 import { isRemoteMutationMessage } from '@/shared/remote-mutation'
+import { getPageKey } from '@/shared/page-key'
 import type { MustardNoteAnchorData } from '@/shared/model/MustardNoteAnchorData'
 import { LIMITS } from '@/shared/constants'
 import { extractMentions, type MentionTarget } from '@/shared/mentions'
@@ -348,7 +349,7 @@ export default defineContentScript({
       }
     }
 
-    let currentPageUrl = normalizePageUrl(window.location.href)
+    let currentPageUrl = getPageKey(window.location.href)
 
     function getCurrentPageUrl(): string {
       return currentPageUrl
@@ -580,7 +581,7 @@ export default defineContentScript({
       .catch(() => {})
 
     function handleUrlChange() {
-      const newUrl = normalizePageUrl(window.location.href)
+      const newUrl = getPageKey(window.location.href)
       if (newUrl === currentPageUrl) return
 
       console.debug('mustard [content-script] URL changed:', currentPageUrl, '->', newUrl)
@@ -1164,11 +1165,6 @@ export default defineContentScript({
     )
   },
 })
-
-function normalizePageUrl(url: string): string {
-  const u = new URL(url)
-  return `${u.origin}${u.pathname}`
-}
 
 function generateSelector(element: HTMLElement): string | null {
   if (element === document.body || element === document.documentElement) return null
