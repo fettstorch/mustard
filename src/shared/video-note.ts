@@ -4,7 +4,7 @@ import { isVideoElement } from './video-element'
 
 export const VIDEO_NOTE_DEFAULT_DURATION = 5
 export const VIDEO_NOTE_TIME_STEP = 0.1
-export const VIDEO_NOTE_MIN_DURATION = VIDEO_NOTE_TIME_STEP
+const VIDEO_NOTE_MIN_DURATION = VIDEO_NOTE_TIME_STEP
 
 /**
  * Video-note authoring is intentionally limited to the curated YouTube watch
@@ -24,6 +24,17 @@ export function getVideoElementAnchorData(
     startAt: normalizeVideoStartAt(element.currentTime),
     duration: VIDEO_NOTE_DEFAULT_DURATION,
   }
+}
+
+/**
+ * A video note is visible from its start time until its duration has played
+ * out. The end bound is exclusive so back-to-back timeframes never overlap.
+ */
+export function isWithinVideoTimeframe(
+  anchorData: VideoElementAnchorData,
+  currentTime: number,
+): boolean {
+  return currentTime >= anchorData.startAt && currentTime < anchorData.startAt + anchorData.duration
 }
 
 export function normalizeVideoStartAt(value: unknown): number {

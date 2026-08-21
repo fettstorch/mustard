@@ -17,6 +17,7 @@ import {
 import { LIMITS } from '@/shared/constants'
 import { filterVisibleNotes, hideNote, makeHiddenNoteRef, unhideNote } from '@/shared/hidden-notes'
 import { showMustardToast } from './mustard-toast'
+import { useVideoNoteVisibility } from './video-note-visibility'
 
 const PUBLISH_CONFIRM_DISMISSED_KEY = 'mustard-publish-confirm-dismissed'
 
@@ -88,6 +89,11 @@ function setDragOffset(noteId: string | null, offset: { x: number; y: number }) 
   dragOffsets[noteId] = offset
 }
 
+const { isNoteTimeframeActive } = useVideoNoteVisibility({
+  getNotes: () => mustardState.notes,
+  getRetriggerTick: () => resizeTick.value,
+})
+
 /** Compute positions for all notes (including drag offset) */
 const notesWithPositions = computed(() => {
   // eslint-disable-next-line @typescript-eslint/no-unused-expressions
@@ -100,18 +106,20 @@ const notesWithPositions = computed(() => {
     mustardState.notes,
     mustardState.hiddenNoteIds,
     mustardState.revealedHiddenNoteIds,
-  ).map((note) => {
-    const anchorPos = calculateAnchorPosition(note.anchorData)
-    const offset = getDragOffset(note.id)
-    return {
-      note,
-      position: {
-        x: anchorPos.x + offset.x,
-        y: anchorPos.y + offset.y,
-      },
-      dragOffset: offset,
-    }
-  })
+  )
+    .filter(isNoteTimeframeActive)
+    .map((note) => {
+      const anchorPos = calculateAnchorPosition(note.anchorData)
+      const offset = getDragOffset(note.id)
+      return {
+        note,
+        position: {
+          x: anchorPos.x + offset.x,
+          y: anchorPos.y + offset.y,
+        },
+        dragOffset: offset,
+      }
+    })
 })
 
 function handleResize() {

@@ -3,6 +3,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   getVideoElementAnchorData,
+  isWithinVideoTimeframe,
   normalizeVideoDuration,
   normalizeVideoStartAt,
   VIDEO_NOTE_DEFAULT_DURATION,
@@ -36,6 +37,22 @@ describe('getVideoElementAnchorData', () => {
     expect(getVideoElementAnchorData('https://www.youtube.com/watch?v=abc', document.body)).toBe(
       undefined,
     )
+  })
+})
+
+describe('isWithinVideoTimeframe', () => {
+  const anchorData = { type: 'video', startAt: 10, duration: 5 } as const
+
+  it('is visible from the start time until the duration has played out', () => {
+    expect(isWithinVideoTimeframe(anchorData, 10)).toBe(true)
+    expect(isWithinVideoTimeframe(anchorData, 12.5)).toBe(true)
+    expect(isWithinVideoTimeframe(anchorData, 14.99)).toBe(true)
+  })
+
+  it('is hidden before the start and once the timeframe ends', () => {
+    expect(isWithinVideoTimeframe(anchorData, 9.99)).toBe(false)
+    expect(isWithinVideoTimeframe(anchorData, 15)).toBe(false)
+    expect(isWithinVideoTimeframe(anchorData, 0)).toBe(false)
   })
 })
 
