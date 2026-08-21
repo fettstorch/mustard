@@ -39,7 +39,9 @@ export function isWithinVideoTimeframe(
 
 export function normalizeVideoStartAt(value: unknown): number {
   const numberValue = toFiniteNumber(value)
-  return numberValue === undefined ? 0 : roundToTimeStep(Math.max(0, numberValue))
+  // Floor, don't round: rounding up would put the start just past the paused
+  // playhead the note was authored at, hiding the note the moment it's saved.
+  return numberValue === undefined ? 0 : floorToTimeStep(Math.max(0, numberValue))
 }
 
 export function normalizeVideoDuration(value: unknown): number {
@@ -84,6 +86,10 @@ export function parseVideoTimestamp(value: string): number | undefined {
 
 function roundToTimeStep(value: number): number {
   return Math.round(value / VIDEO_NOTE_TIME_STEP) * VIDEO_NOTE_TIME_STEP
+}
+
+function floorToTimeStep(value: number): number {
+  return Math.floor(value / VIDEO_NOTE_TIME_STEP) * VIDEO_NOTE_TIME_STEP
 }
 
 function toFiniteNumber(value: unknown): number | undefined {

@@ -65,9 +65,15 @@ describe('video timing normalization', () => {
     expect(normalizeVideoStartAt(Number.POSITIVE_INFINITY)).toBe(0)
   })
 
-  it('rounds times to whole seconds', () => {
-    expect(normalizeVideoStartAt(332.796905)).toBe(333)
+  it('floors start times so the captured playhead stays inside the timeframe', () => {
+    expect(normalizeVideoStartAt(332.796905)).toBe(332)
     expect(normalizeVideoStartAt(12.34)).toBe(12)
+    // A note authored at a paused playhead must be visible right away.
+    const startAt = normalizeVideoStartAt(332.796905)
+    expect(isWithinVideoTimeframe({ type: 'video', startAt, duration: 5 }, 332.796905)).toBe(true)
+  })
+
+  it('rounds durations to whole seconds', () => {
     expect(normalizeVideoDuration(4.96)).toBe(5)
     expect(normalizeVideoDuration(0.04)).toBeGreaterThan(0)
   })
