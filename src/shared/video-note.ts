@@ -1,4 +1,5 @@
 import { when } from '@fettstorch/jule'
+import type { MustardNoteAnchorData } from './model/MustardNoteAnchorData'
 import type { VideoElementAnchorData } from './model/MustardNoteElementAnchorData'
 import { isVideoElement } from './video-element'
 
@@ -96,6 +97,32 @@ function toFiniteNumber(value: unknown): number | undefined {
   if (value === '' || value === null || value === undefined) return undefined
   const numberValue = typeof value === 'number' ? value : Number(value)
   return Number.isFinite(numberValue) ? numberValue : undefined
+}
+
+/**
+ * Jumps the anchored video to the note's timeframe start. A no-op when the
+ * anchor isn't a timed video note, the video isn't on this page, or an ad
+ * owns the player (seeking then would scrub the ad, not the video).
+ */
+export function seekVideoToTimeframeStart(anchor: MustardNoteAnchorData): void {
+  const anchorData = anchor.elementAnchorData
+  if (anchorData?.type !== 'video' || !anchor.elementSelector || isVideoAdShowing()) return
+  const video = document.querySelector(anchor.elementSelector)
+  if (isVideoElement(video)) video.currentTime = anchorData.startAt
+}
+
+/**
+ * Whether the curated player is currently playing an ad. YouTube runs ads
+ * through the same <video> element as the content and flags the player
+ * container while doing so — playback time read or written during an ad
+ * belongs to the ad, not the video.
+ */
+export function isVideoAdShowing(): boolean {
+  const player = document.querySelector('#movie_player')
+  return (
+    !!player &&
+    (player.classList.contains('ad-showing') || player.classList.contains('ad-interrupting'))
+  )
 }
 
 function isCuratedVideoPage(pageUrl: string): boolean {

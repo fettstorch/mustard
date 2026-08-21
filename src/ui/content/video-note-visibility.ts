@@ -1,4 +1,4 @@
-import { onUnmounted, reactive, watchEffect } from 'vue'
+import { onUnmounted, reactive, ref, watchEffect } from 'vue'
 import type { MustardNote } from '@/shared/model/MustardNote'
 import { isVideoElement } from '@/shared/video-element'
 import { isWithinVideoTimeframe } from '@/shared/video-note'
@@ -20,8 +20,18 @@ export function useVideoNoteVisibility(options: {
   const videoTimes = reactive<Record<string, number>>({})
   const trackedVideos = new Map<string, { video: HTMLVideoElement; onTimeChange: () => void }>()
 
+  // SPA players often mount after the notes load, with no scroll/resize in
+  // between to retrigger resolution — retry unresolved selectors on a bounded
+  // schedule so a timed note doesn't stay invisible until user interaction.
+  const retryTick = ref(0)
+  let retryTimer: number | undefined
+  let retriesLeft = 40
+
   const stopWatcher = watchEffect(() => {
     options.getRetriggerTick()
+    // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+    retryTick.value // dependency: bounded self-retry while videos are unresolved
+    let hasUnresolvedVideo = false
     for (const note of options.getNotes()) {
       const selector = note.anchorData.elementSelector
       if (note.anchorData.elementAnchorData?.type !== 'video' || !selector) continue
@@ -31,8 +41,19 @@ export function useVideoNoteVisibility(options: {
       if (tracked) untrackVideo(selector, tracked)
 
       const video = document.querySelector(selector)
-      if (!isVideoElement(video)) continue
+      if (!isVideoElement(video)) {
+        hasUnresolvedVideo = true
+        continue
+      }
       trackVideo(selector, video)
+    }
+
+    if (hasUnresolvedVideo && retriesLeft > 0 && retryTimer === undefined) {
+      retryTimer = window.setTimeout(() => {
+        retryTimer = undefined
+        retriesLeft--
+        retryTick.value++
+      }, 500)
     }
   })
 
@@ -72,6 +93,7 @@ export function useVideoNoteVisibility(options: {
 
   onUnmounted(() => {
     stopWatcher()
+    if (retryTimer !== undefined) clearTimeout(retryTimer)
     for (const [selector, tracked] of trackedVideos) {
       untrackVideo(selector, tracked)
     }

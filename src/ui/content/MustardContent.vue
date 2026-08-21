@@ -94,6 +94,23 @@ const { isNoteTimeframeActive } = useVideoNoteVisibility({
   getRetriggerTick: () => resizeTick.value,
 })
 
+/**
+ * The playback-window gate only governs ambient display. Explicit intent
+ * ("show all", a fresh save — via revealedTimedNoteIds) and active engagement
+ * (an expanded thread, a pending publish confirmation) always keep the note
+ * on screen. Notification focus needs no exemption: it seeks the video to the
+ * note's startAt, so the timeframe itself takes over.
+ */
+function isNoteDisplayable(note: MustardNoteType): boolean {
+  if (isNoteTimeframeActive(note)) return true
+  if (!note.id) return false
+  return (
+    !!mustardState.revealedTimedNoteIds[note.id] ||
+    !!mustardState.expandedCommentNoteIds[note.id] ||
+    pendingPublish.value?.source === note.id
+  )
+}
+
 /** Compute positions for all notes (including drag offset) */
 const notesWithPositions = computed(() => {
   // eslint-disable-next-line @typescript-eslint/no-unused-expressions
@@ -107,7 +124,7 @@ const notesWithPositions = computed(() => {
     mustardState.hiddenNoteIds,
     mustardState.revealedHiddenNoteIds,
   )
-    .filter(isNoteTimeframeActive)
+    .filter(isNoteDisplayable)
     .map((note) => {
       const anchorPos = calculateAnchorPosition(note.anchorData)
       const offset = getDragOffset(note.id)
