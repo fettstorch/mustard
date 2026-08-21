@@ -1,3 +1,5 @@
+import type { ElementAnchorData } from './MustardNoteElementAnchorData'
+
 /**
  * Data about where a mustard note is anchored on the page.
  *
@@ -24,4 +26,6 @@ export type MustardNoteAnchorData = {
     xVw: number // viewport width percentage (0-100)
     yPx: number // pixels from top (includes scroll offset)
   }
+  /** Optional element-specific metadata for future anchor types. */
+  elementAnchorData?: ElementAnchorData
 }

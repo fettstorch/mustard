@@ -17,6 +17,7 @@ import {
 import { LIMITS } from '@/shared/constants'
 import { filterVisibleNotes, hideNote, makeHiddenNoteRef, unhideNote } from '@/shared/hidden-notes'
 import { showMustardToast } from './mustard-toast'
+import { useVideoNoteVisibility } from './video-note-visibility'
 
 const PUBLISH_CONFIRM_DISMISSED_KEY = 'mustard-publish-confirm-dismissed'
 
@@ -24,6 +25,7 @@ type EditorNoteSubmission = {
   content: string
   linkPreview?: MustardNoteType['linkPreview']
   linkPreviewDismissed?: boolean
+  anchor?: MustardNoteType['anchorData']
 }
 
 const mustardState = inject<MustardState>('mustardState')!
@@ -87,6 +89,28 @@ function setDragOffset(noteId: string | null, offset: { x: number; y: number }) 
   dragOffsets[noteId] = offset
 }
 
+const { isNoteTimeframeActive } = useVideoNoteVisibility({
+  getNotes: () => mustardState.notes,
+  getRetriggerTick: () => resizeTick.value,
+})
+
+/**
+ * The playback-window gate only governs ambient display. Explicit intent
+ * ("show all", a fresh save — via revealedTimedNoteIds) and active engagement
+ * (an expanded thread, a pending publish confirmation) always keep the note
+ * on screen. Notification focus needs no exemption: it seeks the video to the
+ * note's startAt, so the timeframe itself takes over.
+ */
+function isNoteDisplayable(note: MustardNoteType): boolean {
+  if (isNoteTimeframeActive(note)) return true
+  if (!note.id) return false
+  return (
+    !!mustardState.revealedTimedNoteIds[note.id] ||
+    !!mustardState.expandedCommentNoteIds[note.id] ||
+    pendingPublish.value?.source === note.id
+  )
+}
+
 /** Compute positions for all notes (including drag offset) */
 const notesWithPositions = computed(() => {
   // eslint-disable-next-line @typescript-eslint/no-unused-expressions
@@ -99,18 +123,20 @@ const notesWithPositions = computed(() => {
     mustardState.notes,
     mustardState.hiddenNoteIds,
     mustardState.revealedHiddenNoteIds,
-  ).map((note) => {
-    const anchorPos = calculateAnchorPosition(note.anchorData)
-    const offset = getDragOffset(note.id)
-    return {
-      note,
-      position: {
-        x: anchorPos.x + offset.x,
-        y: anchorPos.y + offset.y,
-      },
-      dragOffset: offset,
-    }
-  })
+  )
+    .filter(isNoteDisplayable)
+    .map((note) => {
+      const anchorPos = calculateAnchorPosition(note.anchorData)
+      const offset = getDragOffset(note.id)
+      return {
+        note,
+        position: {
+          x: anchorPos.x + offset.x,
+          y: anchorPos.y + offset.y,
+        },
+        dragOffset: offset,
+      }
+    })
 })
 
 function handleResize() {
@@ -160,6 +186,19 @@ function handleKeyDown(event: KeyboardEvent) {
   }
 }
 
+/**
+ * Keystrokes typed inside the Mustard UI must not reach the host page: sites
+ * like YouTube bind single-key hotkeys on `document` and don't recognize our
+ * overlay's contenteditable, so e.g. typing "k" would toggle playback. Handle
+ * our own shortcuts first (containment keeps the event from ever reaching the
+ * document-level listeners), then stop the bubble. No preventDefault — typing
+ * itself must proceed untouched.
+ */
+function onRootKeyDown(event: KeyboardEvent) {
+  handleKeyDown(event)
+  event.stopPropagation()
+}
+
 function onEditorClose() {
   pendingPublish.value = null
   mustardState.editor.isOpen = false
@@ -167,7 +206,8 @@ function onEditorClose() {
 
 /** Editor: user clicked save button to create a local note */
 function onEditorSave(data: EditorNoteSubmission) {
-  if (!mustardState.editor.anchor) {
+  const anchor = data.anchor ?? mustardState.editor.anchor
+  if (!anchor) {
     console.warn('No anchor data found when trying to save note')
     return
   }
@@ -178,7 +218,7 @@ function onEditorSave(data: EditorNoteSubmission) {
         content: data.content,
         linkPreview: data.linkPreview,
         linkPreviewDismissed: data.linkPreviewDismissed,
-        anchorData: mustardState.editor.anchor,
+        anchorData: anchor,
         updatedAt: Date.now(),
       },
       'local',
@@ -189,7 +229,8 @@ function onEditorSave(data: EditorNoteSubmission) {
 
 /** Editor: user clicked publish button to create a new remote note */
 function onEditorPublish(data: EditorNoteSubmission) {
-  if (!mustardState.editor.anchor) {
+  const anchor = data.anchor ?? mustardState.editor.anchor
+  if (!anchor) {
     console.warn('No anchor data found when trying to publish note')
     return
   }
@@ -199,7 +240,7 @@ function onEditorPublish(data: EditorNoteSubmission) {
   }
   requestPublish(
     data.content,
-    mustardState.editor.anchor,
+    anchor,
     undefined,
     'editor',
     data.linkPreview,
@@ -365,7 +406,7 @@ function onNoteUnhide(note: MustardNoteType) {
 </script>
 
 <template>
-  <div class="mustard-root">
+  <div class="mustard-root" @keydown="onRootKeyDown" @keyup.stop @keypress.stop>
     <!-- Existing notes (TransitionGroup animates notes in/out when visibility toggles) -->
     <TransitionGroup name="mustard-note">
       <MustardNote

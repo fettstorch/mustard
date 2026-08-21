@@ -11,6 +11,7 @@ import CommentToggle from './CommentToggle.vue'
 import MustardCommentThread from './MustardCommentThread.vue'
 import LinkPreviewCard from './LinkPreviewCard.vue'
 import { renderContent } from './render-content'
+import { formatVideoTimestamp, seekVideoToTimeframeStart } from '@/shared/video-note'
 import { providerProfileUrl } from '@/shared/providers'
 import { LIMITS } from '@/shared/constants'
 import {
@@ -207,6 +208,24 @@ const characterCountText = computed(() => {
 const shouldShowCharacterCount = computed(() => {
   return isLocalNote.value && isOverLimit.value
 })
+
+/**
+ * Timed video notes carry their moment as a clickable pill: outside the
+ * playback window (notably after "show all notes") it's the affordance that
+ * jumps the video to where the note belongs.
+ */
+const videoTimeframe = computed(() => {
+  const anchorData = props.note.anchorData.elementAnchorData
+  return anchorData?.type === 'video' ? anchorData : null
+})
+
+const videoStartAtLabel = computed(() =>
+  videoTimeframe.value ? formatVideoTimestamp(videoTimeframe.value.startAt) : '',
+)
+
+function onTimeframePillClick() {
+  seekVideoToTimeframeStart(props.note.anchorData)
+}
 
 const isHovered = ref(false)
 
@@ -431,6 +450,31 @@ watch(unreadCount, (count) => {
               :note-hovered="isHovered"
               @click="onToggleComments"
             />
+            <button
+              v-if="videoTimeframe"
+              type="button"
+              class="mustard-video-timeframe-pill"
+              title="Jump the video to this note's moment"
+              @click="onTimeframePillClick"
+              @mousedown.stop
+            >
+              <span class="mustard-video-timeframe-icon" aria-hidden="true">
+                <!-- Inline SVG, same size + stroke style as the comment icon -->
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path d="M7 4.5v15l13-7.5z" />
+                </svg>
+              </span>
+              {{ videoStartAtLabel }}
+            </button>
             <div class="mustard-note-date">
               {{ formattedDate }}
               <IconButton
@@ -708,6 +752,40 @@ watch(unreadCount, (count) => {
 
 .mustard-note-comment-toggle {
   flex-shrink: 0;
+}
+
+/* Timed-note pill: the note's moment in the video, click to jump there.
+ * Styled exactly like CommentToggle's button so both footer pills read as one
+ * family (and so no browser's native button styling leaks through). */
+.mustard-video-timeframe-pill {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  margin: 0;
+  border: 2px solid var(--mustard-border);
+  border-radius: 999px;
+  background: var(--mustard-glass);
+  color: var(--mustard-text);
+  font-family: var(--mustard-font);
+  font-size: 0.75em;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  /* Matches CommentToggle's resting (empty) emphasis so the two pills read
+   * with the same border/text weight side by side. */
+  opacity: 0.85;
+}
+
+.mustard-video-timeframe-pill:hover {
+  background: var(--mustard-glass-hover);
+}
+
+.mustard-video-timeframe-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .mustard-note-date {

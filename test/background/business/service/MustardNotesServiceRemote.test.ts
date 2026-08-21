@@ -40,6 +40,11 @@ const storedRow = {
   relative_position_y: 50,
   click_position_x: 50,
   click_position_y: 200,
+  element_anchor_data: {
+    type: 'video',
+    startAt: 12.5,
+    duration: 8,
+  },
   updated_at: '2024-01-01T00:00:00Z',
 }
 
@@ -55,6 +60,7 @@ function makeNote(): MustardNote {
       elementSelector: null,
       relativePosition: { xP: 50, yP: 50 },
       clickPosition: { xVw: 50, yPx: 200 },
+      elementAnchorData: storedRow.element_anchor_data,
     },
     updatedAt: new Date(storedRow.updated_at),
   }
@@ -82,7 +88,26 @@ describe('MustardNotesServiceRemote', () => {
     await expect(mustardNotesServiceRemote.upsertNote(makeNote())).resolves.toMatchObject({
       id: 'note-1',
       linkPreview: { thumbnailPath },
+      anchorData: makeNote().anchorData,
     })
+    expect(insert).toHaveBeenCalledWith(
+      expect.objectContaining({ element_anchor_data: storedRow.element_anchor_data }),
+    )
     expect(deleteLinkPreviewThumbnail).toHaveBeenCalledWith(thumbnailPath)
+  })
+
+  it('keeps legacy remote notes working when element metadata is missing', async () => {
+    const { element_anchor_data: _legacyElementAnchorData, ...legacyStoredRow } = storedRow
+    const { elementAnchorData: _legacyElementAnchorDataFromAnchor, ...legacyAnchorData } =
+      makeNote().anchorData
+    const legacyNote = { ...makeNote(), anchorData: legacyAnchorData }
+    insert.mockReturnValueOnce({
+      select: () => ({ single: async () => ({ data: legacyStoredRow, error: null }) }),
+    })
+
+    await expect(mustardNotesServiceRemote.upsertNote(legacyNote)).resolves.toMatchObject({
+      anchorData: legacyNote.anchorData,
+    })
+    expect(insert).toHaveBeenCalledWith(expect.objectContaining({ element_anchor_data: null }))
   })
 })

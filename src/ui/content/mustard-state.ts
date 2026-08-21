@@ -35,6 +35,14 @@ export type MustardState = {
    * navigation so the persisted hidden set remains authoritative.
    */
   revealedHiddenNoteIds: Record<string, boolean>
+  /**
+   * Timed (video) note IDs exempted from the playback-window gate. Explicit
+   * intent outranks ambient timing: "show all" adds every loaded timed note,
+   * a fresh save adds its note briefly so the author sees it exist. (A
+   * notification focus instead seeks the video to the note's startAt — the
+   * timeframe itself then shows the note.) Cleared on navigation.
+   */
+  revealedTimedNoteIds: Record<string, boolean>
   /** True when this build is below the backend's minimum: remote writes are blocked, so the UI disables publish/comment controls. */
   clientOutdated: boolean
 
@@ -71,6 +79,7 @@ export function createMustardState(): MustardState {
     showAnchorInEditor: false,
     hiddenNoteIds: {},
     revealedHiddenNoteIds: {},
+    revealedTimedNoteIds: {},
     clientOutdated: false,
 
     comments: {},

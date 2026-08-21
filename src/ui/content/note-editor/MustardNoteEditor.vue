@@ -13,6 +13,13 @@ import type { LinkPreview } from '@/shared/model/LinkPreview'
 import { extractFirstLinkUrl } from '@/shared/link-preview'
 import { createGetLinkPreviewMessage, sendMessage } from '@/shared/messaging'
 import { getDebouncer } from '@fettstorch/jule'
+import {
+  formatVideoTimestamp,
+  normalizeVideoDuration,
+  normalizeVideoStartAt,
+  parseVideoTimestamp,
+  VIDEO_NOTE_TIME_STEP,
+} from '@/shared/video-note'
 
 const props = defineProps<{
   anchor: MustardNoteAnchorData | null
@@ -22,6 +29,7 @@ type EditorNoteSubmission = {
   content: string
   linkPreview?: LinkPreview
   linkPreviewDismissed?: boolean
+  anchor?: MustardNoteAnchorData
 }
 
 const emit = defineEmits<{
@@ -65,6 +73,53 @@ const anchorDisplay = computed(() => {
   const selector = props.anchor.elementSelector
   return { url, selector }
 })
+
+/** User pressed the x on the video section: author a regular note instead. */
+const videoAnchorDismissed = ref(false)
+const videoAnchor = computed(() => {
+  if (videoAnchorDismissed.value) return null
+  const data = props.anchor?.elementAnchorData
+  return data?.type === 'video' ? data : null
+})
+/** Start time is shown/edited as a `m:ss.d` timestamp, stored as seconds. */
+const videoStartAtText = ref('')
+const videoDuration = ref<number | string>(5)
+
+function syncVideoControls() {
+  videoStartAtText.value = formatVideoTimestamp(normalizeVideoStartAt(videoAnchor.value?.startAt))
+  videoDuration.value = normalizeVideoDuration(videoAnchor.value?.duration)
+}
+
+syncVideoControls()
+
+function videoStartAtSeconds(): number {
+  return normalizeVideoStartAt(parseVideoTimestamp(videoStartAtText.value))
+}
+
+function editorAnchor(): MustardNoteAnchorData | undefined {
+  const anchor = props.anchor
+  if (!anchor) return undefined
+  if (!videoAnchor.value) {
+    if (!anchor.elementAnchorData) return anchor
+    // Dismissed video timing: persist a regular note without element metadata.
+    const { elementAnchorData: _dismissed, ...regularAnchor } = anchor
+    return regularAnchor
+  }
+
+  return {
+    ...anchor,
+    elementAnchorData: {
+      ...videoAnchor.value,
+      startAt: videoStartAtSeconds(),
+      duration: normalizeVideoDuration(videoDuration.value),
+    },
+  }
+}
+
+function normalizeVideoControls() {
+  videoStartAtText.value = formatVideoTimestamp(videoStartAtSeconds())
+  videoDuration.value = normalizeVideoDuration(videoDuration.value)
+}
 
 const selectorExpanded = ref(false)
 const draftPreview = ref<LinkPreview>()
@@ -167,6 +222,7 @@ function handleSave() {
   emit('pressed-save', {
     content,
     linkPreview: currentLinkPreview(content),
+    anchor: editorAnchor(),
     ...(extractFirstLinkUrl(content) === dismissedPreviewUrl ? { linkPreviewDismissed: true } : {}),
   })
 }
@@ -179,16 +235,21 @@ function handlePublish() {
   emit('pressed-publish', {
     content,
     linkPreview: currentLinkPreview(content),
+    anchor: editorAnchor(),
     ...(extractFirstLinkUrl(content) === dismissedPreviewUrl ? { linkPreviewDismissed: true } : {}),
   })
 }
 </script>
 
 <template>
+  <!-- Local keydown: containment at the mustard root stops keystrokes typed in
+       here from bubbling to document, so the document-level listener (kept for
+       shortcuts pressed outside the overlay) never sees them. -->
   <div
     ref="editorContainer"
     tabindex="-1"
     class="mustard-note-editor mustard-notes-bg mustard-notes-border mustard-notes-txt mustard-notes-padding"
+    @keydown="handleKeyDown"
     style="
       width: fit-content;
       max-width: calc(var(--mustard-note-content-max-width) + 1em);
@@ -215,6 +276,40 @@ function handlePublish() {
     <!-- Character count -->
     <div class="character-count" :class="{ 'over-limit': isOverLimit }">
       {{ characterCountText }}
+    </div>
+    <div v-if="videoAnchor" class="video-controls">
+      <IconButton
+        icon="x"
+        class="video-controls-dismiss"
+        title="Remove video timing — write a regular note"
+        @click="videoAnchorDismissed = true"
+      />
+      <label class="video-control">
+        <span>Start At</span>
+        <input
+          v-model="videoStartAtText"
+          type="text"
+          class="mustard-notes-input"
+          spellcheck="false"
+          title="Timestamp like 5:32 (or plain seconds)"
+          @blur="normalizeVideoControls"
+        />
+      </label>
+      <label class="video-control">
+        <span>Duration</span>
+        <span class="video-control-row">
+          <input
+            v-model.number="videoDuration"
+            type="number"
+            class="mustard-notes-input"
+            :min="VIDEO_NOTE_TIME_STEP"
+            :step="VIDEO_NOTE_TIME_STEP"
+            inputmode="numeric"
+            @blur="normalizeVideoControls"
+          />
+          <span class="video-control-unit">s</span>
+        </span>
+      </label>
     </div>
     <LinkPreviewCard
       v-if="draftPreview"
@@ -272,6 +367,88 @@ function handlePublish() {
   font-size: 0.75em;
   opacity: 0.5;
   margin-top: 8px;
+}
+
+/* Same separator treatment as .anchor-info below. */
+.video-controls {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--mustard-border-subtle);
+  max-width: var(--mustard-note-content-max-width);
+}
+
+/* Hover-gated, like the other note controls: invisible until the section is hovered. */
+.video-controls-dismiss {
+  position: absolute;
+  top: 6px;
+  right: 0;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.video-controls:hover .video-controls-dismiss,
+.video-controls-dismiss:focus-visible {
+  opacity: 1;
+}
+
+.video-control {
+  display: flex;
+  flex: 0 1 auto;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  font-size: 0.75em;
+}
+
+.video-control > span:first-child {
+  font-weight: bold;
+}
+
+.video-control-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.video-control-unit {
+  opacity: 0.5;
+}
+
+/* Visual identity comes from .mustard-notes-input (shared with the popup's
+   login field); locally only compact metrics for the small timing section. */
+.video-control input {
+  box-sizing: border-box;
+  /* ch width fits typical timestamps; content-sized where supported. */
+  width: 8ch;
+  min-width: 5ch;
+  padding: 4px 6px;
+  font: inherit;
+  text-align: right;
+}
+
+/* No spinner buttons: they reserve space inside the right edge, wedging a gap
+   between the right-aligned value and the unit suffix. */
+.video-control input[type='number'] {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.video-control input[type='number']::-webkit-outer-spin-button,
+.video-control input[type='number']::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* Grow/shrink with the typed value (Chrome 123+); Firefox keeps the ch width. */
+@supports (field-sizing: content) {
+  .video-control input {
+    field-sizing: content;
+    width: auto;
+  }
 }
 
 .character-count.over-limit {

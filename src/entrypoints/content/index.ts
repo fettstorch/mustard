@@ -14,6 +14,7 @@ import {
   RATE_LIMIT_ERROR_CODE,
 } from '@/shared/messaging'
 import { isRemoteMutationMessage } from '@/shared/remote-mutation'
+import { getPageKey } from '@/shared/page-key'
 import type { MustardNoteAnchorData } from '@/shared/model/MustardNoteAnchorData'
 import { LIMITS } from '@/shared/constants'
 import { extractMentions, type MentionTarget } from '@/shared/mentions'
@@ -38,6 +39,8 @@ import {
 } from '@/shared/hidden-notes'
 import type { MustardNote } from '@/shared/model/MustardNote'
 import type { MustardComment } from '@/shared/model/MustardComment'
+import { getVideoElementAnchorData, isVideoAdShowing } from '@/shared/video-note'
+import { isVideoElement } from '@/shared/video-element'
 import { Observable, subject, synchronize } from '@fettstorch/jule'
 import { createApp, watch } from 'vue'
 
@@ -96,6 +99,141 @@ export default defineContentScript({
 
     function revealHiddenNotes(noteIds: string[]): void {
       for (const noteId of noteIds) mustardState.revealedHiddenNoteIds[noteId] = true
+    }
+
+    /** Exempt timed notes from the playback-window gate until navigation. */
+    function revealTimedNotes(noteIds: string[]): void {
+      for (const noteId of noteIds) mustardState.revealedTimedNoteIds[noteId] = true
+    }
+
+    /**
+     * A freshly saved timed note must visibly exist for its author even when
+     * the video has played past its window while they wrote it. The exemption
+     * is temporary so the authored timing takes over again afterwards.
+     */
+    const TIMED_NOTE_SAVE_REVEAL_MS = 5000
+    function revealTimedNotesTemporarily(noteIds: string[]): void {
+      const timedIds = noteIds.filter(
+        (id) =>
+          mustardState.notes.find((n) => n.id === id)?.anchorData.elementAnchorData?.type ===
+          'video',
+      )
+      if (timedIds.length === 0) return
+      revealTimedNotes(timedIds)
+      setTimeout(() => {
+        for (const id of timedIds) delete mustardState.revealedTimedNoteIds[id]
+      }, TIMED_NOTE_SAVE_REVEAL_MS)
+    }
+
+    /**
+     * Resolves the anchored video element, waiting for SPA players that mount
+     * after the notes query settles (the usual case on a fresh deep link).
+     */
+    function awaitVideoElement(
+      selector: string,
+      timeoutMs = 15000,
+    ): Promise<HTMLVideoElement | null> {
+      const existing = document.querySelector(selector)
+      if (isVideoElement(existing)) return Promise.resolve(existing)
+
+      return new Promise((resolve) => {
+        const observer = new MutationObserver(() => {
+          const el = document.querySelector(selector)
+          if (!isVideoElement(el)) return
+          cleanup()
+          resolve(el)
+        })
+        const timer = setTimeout(() => {
+          cleanup()
+          resolve(null)
+        }, timeoutMs)
+        function cleanup() {
+          observer.disconnect()
+          clearTimeout(timer)
+        }
+        observer.observe(document.documentElement, { childList: true, subtree: true })
+      })
+    }
+
+    /**
+     * Resolves once the player is out of ad playback (immediately when no ad
+     * is showing). Ads run in the same <video> element, so seeking during one
+     * lands in the ad's timeline instead of the video's.
+     */
+    function awaitAdEnd(timeoutMs = 180000): Promise<void> {
+      if (!isVideoAdShowing()) return Promise.resolve()
+      const player = document.querySelector('#movie_player')
+      if (!player) return Promise.resolve()
+
+      return new Promise((resolve) => {
+        const observer = new MutationObserver(() => {
+          if (isVideoAdShowing()) return
+          cleanup()
+          resolve()
+        })
+        const timer = setTimeout(() => {
+          cleanup()
+          resolve()
+        }, timeoutMs)
+        function cleanup() {
+          observer.disconnect()
+          clearTimeout(timer)
+        }
+        observer.observe(player, { attributes: true, attributeFilter: ['class'] })
+      })
+    }
+
+    function awaitVideoMetadata(video: HTMLVideoElement, timeoutMs = 10000): Promise<void> {
+      if (video.readyState >= HTMLMediaElement.HAVE_METADATA) return Promise.resolve()
+      return new Promise((resolve) => {
+        const timer = setTimeout(() => resolve(), timeoutMs)
+        video.addEventListener(
+          'loadedmetadata',
+          () => {
+            clearTimeout(timer)
+            resolve()
+          },
+          { once: true },
+        )
+      })
+    }
+
+    /**
+     * The point of following a timed-note notification: land the video at the
+     * note's moment so it plays out in its authored context — no visibility
+     * workaround, the seek itself brings the note into its timeframe.
+     */
+    async function seekVideoToNoteStart(noteId: string): Promise<void> {
+      const note = mustardState.notes.find((n) => n.id === noteId)
+      const anchorData = note?.anchorData.elementAnchorData
+      if (!note || anchorData?.type !== 'video') return
+      const selector = note.anchorData.elementSelector
+      if (!selector) return
+
+      const video = await awaitVideoElement(selector)
+      if (!video) return
+      // Pre-roll ads hijack the video element; only the content stream that
+      // follows them may be seeked.
+      await awaitAdEnd()
+      await awaitVideoMetadata(video)
+
+      const seek = () => {
+        video.currentTime = anchorData.startAt
+      }
+      seek()
+      // The player can still override the position after our seek (watch-
+      // history resume, the ad→content stream handoff) — re-assert on
+      // playback until the position sticks.
+      let attemptsLeft = 5
+      const onPlaying = () => {
+        if (isVideoAdShowing()) return
+        if (Math.abs(video.currentTime - anchorData.startAt) <= 1.5 || --attemptsLeft <= 0) {
+          video.removeEventListener('playing', onPlaying)
+          return
+        }
+        seek()
+      }
+      video.addEventListener('playing', onPlaying)
     }
 
     function applyHiddenNoteIds(hiddenNoteIds: Record<string, boolean>): void {
@@ -348,7 +486,7 @@ export default defineContentScript({
       }
     }
 
-    let currentPageUrl = normalizePageUrl(window.location.href)
+    let currentPageUrl = getPageKey(window.location.href)
 
     function getCurrentPageUrl(): string {
       return currentPageUrl
@@ -480,7 +618,10 @@ export default defineContentScript({
           event.emit(createMarkNotificationsSeenForNoteMessage(id))
         }
       }
-      if (newNoteIds[0]) scrollToNote(newNoteIds[0])
+      if (newNoteIds[0]) {
+        scrollToNote(newNoteIds[0])
+        seekVideoToNoteStart(newNoteIds[0]).catch(() => {})
+      }
       if (pendingFocus === focus) pendingFocus = null
     })
 
@@ -559,6 +700,7 @@ export default defineContentScript({
         }
       }
       scrollToNote(targetIds[0]!)
+      seekVideoToNoteStart(targetIds[0]!).catch(() => {})
       if (!repairTriggered) pendingFocus = null
     }
 
@@ -580,7 +722,7 @@ export default defineContentScript({
       .catch(() => {})
 
     function handleUrlChange() {
-      const newUrl = normalizePageUrl(window.location.href)
+      const newUrl = getPageKey(window.location.href)
       if (newUrl === currentPageUrl) return
 
       console.debug('mustard [content-script] URL changed:', currentPageUrl, '->', newUrl)
@@ -593,6 +735,7 @@ export default defineContentScript({
       mustardState.unreadByNoteId = {}
       // Temporary notification / "show all" exceptions are page-scoped.
       mustardState.revealedHiddenNoteIds = {}
+      mustardState.revealedTimedNoteIds = {}
       runNotesQuery(newUrl, { withComments: true }).catch(() => {})
     }
 
@@ -697,7 +840,14 @@ export default defineContentScript({
       if (!mustardState.areNotesVisible) {
         mustardState.areNotesVisible = true
       }
-      mustardState.editor.anchor = anchor
+      const videoElementAnchorData = getVideoElementAnchorData(
+        window.location.href,
+        lastContextMenuTarget,
+      )
+      mustardState.editor.anchor =
+        anchor && videoElementAnchorData
+          ? { ...anchor, elementAnchorData: videoElementAnchorData }
+          : anchor
       mustardState.editor.isOpen = true
     }
 
@@ -744,6 +894,13 @@ export default defineContentScript({
             revealHiddenNotes(
               mustardState.notes
                 .filter((note) => note.id && mustardState.hiddenNoteIds[note.id])
+                .map((note) => note.id!),
+            )
+            // "Show all" also means all TIMED notes — otherwise the reported
+            // count wouldn't match what's on screen.
+            revealTimedNotes(
+              mustardState.notes
+                .filter((note) => note.id && note.anchorData.elementAnchorData?.type === 'video')
                 .map((note) => note.id!),
             )
             if (withToast) {
@@ -977,6 +1134,7 @@ export default defineContentScript({
           !isLocalOperation && !message.localNoteIdToDelete
             ? insertOptimisticNote(message.data)
             : undefined
+        if (optimisticId) revealTimedNotesTemporarily([optimisticId])
         sendMessage(message)
           .then((response) => {
             if (!response.ok) {
@@ -997,8 +1155,14 @@ export default defineContentScript({
             // Local saves swap only local notes. A remote publish returns just
             // the newly-created note (no index re-query) — merge it in place,
             // retiring the optimistic placeholder and/or converted local note.
+            const idsBeforeMerge = new Set(mustardState.notes.map((n) => n.id))
             if (isLocalOperation) applyLocalNotesResponse(dtos)
             else mergeRemoteUpsertResponse(dtos, [optimisticId, message.localNoteIdToDelete])
+            // The author must see their fresh timed note even when the video
+            // played past its window while they wrote it.
+            revealTimedNotesTemporarily(
+              mustardState.notes.filter((n) => n.id && !idsBeforeMerge.has(n.id)).map((n) => n.id!),
+            )
             clearPendingNoteIds()
           })
           .catch((err) => {
@@ -1164,11 +1328,6 @@ export default defineContentScript({
     )
   },
 })
-
-function normalizePageUrl(url: string): string {
-  const u = new URL(url)
-  return `${u.origin}${u.pathname}`
-}
 
 function generateSelector(element: HTMLElement): string | null {
   if (element === document.body || element === document.documentElement) return null
