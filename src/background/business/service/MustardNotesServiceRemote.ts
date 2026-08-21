@@ -1,5 +1,6 @@
 import type { MustardIndex } from '@/shared/model/MustardIndex'
 import type { MustardNote } from '@/shared/model/MustardNote'
+import type { ElementAnchorData } from '@/shared/model/MustardNoteElementAnchorData'
 import type { MustardNotesService } from './MustardNotesService'
 import { supabase } from '@/background/supabase-client'
 import { getSupabaseJwt } from '@/background/auth/SupabaseAuth'
@@ -73,6 +74,7 @@ interface DbNote {
   page_url: string
   content: string
   link_preview?: DbLinkPreview | null
+  element_anchor_data?: ElementAnchorData | null
   mentions: string[]
   element_selector: string | null
   relative_position_x: number
@@ -351,6 +353,7 @@ class MustardNotesServiceRemote implements MustardNotesService {
       page_url: note.anchorData.pageUrl,
       content: note.content,
       link_preview: toDbLinkPreview(preparedPreview.preview),
+      element_anchor_data: note.anchorData.elementAnchorData ?? null,
       // Mentions are derived from content at this write boundary (content is the
       // source of truth); the column exists only for the notification trigger.
       mentions: deriveMentions(note.content),
@@ -504,6 +507,7 @@ function dbNoteToMustardNote(dbNote: DbNote, reposterIds: string[] = []): Mustar
         xVw: dbNote.click_position_x,
         yPx: dbNote.click_position_y,
       },
+      ...(dbNote.element_anchor_data ? { elementAnchorData: dbNote.element_anchor_data } : {}),
     },
     updatedAt: new Date(dbNote.updated_at),
   }
