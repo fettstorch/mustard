@@ -226,10 +226,14 @@ function handlePublish() {
 </script>
 
 <template>
+  <!-- Local keydown: containment at the mustard root stops keystrokes typed in
+       here from bubbling to document, so the document-level listener (kept for
+       shortcuts pressed outside the overlay) never sees them. -->
   <div
     ref="editorContainer"
     tabindex="-1"
     class="mustard-note-editor mustard-notes-bg mustard-notes-border mustard-notes-txt mustard-notes-padding"
+    @keydown="handleKeyDown"
     style="
       width: fit-content;
       max-width: calc(var(--mustard-note-content-max-width) + 1em);

@@ -169,6 +169,19 @@ function handleKeyDown(event: KeyboardEvent) {
   }
 }
 
+/**
+ * Keystrokes typed inside the Mustard UI must not reach the host page: sites
+ * like YouTube bind single-key hotkeys on `document` and don't recognize our
+ * overlay's contenteditable, so e.g. typing "k" would toggle playback. Handle
+ * our own shortcuts first (containment keeps the event from ever reaching the
+ * document-level listeners), then stop the bubble. No preventDefault — typing
+ * itself must proceed untouched.
+ */
+function onRootKeyDown(event: KeyboardEvent) {
+  handleKeyDown(event)
+  event.stopPropagation()
+}
+
 function onEditorClose() {
   pendingPublish.value = null
   mustardState.editor.isOpen = false
@@ -376,7 +389,7 @@ function onNoteUnhide(note: MustardNoteType) {
 </script>
 
 <template>
-  <div class="mustard-root">
+  <div class="mustard-root" @keydown="onRootKeyDown" @keyup.stop @keypress.stop>
     <!-- Existing notes (TransitionGroup animates notes in/out when visibility toggles) -->
     <TransitionGroup name="mustard-note">
       <MustardNote
