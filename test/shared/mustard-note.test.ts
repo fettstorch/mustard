@@ -11,8 +11,6 @@ const anchorData = {
 
 const videoElementAnchorData = {
   type: 'video' as const,
-  locator: 'youtube' as const,
-  key: 'video-123',
   startAt: 12.5,
   duration: 8,
 }

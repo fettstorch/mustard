@@ -42,8 +42,6 @@ const storedRow = {
   click_position_y: 200,
   element_anchor_data: {
     type: 'video',
-    locator: 'youtube',
-    key: 'video-123',
     startAt: 12.5,
     duration: 8,
   },
