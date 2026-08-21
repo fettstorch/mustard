@@ -3,7 +3,7 @@ import type { VideoElementAnchorData } from './model/MustardNoteElementAnchorDat
 import { isVideoElement } from './video-element'
 
 export const VIDEO_NOTE_DEFAULT_DURATION = 5
-export const VIDEO_NOTE_TIME_STEP = 0.1
+export const VIDEO_NOTE_TIME_STEP = 1
 const VIDEO_NOTE_MIN_DURATION = VIDEO_NOTE_TIME_STEP
 
 /**
@@ -39,14 +39,51 @@ export function isWithinVideoTimeframe(
 
 export function normalizeVideoStartAt(value: unknown): number {
   const numberValue = toFiniteNumber(value)
-  return numberValue === undefined ? 0 : Math.max(0, numberValue)
+  return numberValue === undefined ? 0 : roundToTimeStep(Math.max(0, numberValue))
 }
 
 export function normalizeVideoDuration(value: unknown): number {
   const numberValue = toFiniteNumber(value)
   return numberValue === undefined
     ? VIDEO_NOTE_DEFAULT_DURATION
-    : Math.max(VIDEO_NOTE_MIN_DURATION, numberValue)
+    : Math.max(VIDEO_NOTE_MIN_DURATION, roundToTimeStep(numberValue))
+}
+
+/**
+ * Renders seconds as a video timestamp (`m:ss`, `h:mm:ss`) — whole seconds,
+ * matching the granularity notes are authored at.
+ */
+export function formatVideoTimestamp(totalSeconds: number): string {
+  const wholeSeconds = Math.round(Math.max(0, totalSeconds))
+  const hours = Math.floor(wholeSeconds / 3600)
+  const minutes = Math.floor((wholeSeconds % 3600) / 60)
+  const seconds = wholeSeconds % 60
+
+  const paddedSeconds = String(seconds).padStart(2, '0')
+  return hours > 0
+    ? `${hours}:${String(minutes).padStart(2, '0')}:${paddedSeconds}`
+    : `${minutes}:${paddedSeconds}`
+}
+
+/**
+ * Parses user timestamp input: plain seconds (`332.8`), `m:ss`, or `h:mm:ss`,
+ * accepting a comma as the decimal separator.
+ */
+export function parseVideoTimestamp(value: string): number | undefined {
+  const parts = value.trim().replace(',', '.').split(':')
+  if (parts.length > 3) return undefined
+
+  let seconds = 0
+  for (const part of parts) {
+    const partValue = Number(part)
+    if (part.trim() === '' || !Number.isFinite(partValue) || partValue < 0) return undefined
+    seconds = seconds * 60 + partValue
+  }
+  return seconds
+}
+
+function roundToTimeStep(value: number): number {
+  return Math.round(value / VIDEO_NOTE_TIME_STEP) * VIDEO_NOTE_TIME_STEP
 }
 
 function toFiniteNumber(value: unknown): number | undefined {

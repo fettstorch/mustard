@@ -2,21 +2,23 @@
 
 import { describe, expect, it } from 'vitest'
 import {
+  formatVideoTimestamp,
   getVideoElementAnchorData,
   isWithinVideoTimeframe,
   normalizeVideoDuration,
   normalizeVideoStartAt,
+  parseVideoTimestamp,
   VIDEO_NOTE_DEFAULT_DURATION,
 } from '../../src/shared/video-note'
 
 describe('getVideoElementAnchorData', () => {
   it('captures the current time on a YouTube watch page', () => {
     const video = document.createElement('video')
-    video.currentTime = 12.5
+    video.currentTime = 12.2
 
     expect(getVideoElementAnchorData('https://www.youtube.com/watch?v=abc', video)).toEqual({
       type: 'video',
-      startAt: 12.5,
+      startAt: 12,
       duration: VIDEO_NOTE_DEFAULT_DURATION,
     })
   })
@@ -63,10 +65,42 @@ describe('video timing normalization', () => {
     expect(normalizeVideoStartAt(Number.POSITIVE_INFINITY)).toBe(0)
   })
 
+  it('rounds times to whole seconds', () => {
+    expect(normalizeVideoStartAt(332.796905)).toBe(333)
+    expect(normalizeVideoStartAt(12.34)).toBe(12)
+    expect(normalizeVideoDuration(4.96)).toBe(5)
+    expect(normalizeVideoDuration(0.04)).toBeGreaterThan(0)
+  })
+
   it('defaults invalid durations and clamps non-positive values', () => {
     expect(normalizeVideoDuration('')).toBe(VIDEO_NOTE_DEFAULT_DURATION)
     expect(normalizeVideoDuration(Number.NaN)).toBe(VIDEO_NOTE_DEFAULT_DURATION)
     expect(normalizeVideoDuration(0)).toBeGreaterThan(0)
     expect(normalizeVideoDuration(-2)).toBeGreaterThan(0)
+  })
+})
+
+describe('video timestamp formatting', () => {
+  it('renders whole-second m:ss timestamps', () => {
+    expect(formatVideoTimestamp(0)).toBe('0:00')
+    expect(formatVideoTimestamp(332.796905)).toBe('5:33')
+    expect(formatVideoTimestamp(75)).toBe('1:15')
+    expect(formatVideoTimestamp(3723)).toBe('1:02:03')
+  })
+
+  it('parses timestamps, plain seconds, and comma decimals', () => {
+    expect(parseVideoTimestamp('5:32')).toBe(332)
+    expect(parseVideoTimestamp('332.8')).toBeCloseTo(332.8)
+    expect(parseVideoTimestamp('332,8')).toBeCloseTo(332.8)
+    expect(parseVideoTimestamp('1:02:03')).toBe(3723)
+    expect(parseVideoTimestamp('')).toBeUndefined()
+    expect(parseVideoTimestamp('abc')).toBeUndefined()
+    expect(parseVideoTimestamp('1:2:3:4')).toBeUndefined()
+  })
+
+  it('round-trips through format and parse', () => {
+    for (const seconds of [0, 59, 60, 3599, 3600, 333]) {
+      expect(parseVideoTimestamp(formatVideoTimestamp(seconds))).toBe(seconds)
+    }
   })
 })
