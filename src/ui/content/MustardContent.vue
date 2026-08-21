@@ -24,6 +24,7 @@ type EditorNoteSubmission = {
   content: string
   linkPreview?: MustardNoteType['linkPreview']
   linkPreviewDismissed?: boolean
+  anchor?: MustardNoteType['anchorData']
 }
 
 const mustardState = inject<MustardState>('mustardState')!
@@ -167,7 +168,8 @@ function onEditorClose() {
 
 /** Editor: user clicked save button to create a local note */
 function onEditorSave(data: EditorNoteSubmission) {
-  if (!mustardState.editor.anchor) {
+  const anchor = data.anchor ?? mustardState.editor.anchor
+  if (!anchor) {
     console.warn('No anchor data found when trying to save note')
     return
   }
@@ -178,7 +180,7 @@ function onEditorSave(data: EditorNoteSubmission) {
         content: data.content,
         linkPreview: data.linkPreview,
         linkPreviewDismissed: data.linkPreviewDismissed,
-        anchorData: mustardState.editor.anchor,
+        anchorData: anchor,
         updatedAt: Date.now(),
       },
       'local',
@@ -189,7 +191,8 @@ function onEditorSave(data: EditorNoteSubmission) {
 
 /** Editor: user clicked publish button to create a new remote note */
 function onEditorPublish(data: EditorNoteSubmission) {
-  if (!mustardState.editor.anchor) {
+  const anchor = data.anchor ?? mustardState.editor.anchor
+  if (!anchor) {
     console.warn('No anchor data found when trying to publish note')
     return
   }
@@ -199,7 +202,7 @@ function onEditorPublish(data: EditorNoteSubmission) {
   }
   requestPublish(
     data.content,
-    mustardState.editor.anchor,
+    anchor,
     undefined,
     'editor',
     data.linkPreview,

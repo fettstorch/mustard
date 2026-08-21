@@ -13,6 +13,11 @@ import type { LinkPreview } from '@/shared/model/LinkPreview'
 import { extractFirstLinkUrl } from '@/shared/link-preview'
 import { createGetLinkPreviewMessage, sendMessage } from '@/shared/messaging'
 import { getDebouncer } from '@fettstorch/jule'
+import {
+  normalizeVideoDuration,
+  normalizeVideoStartAt,
+  VIDEO_NOTE_TIME_STEP,
+} from '@/shared/video-note'
 
 const props = defineProps<{
   anchor: MustardNoteAnchorData | null
@@ -22,6 +27,7 @@ type EditorNoteSubmission = {
   content: string
   linkPreview?: LinkPreview
   linkPreviewDismissed?: boolean
+  anchor?: MustardNoteAnchorData
 }
 
 const emit = defineEmits<{
@@ -65,6 +71,39 @@ const anchorDisplay = computed(() => {
   const selector = props.anchor.elementSelector
   return { url, selector }
 })
+
+const videoAnchor = computed(() => {
+  const data = props.anchor?.elementAnchorData
+  return data?.type === 'video' ? data : null
+})
+const videoStartAt = ref<number | string>(0)
+const videoDuration = ref<number | string>(5)
+
+function syncVideoControls() {
+  videoStartAt.value = normalizeVideoStartAt(videoAnchor.value?.startAt)
+  videoDuration.value = normalizeVideoDuration(videoAnchor.value?.duration)
+}
+
+syncVideoControls()
+
+function editorAnchor(): MustardNoteAnchorData | undefined {
+  const anchor = props.anchor
+  if (!anchor || !videoAnchor.value) return anchor ?? undefined
+
+  return {
+    ...anchor,
+    elementAnchorData: {
+      ...videoAnchor.value,
+      startAt: normalizeVideoStartAt(videoStartAt.value),
+      duration: normalizeVideoDuration(videoDuration.value),
+    },
+  }
+}
+
+function normalizeVideoControls() {
+  videoStartAt.value = normalizeVideoStartAt(videoStartAt.value)
+  videoDuration.value = normalizeVideoDuration(videoDuration.value)
+}
 
 const selectorExpanded = ref(false)
 const draftPreview = ref<LinkPreview>()
@@ -167,6 +206,7 @@ function handleSave() {
   emit('pressed-save', {
     content,
     linkPreview: currentLinkPreview(content),
+    anchor: editorAnchor(),
     ...(extractFirstLinkUrl(content) === dismissedPreviewUrl ? { linkPreviewDismissed: true } : {}),
   })
 }
@@ -179,6 +219,7 @@ function handlePublish() {
   emit('pressed-publish', {
     content,
     linkPreview: currentLinkPreview(content),
+    anchor: editorAnchor(),
     ...(extractFirstLinkUrl(content) === dismissedPreviewUrl ? { linkPreviewDismissed: true } : {}),
   })
 }
@@ -212,6 +253,30 @@ function handlePublish() {
     </MustardNoteHeader>
     <!-- Rich Text Editor -->
     <EditorContent :editor="editor" />
+    <div v-if="videoAnchor" class="video-controls">
+      <label class="video-control">
+        <span>Start time (seconds)</span>
+        <input
+          v-model.number="videoStartAt"
+          type="number"
+          min="0"
+          :step="VIDEO_NOTE_TIME_STEP"
+          inputmode="decimal"
+          @blur="normalizeVideoControls"
+        />
+      </label>
+      <label class="video-control">
+        <span>Visibility duration (seconds)</span>
+        <input
+          v-model.number="videoDuration"
+          type="number"
+          :min="VIDEO_NOTE_TIME_STEP"
+          :step="VIDEO_NOTE_TIME_STEP"
+          inputmode="decimal"
+          @blur="normalizeVideoControls"
+        />
+      </label>
+    </div>
     <!-- Character count -->
     <div class="character-count" :class="{ 'over-limit': isOverLimit }">
       {{ characterCountText }}
@@ -272,6 +337,34 @@ function handlePublish() {
   font-size: 0.75em;
   opacity: 0.5;
   margin-top: 8px;
+}
+
+.video-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+  max-width: var(--mustard-note-content-max-width);
+}
+
+.video-control {
+  display: flex;
+  flex: 1 1 140px;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 0.75em;
+}
+
+.video-control input {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  color: inherit;
+  background: transparent;
+  border: 1px solid var(--mustard-border-subtle);
+  border-radius: 3px;
+  padding: 3px 5px;
+  font: inherit;
 }
 
 .character-count.over-limit {

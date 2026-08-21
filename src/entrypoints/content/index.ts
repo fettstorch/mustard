@@ -39,6 +39,7 @@ import {
 } from '@/shared/hidden-notes'
 import type { MustardNote } from '@/shared/model/MustardNote'
 import type { MustardComment } from '@/shared/model/MustardComment'
+import { getVideoElementAnchorData } from '@/shared/video-note'
 import { Observable, subject, synchronize } from '@fettstorch/jule'
 import { createApp, watch } from 'vue'
 
@@ -698,7 +699,14 @@ export default defineContentScript({
       if (!mustardState.areNotesVisible) {
         mustardState.areNotesVisible = true
       }
-      mustardState.editor.anchor = anchor
+      const videoElementAnchorData = getVideoElementAnchorData(
+        window.location.href,
+        lastContextMenuTarget,
+      )
+      mustardState.editor.anchor =
+        anchor && videoElementAnchorData
+          ? { ...anchor, elementAnchorData: videoElementAnchorData }
+          : anchor
       mustardState.editor.isOpen = true
     }
 
