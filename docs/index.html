@@ -310,6 +310,29 @@
         margin-top: 40px;
       }
 
+      /* Wide (landscape) media: text on top, video below at full section width. */
+      .media-row--stacked {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .media-row--stacked .media-row-media {
+        flex-basis: auto;
+      }
+
+      .media-video-link {
+        display: block;
+      }
+
+      /* Nudge viewers to unmute videos that ship with audio. */
+      .media-sound-hint {
+        font-size: 12px;
+        font-weight: 600;
+        opacity: 0.65;
+        text-align: right;
+        margin-bottom: 4px;
+      }
+
       .media-row-text {
         flex: 1 1 0;
         min-width: 0;
@@ -875,6 +898,44 @@
                 preload="metadata"
                 aria-label="Using markdown formatting and adding gifs in a mustard note"
               ></video>
+            </div>
+          </div>
+          <div class="media-row media-row--stacked">
+            <div class="media-row-text">
+              <h3>Video notes</h3>
+              <ul>
+                <li>
+                  <strong>Pin a note to a moment in a video</strong> (currently on YouTube only!) —
+                  right-click the video and choose <strong>"Add Mustard"</strong>. The note appears
+                  only around that moment of the video; tweak start time and duration in the editor.
+                </li>
+                <li>
+                  <strong>Player menu in the way?</strong> Hold <strong>Shift</strong> while
+                  right-clicking to get the browser's context menu with "Add Mustard" — or, if
+                  you've enabled it in the options, simply <strong>Alt/⌥+Click</strong> the video.
+                </li>
+              </ul>
+            </div>
+            <div class="media-row-media">
+              <p class="media-sound-hint">Sound On 🔊</p>
+              <a
+                class="media-video-link"
+                href="https://www.youtube.com/watch?v=KNwMiydCYA4"
+                target="_blank"
+                rel="noopener noreferrer"
+                title="Open the video on YouTube"
+              >
+                <video
+                  src="assets/video-notes-on-youtube.mp4"
+                  autoplay
+                  loop
+                  muted
+                  playsinline
+                  controls
+                  preload="metadata"
+                  aria-label="Creating a timed video note on a YouTube video"
+                ></video>
+              </a>
             </div>
           </div>
         </section>
