@@ -77,16 +77,28 @@ const streamPlaceVod: SiteStrategy = {
 }
 
 /**
- * Twitch VODs (`/videos/{id}`) and clips (`/{channel}/clip/{slug}`); live
- * streams (`/{channel}`) stay excluded — their playback clock doesn't
- * persist. The player has the same shape as stream.place's: chrome overlays
- * the single <video>, and the surrounding DOM is generated styled-components
- * markup with no stable ids or classes.
+ * Twitch VODs (`/videos/{id}`); live streams (`/{channel}`) stay excluded —
+ * their playback clock doesn't persist. The player has the same shape as
+ * stream.place's: chrome overlays the single <video>, and the surrounding DOM
+ * is generated styled-components markup with no stable ids or classes.
  */
-const twitchVodOrClip: SiteStrategy = {
+const twitchVod: SiteStrategy = {
   matches: (url) =>
-    stripWww(url.hostname) === 'twitch.tv' &&
-    (/^\/videos\/[^/]+$/.test(url.pathname) || /^\/[^/]+\/clip\/[^/]+$/.test(url.pathname)),
+    stripWww(url.hostname) === 'twitch.tv' && /^\/videos\/[^/]+$/.test(url.pathname),
+  isVideoNotePage: () => true,
+  resolveTargetElement: resolveVideoFromClickStack,
+  createSelector: uniqueVideoSelector,
+}
+
+/**
+ * Twitch clips (`/{channel}/clip/{slug}`; the clips.twitch.tv share domain
+ * redirects here). Today the clip player happens to share the VOD player's
+ * shape, but clips are a separate Twitch feature that can evolve on its own —
+ * hence its own strategy.
+ */
+const twitchClip: SiteStrategy = {
+  matches: (url) =>
+    stripWww(url.hostname) === 'twitch.tv' && /^\/[^/]+\/clip\/[^/]+$/.test(url.pathname),
   isVideoNotePage: () => true,
   resolveTargetElement: resolveVideoFromClickStack,
   createSelector: uniqueVideoSelector,
@@ -96,7 +108,8 @@ const twitchVodOrClip: SiteStrategy = {
 const SITE_STRATEGIES: SiteStrategy[] = [
   youtubeWatch,
   streamPlaceVod,
-  twitchVodOrClip,
+  twitchVod,
+  twitchClip,
   defaultStrategy,
 ]
 
