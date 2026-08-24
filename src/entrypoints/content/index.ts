@@ -1091,11 +1091,16 @@ export default defineContentScript({
           document.getElementById('mustard-session-expired-banner')?.remove()
           fetchProfiles({ userIds: [message.userId] })
         }
-        // Session change can change which notes are visible (follows differ),
-        // so clear per-note client state to avoid stale dots / comments.
+        // A different session sees a different visibility graph — nothing
+        // loaded for the old account may survive. Clear the whole notes state
+        // (like a navigation does) and let the fresh queries rebuild it.
+        mustardState.notes = []
+        mustardState.comments = {}
+        mustardState.commentsLoadState = {}
+        mustardState.expandedCommentNoteIds = {}
         mustardState.unreadByNoteId = {}
-        // A different session sees a different visibility graph — embedded
-        // post keys must be re-queried, not skipped as already-loaded.
+        mustardState.revealedHiddenNoteIds = {}
+        mustardState.revealedTimedNoteIds = {}
         queriedEmbeddedPostKeys = new Set()
         syncEmbeddedPostObserver()
         runNotesQuery(getCurrentPageKeys(), { withComments: true }).catch(() => {})
