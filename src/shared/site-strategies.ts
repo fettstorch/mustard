@@ -171,10 +171,16 @@ const atprotoEmbeddedPostHooks: Pick<
   'collectEmbeddedPostKeys' | 'resolveEmbeddedPost' | 'resolveEmbeddedPostAnchor'
 > = {
   collectEmbeddedPostKeys: () => {
-    const keys = [...document.querySelectorAll(ATPROTO_POST_ITEM_SELECTOR)]
-      .map(embeddedPostKey)
-      .filter((key): key is string => !!key)
-    return [...new Set(keys)]
+    const keys = new Set<string>()
+    for (const item of document.querySelectorAll(ATPROTO_POST_ITEM_SELECTOR)) {
+      const pathname = embeddedPostPermalink(item)
+      if (!pathname) continue
+      const match = ATPROTO_POST_PATH.exec(pathname)!
+      keys.add(`at://${match[1]}/app.bsky.feed.post/${match[2]}`)
+      // Pre-upgrade notes live under this appview's URL for the post.
+      keys.add(`${window.location.origin}${pathname}`)
+    }
+    return [...keys]
   },
   resolveEmbeddedPost: (pageKey) => {
     const items = [...document.querySelectorAll(ATPROTO_POST_ITEM_SELECTOR)]
@@ -356,8 +362,8 @@ export function resolveAnchoredElement(anchor: {
 
 //--- module private utility
 
-/** Canonical AT-URI of the post an embedded feed item renders, from its permalink. */
-function embeddedPostKey(item: Element): string | null {
+/** Pathname of the post permalink an embedded item carries, if any. */
+function embeddedPostPermalink(item: Element): string | null {
   const links = item.querySelectorAll('a[href*="/post/"]')
   for (const link of links) {
     // Parse the href so query strings, hashes, or absolute forms can't break
@@ -370,10 +376,17 @@ function embeddedPostKey(item: Element): string | null {
     } catch {
       continue
     }
-    const match = ATPROTO_POST_PATH.exec(pathname)
-    if (match) return `at://${match[1]}/app.bsky.feed.post/${match[2]}`
+    if (ATPROTO_POST_PATH.test(pathname)) return pathname
   }
   return null
+}
+
+/** Canonical AT-URI of the post an embedded feed item renders, from its permalink. */
+function embeddedPostKey(item: Element): string | null {
+  const pathname = embeddedPostPermalink(item)
+  if (!pathname) return null
+  const match = ATPROTO_POST_PATH.exec(pathname)!
+  return `at://${match[1]}/app.bsky.feed.post/${match[2]}`
 }
 
 /**

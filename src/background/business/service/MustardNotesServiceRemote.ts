@@ -217,7 +217,6 @@ async function getCachedIndexPayload(userId?: string): Promise<IndexCachePayload
 }
 
 async function fetchIndexPayload(userId: string): Promise<IndexCachePayload | null> {
-
   // Validate JWT — detects session expiry and triggers logout/banner as a side effect.
   // O(1) from cache when valid; only hits the network when JWT needs refreshing (~hourly).
   const jwt = await getSupabaseJwt()

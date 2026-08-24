@@ -999,7 +999,10 @@ export default defineContentScript({
       if (message.type === 'NOTE_DELETED') {
         // A feed tab can hold the note under its post key while the broadcast
         // carries that at:// key — evict wherever the note is actually loaded.
-        if (isCurrentPageKey(message.pageUrl) || mustardState.notes.some((n) => n.id === message.noteId)) {
+        if (
+          isCurrentPageKey(message.pageUrl) ||
+          mustardState.notes.some((n) => n.id === message.noteId)
+        ) {
           dropDeletedNote(message.noteId)
         }
         return
