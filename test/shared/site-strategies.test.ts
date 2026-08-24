@@ -320,3 +320,34 @@ describe('embedded atproto posts (thread pages)', () => {
     expect(item.contains(selectorHit)).toBe(false)
   })
 })
+
+describe('embedded post capture hardening', () => {
+  const FEED_PAGE = 'https://bsky.app/profile/tangled.org'
+
+  it('extracts keys from permalinks carrying query strings or hashes', () => {
+    document.body.innerHTML = `
+      <div data-testid="feedItem-by-tangled.org">
+        <a href="/profile/tangled.org/post/3abc?ref=feed#top">2h</a>
+      </div>
+    `
+    expect(siteStrategyFor(FEED_PAGE).collectEmbeddedPostKeys()).toEqual([
+      'at://tangled.org/app.bsky.feed.post/3abc',
+    ])
+  })
+
+  it('finds the post item through the click stack when the player is portaled', () => {
+    document.body.innerHTML = `
+      <div data-testid="feedItem-by-tangled.org" id="item">
+        <a href="/profile/tangled.org/post/3abc">2h</a>
+        <div id="under-click"></div>
+      </div>
+      <div id="portal"><video></video></div>
+    `
+    const video = document.querySelector('video')!
+    const underClick = document.getElementById('under-click')!
+    const anchor = siteStrategyFor(FEED_PAGE).resolveEmbeddedPostAnchor(video, [video, underClick])!
+    expect(anchor.pageKey).toBe('at://tangled.org/app.bsky.feed.post/3abc')
+    expect(anchor.anchorElement).toBe(video)
+    expect(anchor.selector).toBe('[data-testid="postThreadItem-by-tangled.org"] video')
+  })
+})

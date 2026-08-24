@@ -186,8 +186,13 @@ const atprotoEmbeddedPostHooks: Pick<
     if (!atUri) return null
     return items.find((item) => postItemHandle(item) === atUri[1] && !embeddedPostKey(item)) ?? null
   },
-  resolveEmbeddedPostAnchor: (target) => {
-    const item = target.closest(ATPROTO_POST_ITEM_SELECTOR)
+  resolveEmbeddedPostAnchor: (target, stack) => {
+    // Players can be portaled outside the post item's DOM subtree — the
+    // click stack still contains the item rendered underneath the video.
+    const item =
+      target.closest(ATPROTO_POST_ITEM_SELECTOR) ??
+      stack.map((el) => el.closest(ATPROTO_POST_ITEM_SELECTOR)).find(Boolean) ??
+      null
     // No permalink means the thread page's focused post: the page key already
     // IS that post's AT-URI, so no post-scoped override is needed.
     const pageKey = item && embeddedPostKey(item)
@@ -345,7 +350,17 @@ export function resolveAnchoredElement(anchor: {
 function embeddedPostKey(item: Element): string | null {
   const links = item.querySelectorAll('a[href*="/post/"]')
   for (const link of links) {
-    const match = ATPROTO_POST_PATH.exec(link.getAttribute('href') ?? '')
+    // Parse the href so query strings, hashes, or absolute forms can't break
+    // the path match.
+    const href = link.getAttribute('href')
+    if (!href) continue
+    let pathname: string
+    try {
+      pathname = new URL(href, window.location.origin).pathname
+    } catch {
+      continue
+    }
+    const match = ATPROTO_POST_PATH.exec(pathname)
     if (match) return `at://${match[1]}/app.bsky.feed.post/${match[2]}`
   }
   return null
