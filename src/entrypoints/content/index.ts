@@ -330,8 +330,10 @@ export default defineContentScript({
     }
 
     /** Fetch unread-notification counts for the given remote note ids. */
+    let unreadRequestId = 0
     function fetchUnreadForNotes(notes: MustardNote[]) {
       const remoteNoteIds = collectRemoteNoteIds(notes)
+      const requestId = ++unreadRequestId
 
       if (remoteNoteIds.length === 0 || !mustardState.currentUserId) {
         mustardState.unreadByNoteId = {}
@@ -342,6 +344,9 @@ export default defineContentScript({
 
       sendMessage(createQueryNotificationsForNotesMessage(remoteNoteIds))
         .then((response) => {
+          // A newer request owns the state (responses replace it wholesale) —
+          // drop this one so a stale subset can't clobber fresher counts.
+          if (requestId !== unreadRequestId) return
           console.debug('mustard [content-script] received notification counts:', response)
           // Replace entirely so previously-unread-but-now-acknowledged notes lose their dot.
           const next: Record<string, number> = {}
