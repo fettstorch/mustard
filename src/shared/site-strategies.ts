@@ -171,16 +171,13 @@ const atprotoEmbeddedPostHooks: Pick<
   'collectEmbeddedPostKeys' | 'resolveEmbeddedPost' | 'resolveEmbeddedPostAnchor'
 > = {
   collectEmbeddedPostKeys: () => {
-    const keys = new Set<string>()
-    for (const item of document.querySelectorAll(ATPROTO_POST_ITEM_SELECTOR)) {
-      const pathname = embeddedPostPermalink(item)
-      if (!pathname) continue
-      const match = ATPROTO_POST_PATH.exec(pathname)!
-      keys.add(`at://${match[1]}/app.bsky.feed.post/${match[2]}`)
-      // Pre-upgrade notes live under this appview's URL for the post.
-      keys.add(`${window.location.origin}${pathname}`)
-    }
-    return [...keys]
+    // Canonical AT-URIs only: legacy appview-URL keys are a post-PAGE concern
+    // (that page queries them alongside its canonical key) — a feed shows a
+    // post, not the pages notes were once created on.
+    const keys = [...document.querySelectorAll(ATPROTO_POST_ITEM_SELECTOR)]
+      .map(embeddedPostKey)
+      .filter((key): key is string => !!key)
+    return [...new Set(keys)]
   },
   resolveEmbeddedPost: (pageKey) => {
     const items = [...document.querySelectorAll(ATPROTO_POST_ITEM_SELECTOR)]

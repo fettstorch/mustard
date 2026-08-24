@@ -217,13 +217,11 @@ describe('embedded atproto posts (feeds)', () => {
     `
   }
 
-  it('collects canonical and legacy keys of embedded posts', () => {
+  it('collects only the canonical keys of embedded posts', () => {
     renderFeed()
     expect(siteStrategyFor(FEED_PAGE).collectEmbeddedPostKeys()).toEqual([
       POST_KEY,
-      `${window.location.origin}/profile/tangled.org/post/3mttcilenbc23`,
       'at://other.dev/app.bsky.feed.post/abc123',
-      `${window.location.origin}/profile/other.dev/post/abc123`,
     ])
     expect(siteStrategyFor('https://example.com/').collectEmbeddedPostKeys()).toEqual([])
     expect(siteStrategyFor(FEED_PAGE).supportsEmbeddedPosts()).toBe(true)
@@ -334,7 +332,6 @@ describe('embedded post capture hardening', () => {
     `
     expect(siteStrategyFor(FEED_PAGE).collectEmbeddedPostKeys()).toEqual([
       'at://tangled.org/app.bsky.feed.post/3abc',
-      `${window.location.origin}/profile/tangled.org/post/3abc`,
     ])
   })
 
