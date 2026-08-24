@@ -48,6 +48,16 @@ describe('isVideoNotePage', () => {
     )
   })
 
+  it('accepts Bluesky post pages but not profiles or feeds', () => {
+    expect(
+      siteStrategyFor(
+        'https://bsky.app/profile/debbieohi.com/post/3mtm3ff75lc2d',
+      ).isVideoNotePage(),
+    ).toBe(true)
+    expect(siteStrategyFor('https://bsky.app/profile/debbieohi.com').isVideoNotePage()).toBe(false)
+    expect(siteStrategyFor('https://bsky.app/').isVideoNotePage()).toBe(false)
+  })
+
   it('rejects unknown pages and invalid urls', () => {
     expect(siteStrategyFor('https://example.com/video/123').isVideoNotePage()).toBe(false)
     expect(siteStrategyFor('not a url').isVideoNotePage()).toBe(false)
@@ -96,5 +106,32 @@ describe('createSelector', () => {
     document.body.appendChild(document.createElement('video'))
     expect(siteStrategyFor(STREAM_PLACE_VOD).createSelector(video)).toBeNull()
     expect(siteStrategyFor('https://www.youtube.com/watch?v=abc').createSelector(video)).toBeNull()
+  })
+})
+
+describe('Bluesky post selectors', () => {
+  const BSKY_POST = 'https://bsky.app/profile/debbieohi.com/post/3mtm3ff75lc2d'
+
+  it('scopes the selector to the enclosing post item', () => {
+    document.body.innerHTML = `
+      <div data-testid="postThreadItem-by-debbieohi.com"><video></video></div>
+      <div data-testid="postThreadItem-by-someone.else"><video></video></div>
+    `
+    const video = document.querySelector('[data-testid="postThreadItem-by-someone.else"] video')!
+    expect(siteStrategyFor(BSKY_POST).createSelector(video)).toBe(
+      '[data-testid="postThreadItem-by-someone.else"] video',
+    )
+  })
+
+  it('falls back to the bare tag for a single unscoped video', () => {
+    const video = document.createElement('video')
+    document.body.appendChild(video)
+    expect(siteStrategyFor(BSKY_POST).createSelector(video)).toBe('video')
+  })
+
+  it('has no opinion when neither scoping nor uniqueness holds', () => {
+    document.body.innerHTML = '<video></video><video></video>'
+    const video = document.querySelectorAll('video')[1]!
+    expect(siteStrategyFor(BSKY_POST).createSelector(video)).toBeNull()
   })
 })

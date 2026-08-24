@@ -104,12 +104,38 @@ const twitchClip: SiteStrategy = {
   createSelector: uniqueVideoSelector,
 }
 
+/**
+ * Bluesky post pages (`/profile/{handle}/post/{rkey}`). The post's video sits
+ * under overlay chrome like the other curated players, but a thread page can
+ * hold several videos (replies, quotes) — so the selector is scoped to the
+ * enclosing post item via Bluesky's stable `data-testid` markers, falling
+ * back to the bare tag when the video is the page's only one.
+ */
+const blueskyPost: SiteStrategy = {
+  matches: (url) =>
+    stripWww(url.hostname) === 'bsky.app' && /^\/profile\/[^/]+\/post\/[^/]+$/.test(url.pathname),
+  isVideoNotePage: () => true,
+  resolveTargetElement: resolveVideoFromClickStack,
+  createSelector: (element) => {
+    if (!isVideoElement(element)) return null
+    const postItem = element.closest('[data-testid]')
+    const testId = postItem?.getAttribute('data-testid')
+    if (testId) {
+      // Quoted attribute value: only quotes and backslashes need escaping.
+      const selector = `[data-testid="${testId.replace(/["\\]/g, '\\$&')}"] video`
+      if (document.querySelector(selector) === element) return selector
+    }
+    return uniqueVideoSelector(element)
+  },
+}
+
 /** Ordered by specificity; the catch-all default closes the table. */
 const SITE_STRATEGIES: SiteStrategy[] = [
   youtubeWatch,
   streamPlaceVod,
   twitchVod,
   twitchClip,
+  blueskyPost,
   defaultStrategy,
 ]
 
