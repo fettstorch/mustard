@@ -14,6 +14,12 @@ type SiteStrategy = {
   matches(url: URL): boolean
   /** Canonical key notes are stored and queried under. */
   getPageKey?(url: URL): string
+  /**
+   * Keys this page's notes were stored under before the canonical key changed
+   * (e.g. appview URLs from before AT-URI keying). New notes never use these;
+   * loading and focus matching still honor them.
+   */
+  getLegacyPageKeys?(url: URL): string[]
   /** Whether timed video-note authoring is offered on this page. */
   isVideoNotePage?(url: URL): boolean
   /**
@@ -31,6 +37,8 @@ type SiteStrategy = {
 /** A strategy resolved for one concrete page: same hooks, url already bound. */
 type BoundSiteStrategy = {
   getPageKey(): string
+  /** Canonical key first, then any legacy keys existing notes may live under. */
+  getPageKeys(): string[]
   isVideoNotePage(): boolean
   resolveTargetElement(target: Element, stack: Element[]): Element
   createSelector(element: Element): string | null
@@ -40,6 +48,7 @@ type BoundSiteStrategy = {
 const defaultStrategy: Required<SiteStrategy> = {
   matches: () => true,
   getPageKey: (url) => `${url.origin}${url.pathname}`,
+  getLegacyPageKeys: () => [],
   isVideoNotePage: () => false,
   resolveTargetElement: (target) => target,
   createSelector: () => null,
@@ -132,6 +141,8 @@ const atprotoPost: SiteStrategy = {
     const [, handle, rkey] = ATPROTO_POST_PATH.exec(url.pathname)!
     return `at://${handle}/app.bsky.feed.post/${rkey}`
   },
+  // Notes created before AT-URI keying live under the appview's own URL.
+  getLegacyPageKeys: (url) => [defaultStrategy.getPageKey(url)],
   isVideoNotePage: () => true,
   resolveTargetElement: resolveVideoFromClickStack,
   createSelector: (element) => {
@@ -187,6 +198,8 @@ export function siteStrategyFor(pageUrl: string): BoundSiteStrategy {
 
   return {
     getPageKey: () => (url ? strategy.getPageKey(url) : pageUrl),
+    getPageKeys: () =>
+      url ? [strategy.getPageKey(url), ...strategy.getLegacyPageKeys(url)] : [pageUrl],
     isVideoNotePage: () => !!url && strategy.isVideoNotePage(url),
     resolveTargetElement: (target, stack) => strategy.resolveTargetElement(target, stack),
     createSelector: (element) => strategy.createSelector(element),

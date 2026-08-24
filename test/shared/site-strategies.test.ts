@@ -32,6 +32,16 @@ describe('getPageKey', () => {
       siteStrategyFor('https://mu.social/profile/tangled.org/post/3mttcilenbc23').getPageKey(),
     ).toBe(atUri)
   })
+
+  it('lists legacy appview-url keys behind the canonical AT-URI', () => {
+    expect(
+      siteStrategyFor('https://mu.social/profile/tangled.org/post/3mttcilenbc23').getPageKeys(),
+    ).toEqual([
+      'at://tangled.org/app.bsky.feed.post/3mttcilenbc23',
+      'https://mu.social/profile/tangled.org/post/3mttcilenbc23',
+    ])
+    expect(siteStrategyFor(`${STREAM_PLACE_VOD}?t=99`).getPageKeys()).toEqual([STREAM_PLACE_VOD])
+  })
 })
 
 describe('pageKeyToHref', () => {

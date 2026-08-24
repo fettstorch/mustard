@@ -14,7 +14,6 @@ import {
   RATE_LIMIT_ERROR_CODE,
 } from '@/shared/messaging'
 import { isRemoteMutationMessage } from '@/shared/remote-mutation'
-import { getPageKey } from '@/shared/page-key'
 import { siteStrategyFor } from '@/shared/site-strategies'
 import type { MustardNoteAnchorData } from '@/shared/model/MustardNoteAnchorData'
 import { LIMITS } from '@/shared/constants'
@@ -392,10 +391,23 @@ export default defineContentScript({
      */
     const runNotesQuery = synchronize(
       async (
-        pageUrl: string,
+        pageUrls: string[],
         options?: { includeAllAuthors?: boolean; withComments?: boolean },
       ): Promise<number> => {
-        const dtos = await sendMessage(createQueryNotesMessage(pageUrl, options?.includeAllAuthors))
+        // A page can carry legacy keys next to its canonical one (see
+        // getCurrentPageKeys) — query them all and merge.
+        const dtoLists = await Promise.all(
+          pageUrls.map((pageUrl) =>
+            sendMessage(createQueryNotesMessage(pageUrl, options?.includeAllAuthors)),
+          ),
+        )
+        const seenIds = new Set<string>()
+        const dtos = dtoLists.flat().filter((dto) => {
+          if (!dto.id) return true
+          if (seenIds.has(dto.id)) return false
+          seenIds.add(dto.id)
+          return true
+        })
         applyNotesResponse(dtos, { withComments: options?.withComments })
         return mustardState.notes.length
       },
@@ -406,10 +418,15 @@ export default defineContentScript({
      * notes (fast path, no network), so we keep the already-loaded remote notes
      * in place and swap only the local ones.
      */
-    function applyLocalNotesResponse(dtos: DtoMustardNote[] | undefined): void {
+    function applyLocalNotesResponse(dtos: DtoMustardNote[] | undefined, pageKey: string): void {
       const localNotes = (dtos ?? []).map(DtoMustardNote.fromDto)
-      const remoteNotes = mustardState.notes.filter((n) => n.authorId !== 'local')
-      mustardState.notes = [...localNotes, ...remoteNotes]
+      // Swap only the local notes stored under the responding key — a page can
+      // also show local notes from its legacy keys, which this response
+      // doesn't cover.
+      const keptNotes = mustardState.notes.filter(
+        (n) => n.authorId !== 'local' || n.anchorData.pageUrl !== pageKey,
+      )
+      mustardState.notes = [...localNotes, ...keptNotes]
     }
 
     /**
@@ -487,10 +504,21 @@ export default defineContentScript({
       }
     }
 
-    let currentPageUrl = getPageKey(window.location.href)
+    // Canonical key first, plus any legacy keys existing notes may live under
+    // (e.g. appview URLs from before AT-URI keying). Writes always use the
+    // canonical key; loading and focus matching honor the whole set.
+    let currentPageKeys = siteStrategyFor(window.location.href).getPageKeys()
 
     function getCurrentPageUrl(): string {
-      return currentPageUrl
+      return currentPageKeys[0]!
+    }
+
+    function getCurrentPageKeys(): string[] {
+      return currentPageKeys
+    }
+
+    function isCurrentPageKey(pageUrl: string): boolean {
+      return currentPageKeys.includes(pageUrl)
     }
 
     // --- Pending focus (deep-link from the popup) ---
@@ -627,7 +655,7 @@ export default defineContentScript({
     })
 
     function maybeApplyPendingFocus(): void {
-      if (!pendingFocus || pendingFocus.pageUrl !== getCurrentPageUrl()) return
+      if (!pendingFocus || !isCurrentPageKey(pendingFocus.pageUrl)) return
       if (initialNotesQuerySettled.status() === 'pending') return // wait for the first query to resolve
 
       const focus = pendingFocus
@@ -714,7 +742,7 @@ export default defineContentScript({
         // it — otherwise an unrelated tab that happens to boot around the same
         // time (e.g. the onInstalled onboarding tab) can read and delete this
         // one-shot key before the real target tab gets to it.
-        if (focus && focus.pageUrl === getCurrentPageUrl()) {
+        if (focus && isCurrentPageKey(focus.pageUrl)) {
           browser.storage.local.remove(PENDING_FOCUS_KEY).catch(() => {})
           pendingFocus = focus
           maybeApplyPendingFocus()
@@ -723,11 +751,16 @@ export default defineContentScript({
       .catch(() => {})
 
     function handleUrlChange() {
-      const newUrl = getPageKey(window.location.href)
-      if (newUrl === currentPageUrl) return
+      const newPageKeys = siteStrategyFor(window.location.href).getPageKeys()
+      if (newPageKeys[0] === getCurrentPageUrl()) return
 
-      console.debug('mustard [content-script] URL changed:', currentPageUrl, '->', newUrl)
-      currentPageUrl = newUrl
+      console.debug(
+        'mustard [content-script] URL changed:',
+        getCurrentPageUrl(),
+        '->',
+        newPageKeys[0],
+      )
+      currentPageKeys = newPageKeys
 
       mustardState.notes = []
       mustardState.comments = {}
@@ -737,7 +770,7 @@ export default defineContentScript({
       // Temporary notification / "show all" exceptions are page-scoped.
       mustardState.revealedHiddenNoteIds = {}
       mustardState.revealedTimedNoteIds = {}
-      runNotesQuery(newUrl, { withComments: true }).catch(() => {})
+      runNotesQuery(newPageKeys, { withComments: true }).catch(() => {})
     }
 
     window.addEventListener('popstate', handleUrlChange)
@@ -876,7 +909,7 @@ export default defineContentScript({
         return Promise.resolve(mustardState.areNotesVisible)
       }
       if (message.type === 'NOTE_DELETED') {
-        if (message.pageUrl === getCurrentPageUrl()) dropDeletedNote(message.noteId)
+        if (isCurrentPageKey(message.pageUrl)) dropDeletedNote(message.noteId)
         return
       }
       if (message.type === 'LOAD_ALL_NOTES') {
@@ -897,7 +930,7 @@ export default defineContentScript({
         }
         return (async (): Promise<number> => {
           try {
-            const count = await runNotesQuery(getCurrentPageUrl(), {
+            const count = await runNotesQuery(getCurrentPageKeys(), {
               includeAllAuthors: true,
               withComments: true,
             })
@@ -948,7 +981,7 @@ export default defineContentScript({
         // Session change can change which notes are visible (follows differ),
         // so clear per-note client state to avoid stale dots / comments.
         mustardState.unreadByNoteId = {}
-        runNotesQuery(getCurrentPageUrl(), { withComments: true }).catch(() => {})
+        runNotesQuery(getCurrentPageKeys(), { withComments: true }).catch(() => {})
         return
       }
       if (message.type === 'NOTIFICATIONS_CHANGED') {
@@ -1041,7 +1074,7 @@ export default defineContentScript({
     // Query notes for the current page. Settle on failure too — otherwise a
     // rejected boot query (e.g. a transient service-worker or storage
     // failure) leaves maybeApplyPendingFocus's loading guard blocked forever.
-    runNotesQuery(getCurrentPageUrl(), { withComments: true })
+    runNotesQuery(getCurrentPageKeys(), { withComments: true })
       .catch(() => {})
       .finally(() => {
         initialNotesQuerySettled.resolve()
@@ -1169,7 +1202,7 @@ export default defineContentScript({
             // the newly-created note (no index re-query) — merge it in place,
             // retiring the optimistic placeholder and/or converted local note.
             const idsBeforeMerge = new Set(mustardState.notes.map((n) => n.id))
-            if (isLocalOperation) applyLocalNotesResponse(dtos)
+            if (isLocalOperation) applyLocalNotesResponse(dtos, message.data.anchorData.pageUrl)
             else mergeRemoteUpsertResponse(dtos, [optimisticId, message.localNoteIdToDelete])
             // The author must see their fresh timed note even when the video
             // played past its window while they wrote it.
@@ -1191,7 +1224,7 @@ export default defineContentScript({
         sendMessage(message)
           .then((dtos) => {
             console.debug('mustard [content-script] received notes after delete:', dtos)
-            if (isLocalDelete) applyLocalNotesResponse(dtos)
+            if (isLocalDelete) applyLocalNotesResponse(dtos, message.pageUrl)
             else applyNotesResponse(dtos)
             // The deletion is now confirmed, so discard the removed note's
             // per-note UI state and unlock only this note.
