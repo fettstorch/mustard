@@ -822,9 +822,15 @@ export default defineContentScript({
       // The site strategy may re-aim the click (e.g. a video hidden under
       // player chrome) and know stabler selectors than the generic DOM path.
       const siteStrategy = siteStrategyFor(window.location.href)
+      // Synthetic events (e.g. dispatched in tests) may lack coordinates, and
+      // elementsFromPoint throws on non-finite values — skip the stack then.
+      const clickStack =
+        Number.isFinite(event.clientX) && Number.isFinite(event.clientY)
+          ? document.elementsFromPoint(event.clientX, event.clientY)
+          : []
       const target = siteStrategy.resolveTargetElement(
         event.target as HTMLElement,
-        document.elementsFromPoint(event.clientX, event.clientY),
+        clickStack,
       ) as HTMLElement
       const rect = target.getBoundingClientRect()
       removeHighlight()
