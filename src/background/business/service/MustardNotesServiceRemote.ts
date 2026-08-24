@@ -202,8 +202,21 @@ async function isIndexCacheEnabled(): Promise<boolean> {
   return !!store[DEV_INDEX_CACHE_ENABLED_KEY]
 }
 
+/** Coalesces concurrent cold-cache callers into one get-index fetch. */
+let inFlightIndexPayload: { userId: string; promise: Promise<IndexCachePayload | null> } | null =
+  null
+
 async function getCachedIndexPayload(userId?: string): Promise<IndexCachePayload | null> {
   if (!userId) return null
+  if (inFlightIndexPayload?.userId === userId) return inFlightIndexPayload.promise
+  const promise = fetchIndexPayload(userId).finally(() => {
+    if (inFlightIndexPayload?.promise === promise) inFlightIndexPayload = null
+  })
+  inFlightIndexPayload = { userId, promise }
+  return promise
+}
+
+async function fetchIndexPayload(userId: string): Promise<IndexCachePayload | null> {
 
   // Validate JWT — detects session expiry and triggers logout/banner as a side effect.
   // O(1) from cache when valid; only hits the network when JWT needs refreshing (~hourly).
