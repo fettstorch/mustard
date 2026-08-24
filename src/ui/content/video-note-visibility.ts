@@ -43,11 +43,15 @@ export function useVideoNoteVisibility(options: {
       if (note.anchorData.elementAnchorData?.type !== 'video') continue
       const key = anchorKey(note)
 
+      // Resolve fresh every pass and compare identity: after an SPA
+      // navigation the anchor can resolve to a NEW video while the previously
+      // tracked one is still connected (retained navigation-stack screens) —
+      // "still connected" alone would keep listening to a hidden player.
+      const video = resolveAnchoredElement(note.anchorData)
       const tracked = trackedVideos.get(key)
-      if (tracked?.video.isConnected) continue
+      if (tracked && tracked.video === video) continue
       if (tracked) untrackVideo(key, tracked)
 
-      const video = resolveAnchoredElement(note.anchorData)
       if (!isVideoElement(video)) {
         hasUnresolvedVideo = true
         continue

@@ -178,13 +178,16 @@ const atprotoEmbeddedPostHooks: Pick<
   },
   resolveEmbeddedPost: (pageKey) => {
     const items = [...document.querySelectorAll(ATPROTO_POST_ITEM_SELECTOR)]
-    const byPermalink = items.find((item) => embeddedPostKey(item) === pageKey)
-    if (byPermalink) return byPermalink
+    const byPermalink = items.filter((item) => embeddedPostKey(item) === pageKey)
+    if (byPermalink.length > 0) return preferLaidOut(byPermalink)
     // A thread page's focused post carries no self-permalink — identify it by
     // its author handle among the permalink-less items.
     const atUri = AT_URI_POST.exec(pageKey)
     if (!atUri) return null
-    return items.find((item) => postItemHandle(item) === atUri[1] && !embeddedPostKey(item)) ?? null
+    const byHandle = items.filter(
+      (item) => postItemHandle(item) === atUri[1] && !embeddedPostKey(item),
+    )
+    return byHandle.length > 0 ? preferLaidOut(byHandle) : null
   },
   resolveEmbeddedPostAnchor: (target, stack) => {
     // Players can be portaled outside the post item's DOM subtree — the
@@ -364,6 +367,14 @@ function embeddedPostKey(item: Element): string | null {
     if (match) return `at://${match[1]}/app.bsky.feed.post/${match[2]}`
   }
   return null
+}
+
+/**
+ * Retained navigation-stack screens can leave hidden duplicates of a post
+ * item in the DOM — prefer a match that actually has layout.
+ */
+function preferLaidOut(candidates: Element[]): Element {
+  return candidates.find((el) => el.getClientRects().length > 0) ?? candidates[0]!
 }
 
 /** The author handle a post item's testid carries. */
