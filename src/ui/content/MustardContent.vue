@@ -18,6 +18,7 @@ import { LIMITS } from '@/shared/constants'
 import { filterVisibleNotes, hideNote, makeHiddenNoteRef, unhideNote } from '@/shared/hidden-notes'
 import { showMustardToast } from './mustard-toast'
 import { useVideoNoteVisibility } from './video-note-visibility'
+import { siteStrategyFor } from '@/shared/site-strategies'
 
 const PUBLISH_CONFIRM_DISMISSED_KEY = 'mustard-publish-confirm-dismissed'
 
@@ -318,6 +319,14 @@ function publishToRemote(
   linkPreview?: MustardNoteType['linkPreview'],
   linkPreviewDismissed?: boolean,
 ) {
+  // Publishing is the moment a pre-upgrade draft's legacy page key becomes
+  // canonical (e.g. appview URL → AT-URI); canonical keys pass through.
+  const canonicalPageUrl = anchorData.pageUrl.startsWith('at://')
+    ? anchorData.pageUrl
+    : siteStrategyFor(anchorData.pageUrl).getPageKey()
+  if (canonicalPageUrl !== anchorData.pageUrl) {
+    anchorData = { ...anchorData, pageUrl: canonicalPageUrl }
+  }
   if (!mustardState.currentUserId) {
     // User not logged in - prompt them to login
     alert('Please log in via the extension popup to publish notes')
