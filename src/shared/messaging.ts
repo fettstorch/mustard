@@ -53,6 +53,16 @@ export type QueryNotesMessage = Satisfies<
 // points at a note outside the follow/repost/mention channels (e.g. a joined
 // thread on an unfollowed author's note), this loads just that note instead
 // of reloading the whole page via `includeAllAuthors`.
+// Batched note query for atproto posts embedded in a feed page: one message
+// for all visible posts' canonical keys instead of a QUERY_NOTES per post.
+export type QueryNotesForPagesMessage = Satisfies<
+  BaseMessage,
+  {
+    type: 'QUERY_NOTES_FOR_PAGES'
+    pageUrls: string[]
+  }
+>
+
 export type QueryNotesByIdsMessage = Satisfies<
   BaseMessage,
   {
@@ -442,6 +452,7 @@ export type Message =
   | OpenNoteEditorMessage
   | UpsertNoteMessage
   | QueryNotesMessage
+  | QueryNotesForPagesMessage
   | QueryNotesByIdsMessage
   | QueryUnreadCommentNoteIdsMessage
   | GetLinkPreviewMessage
@@ -494,6 +505,7 @@ type MessageResponses = {
   OPEN_NOTE_EDITOR: void
   UPSERT_NOTE: WriteResponse<DtoMustardNote[]>
   QUERY_NOTES: DtoMustardNote[]
+  QUERY_NOTES_FOR_PAGES: DtoMustardNote[]
   QUERY_NOTES_BY_IDS: DtoMustardNote[]
   QUERY_UNREAD_COMMENT_NOTE_IDS: string[]
   GET_LINK_PREVIEW: LinkPreview | undefined
@@ -611,6 +623,10 @@ export function createQueryNotesMessage(
     pageUrl,
     ...(includeAllAuthors ? { includeAllAuthors } : {}),
   }
+}
+
+export function createQueryNotesForPagesMessage(pageUrls: string[]): QueryNotesForPagesMessage {
+  return { type: 'QUERY_NOTES_FOR_PAGES', pageUrls }
 }
 
 export function createQueryNotesByIdsMessage(

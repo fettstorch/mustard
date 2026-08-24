@@ -74,7 +74,7 @@ const editorPosition = computed(() => {
   // eslint-disable-next-line @typescript-eslint/no-unused-expressions
   resizeTick.value // dependency to trigger recalculation
   if (!mustardState.editor.isOpen || !mustardState.editor.anchor) return { x: 0, y: 0 }
-  return calculateAnchorPosition(mustardState.editor.anchor)
+  return calculateAnchorPosition(mustardState.editor.anchor) ?? { x: 0, y: 0 }
 })
 
 /** Get drag offset for a note, defaulting to {0,0} */
@@ -125,17 +125,22 @@ const notesWithPositions = computed(() => {
     mustardState.revealedHiddenNoteIds,
   )
     .filter(isNoteDisplayable)
-    .map((note) => {
+    .flatMap((note) => {
+      // Null = unplaceable on this page (a post-keyed note whose post isn't
+      // rendered here) — hide rather than misplace.
       const anchorPos = calculateAnchorPosition(note.anchorData)
+      if (!anchorPos) return []
       const offset = getDragOffset(note.id)
-      return {
-        note,
-        position: {
-          x: anchorPos.x + offset.x,
-          y: anchorPos.y + offset.y,
+      return [
+        {
+          note,
+          position: {
+            x: anchorPos.x + offset.x,
+            y: anchorPos.y + offset.y,
+          },
+          dragOffset: offset,
         },
-        dragOffset: offset,
-      }
+      ]
     })
 })
 

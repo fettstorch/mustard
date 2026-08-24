@@ -1,5 +1,6 @@
 import {
   createQueryNotesMessage,
+  createQueryNotesForPagesMessage,
   createQueryNotesByIdsMessage,
   createQueryUnreadCommentNoteIdsMessage,
   createGetAtprotoSessionMessage,
@@ -414,6 +415,74 @@ export default defineContentScript({
     )
 
     /**
+     * Merge additionally loaded notes (embedded posts in a feed) into state
+     * without disturbing what's already rendered.
+     */
+    function mergeAdditionalNotes(dtos: DtoMustardNote[] | undefined): void {
+      const existingIds = new Set(mustardState.notes.map((n) => n.id))
+      const added = (dtos ?? [])
+        .map(DtoMustardNote.fromDto)
+        .filter((n) => !n.id || !existingIds.has(n.id))
+      if (added.length === 0) return
+      mustardState.notes = [...mustardState.notes, ...added]
+      fetchProfilesForNotes(added)
+      // Guarded: fetchCommentsForNotes treats an all-local set as "no remote
+      // notes on this page" and would reset the whole comments state.
+      if (collectRemoteNoteIds(added).length > 0) {
+        fetchCommentsForNotes(added)
+        fetchUnreadForNotes(mustardState.notes)
+      }
+    }
+
+    /**
+     * Feed pages embed many posts, each addressable by its own canonical key.
+     * Load notes for the posts currently in the DOM (batched, once per key per
+     * page visit) and merge them next to the page's own notes.
+     */
+    let queriedEmbeddedPostKeys = new Set<string>()
+    const loadEmbeddedPostNotes = synchronize(async (): Promise<void> => {
+      const strategy = siteStrategyFor(window.location.href)
+      if (!strategy.supportsEmbeddedPosts()) return
+      const keys = strategy
+        .collectEmbeddedPostKeys()
+        .filter((key) => !queriedEmbeddedPostKeys.has(key) && !isCurrentPageKey(key))
+      if (keys.length === 0) return
+      for (const key of keys) queriedEmbeddedPostKeys.add(key)
+      try {
+        const dtos = await sendMessage(createQueryNotesForPagesMessage(keys))
+        mergeAdditionalNotes(dtos)
+      } catch (err) {
+        // Allow a later scan to retry these keys after a transient failure.
+        for (const key of keys) queriedEmbeddedPostKeys.delete(key)
+        console.debug('mustard [content-script] embedded post query failed:', err)
+      }
+    })
+
+    // Feeds render and grow asynchronously (infinite scroll) — watch the DOM
+    // and re-scan, debounced. Only attached on pages whose strategy embeds
+    // posts, so ordinary sites carry no observer cost.
+    let embeddedPostObserver: MutationObserver | null = null
+    let embeddedPostScanTimer: number | undefined
+    function syncEmbeddedPostObserver(): void {
+      const supports = siteStrategyFor(window.location.href).supportsEmbeddedPosts()
+      if (!supports) {
+        embeddedPostObserver?.disconnect()
+        embeddedPostObserver = null
+        return
+      }
+      loadEmbeddedPostNotes().catch(() => {})
+      if (embeddedPostObserver) return
+      embeddedPostObserver = new MutationObserver(() => {
+        if (embeddedPostScanTimer !== undefined) return
+        embeddedPostScanTimer = window.setTimeout(() => {
+          embeddedPostScanTimer = undefined
+          loadEmbeddedPostNotes().catch(() => {})
+        }, 800)
+      })
+      embeddedPostObserver.observe(document.body, { childList: true, subtree: true })
+    }
+
+    /**
      * Apply a local-only notes response: the background returns just the local
      * notes (fast path, no network), so we keep the already-loaded remote notes
      * in place and swap only the local ones.
@@ -770,7 +839,9 @@ export default defineContentScript({
       // Temporary notification / "show all" exceptions are page-scoped.
       mustardState.revealedHiddenNoteIds = {}
       mustardState.revealedTimedNoteIds = {}
+      queriedEmbeddedPostKeys = new Set()
       runNotesQuery(newPageKeys, { withComments: true }).catch(() => {})
+      syncEmbeddedPostObserver()
     }
 
     window.addEventListener('popstate', handleUrlChange)
@@ -865,12 +936,17 @@ export default defineContentScript({
         event.target as HTMLElement,
         clickStack,
       ) as HTMLElement
-      const rect = target.getBoundingClientRect()
+      // A click inside an embedded post (feed item) keys the note to the POST,
+      // not the page, with a selector that resolves on the post's own page and
+      // the note's position measured against the post's element.
+      const embeddedPost = siteStrategy.resolveEmbeddedPostAnchor(target, clickStack)
+      const rect = (embeddedPost?.anchorElement ?? target).getBoundingClientRect()
       removeHighlight()
       lastContextMenuTarget = target
       return {
-        pageUrl: getCurrentPageUrl(),
-        elementSelector: siteStrategy.createSelector(target) ?? generateSelector(target),
+        pageUrl: embeddedPost?.pageKey ?? getCurrentPageUrl(),
+        elementSelector:
+          embeddedPost?.selector ?? siteStrategy.createSelector(target) ?? generateSelector(target),
         relativePosition: {
           xP: ((event.clientX - rect.left) / rect.width) * 100,
           yP: ((event.clientY - rect.top) / rect.height) * 100,
@@ -981,6 +1057,7 @@ export default defineContentScript({
         // Session change can change which notes are visible (follows differ),
         // so clear per-note client state to avoid stale dots / comments.
         mustardState.unreadByNoteId = {}
+        syncEmbeddedPostObserver()
         runNotesQuery(getCurrentPageKeys(), { withComments: true }).catch(() => {})
         return
       }

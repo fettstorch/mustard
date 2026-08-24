@@ -32,6 +32,23 @@ type SiteStrategy = {
    * the caller falls back to its generic DOM-path selector.
    */
   createSelector?(element: Element): string | null
+  /**
+   * Canonical keys of atproto posts currently rendered inside this page
+   * (a feed shows many posts, each addressable by its own key).
+   */
+  collectEmbeddedPostKeys?(): string[]
+  /** The element rendering the given embedded post on this page, if any. */
+  resolveEmbeddedPost?(pageKey: string): Element | null
+  /**
+   * Post-scoped anchor for a click inside an embedded post: the post's
+   * canonical key, a selector that resolves on the post's own page, and the
+   * element the note's relative position is measured against. Null when the
+   * click wasn't inside an embedded post.
+   */
+  resolveEmbeddedPostAnchor?(
+    target: Element,
+    stack: Element[],
+  ): { pageKey: string; selector: string; anchorElement: Element } | null
 }
 
 /** A strategy resolved for one concrete page: same hooks, url already bound. */
@@ -42,6 +59,14 @@ type BoundSiteStrategy = {
   isVideoNotePage(): boolean
   resolveTargetElement(target: Element, stack: Element[]): Element
   createSelector(element: Element): string | null
+  /** Whether this page can embed independently-keyed atproto posts (feeds). */
+  supportsEmbeddedPosts(): boolean
+  collectEmbeddedPostKeys(): string[]
+  resolveEmbeddedPost(pageKey: string): Element | null
+  resolveEmbeddedPostAnchor(
+    target: Element,
+    stack: Element[],
+  ): { pageKey: string; selector: string; anchorElement: Element } | null
 }
 
 /** Any page without site-specific needs: origin+path key, no video notes. */
@@ -52,6 +77,9 @@ const defaultStrategy: Required<SiteStrategy> = {
   isVideoNotePage: () => false,
   resolveTargetElement: (target) => target,
   createSelector: () => null,
+  collectEmbeddedPostKeys: () => [],
+  resolveEmbeddedPost: () => null,
+  resolveEmbeddedPostAnchor: () => null,
 }
 
 /**
@@ -156,8 +184,7 @@ const atprotoPost: SiteStrategy = {
     const postItem = element.closest('[data-testid]')
     const testId = postItem?.getAttribute('data-testid')
     if (testId) {
-      // Quoted attribute value: only quotes and backslashes need escaping.
-      const selector = `[data-testid="${testId.replace(/["\\]/g, '\\$&')}"] video`
+      const selector = `[data-testid="${escapeAttributeValue(testId)}"] video`
       // Same-author posts share a testid: the selector only counts as an
       // address when the clicked video is its one and only match — matching
       // first among several would re-anchor to the wrong video on reorder.
@@ -168,6 +195,47 @@ const atprotoPost: SiteStrategy = {
   },
 }
 
+/**
+ * Every other page on an atproto appview (home, profiles, custom feeds):
+ * posts embedded in these feeds are addressable by their own canonical
+ * AT-URIs — notes created on a post surface wherever the post appears, and a
+ * note created on an embedded post is keyed to the post, not the feed page.
+ * Notes on the page itself (outside any post) keep the appview's URL key, so
+ * they stay appview-specific.
+ */
+const FEED_ITEM_SELECTOR = '[data-testid^="feedItem-by-"]'
+
+const atprotoFeed: SiteStrategy = {
+  matches: (url) => ATPROTO_APPVIEW_HOSTS.has(stripWww(url.hostname)),
+  // Feed videos are post videos, so timed notes are available here too.
+  isVideoNotePage: () => true,
+  resolveTargetElement: resolveVideoFromClickStack,
+  collectEmbeddedPostKeys: () => {
+    const keys = [...document.querySelectorAll(FEED_ITEM_SELECTOR)]
+      .map(embeddedPostKey)
+      .filter((key): key is string => !!key)
+    return [...new Set(keys)]
+  },
+  resolveEmbeddedPost: (pageKey) =>
+    [...document.querySelectorAll(FEED_ITEM_SELECTOR)].find(
+      (item) => embeddedPostKey(item) === pageKey,
+    ) ?? null,
+  resolveEmbeddedPostAnchor: (target) => {
+    const item = target.closest(FEED_ITEM_SELECTOR)
+    const pageKey = item && embeddedPostKey(item)
+    if (!item || !pageKey) return null
+    const handle = item.getAttribute('data-testid')!.slice('feedItem-by-'.length)
+    const isVideo = isVideoElement(target)
+    return {
+      pageKey,
+      // A selector that resolves on the post's own page; feed rendering
+      // ignores it and re-anchors via resolveEmbeddedPost instead.
+      selector: `[data-testid="postThreadItem-by-${escapeAttributeValue(handle)}"]${isVideo ? ' video' : ''}`,
+      anchorElement: isVideo ? target : item,
+    }
+  },
+}
+
 /** Ordered by specificity; the catch-all default closes the table. */
 const SITE_STRATEGIES: SiteStrategy[] = [
   youtubeWatch,
@@ -175,6 +243,7 @@ const SITE_STRATEGIES: SiteStrategy[] = [
   twitchVod,
   twitchClip,
   atprotoPost,
+  atprotoFeed,
   defaultStrategy,
 ]
 
@@ -209,10 +278,53 @@ export function siteStrategyFor(pageUrl: string): BoundSiteStrategy {
     isVideoNotePage: () => !!url && strategy.isVideoNotePage(url),
     resolveTargetElement: (target, stack) => strategy.resolveTargetElement(target, stack),
     createSelector: (element) => strategy.createSelector(element),
+    supportsEmbeddedPosts: () =>
+      strategy.collectEmbeddedPostKeys !== defaultStrategy.collectEmbeddedPostKeys,
+    collectEmbeddedPostKeys: () => strategy.collectEmbeddedPostKeys(),
+    resolveEmbeddedPost: (pageKey) => strategy.resolveEmbeddedPost(pageKey),
+    resolveEmbeddedPostAnchor: (target, stack) => strategy.resolveEmbeddedPostAnchor(target, stack),
   }
 }
 
+/**
+ * Resolves the element a note is anchored to on the CURRENT page. The stored
+ * selector wins; when it doesn't resolve (a post note viewed inside a feed),
+ * the note's post is looked up among the page's embedded posts. Null when
+ * neither resolves — such notes must not fall back to absolute positioning,
+ * which belongs to the page the note was created on.
+ */
+export function resolveAnchoredElement(anchor: {
+  pageUrl: string
+  elementSelector: string | null
+}): Element | null {
+  if (anchor.elementSelector) {
+    const element = document.querySelector(anchor.elementSelector)
+    if (element) return element
+  }
+  const container = siteStrategyFor(window.location.href).resolveEmbeddedPost(anchor.pageUrl)
+  if (!container) return null
+  // A video-scoped anchor re-anchors to the post's video inside the feed item.
+  return anchor.elementSelector?.endsWith('video')
+    ? (container.querySelector('video') ?? container)
+    : container
+}
+
 //--- module private utility
+
+/** Canonical AT-URI of the post an embedded feed item renders, from its permalink. */
+function embeddedPostKey(item: Element): string | null {
+  const links = item.querySelectorAll('a[href*="/post/"]')
+  for (const link of links) {
+    const match = ATPROTO_POST_PATH.exec(link.getAttribute('href') ?? '')
+    if (match) return `at://${match[1]}/app.bsky.feed.post/${match[2]}`
+  }
+  return null
+}
+
+/** Quoted attribute value: only quotes and backslashes need escaping. */
+function escapeAttributeValue(value: string): string {
+  return value.replace(/["\\]/g, '\\$&')
+}
 
 /** Shared hook: prefer the video hidden under player chrome at the click point. */
 function resolveVideoFromClickStack(target: Element, stack: Element[]): Element {

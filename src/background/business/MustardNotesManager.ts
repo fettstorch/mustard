@@ -51,6 +51,17 @@ export const mustardNotesManager = {
   },
 
   /**
+   * Query notes across several pages in one call — the feed path, where every
+   * atproto post embedded in the page contributes its canonical key.
+   */
+  async queryMustardNotesForPages(pageUrls: string[], userId?: string): Promise<MustardNote[]> {
+    if (pageUrls.length === 0) return []
+    const localNotes = await localService.queryNotesForPages(pageUrls)
+    const remoteNotes = userId ? await remoteService.queryNotesForPages(pageUrls, userId) : []
+    return sortByCreationDateAsc([...localNotes, ...remoteNotes])
+  },
+
+  /**
    * Query only local notes for a page (fast, no network).
    * Used for immediate responses after local operations.
    */

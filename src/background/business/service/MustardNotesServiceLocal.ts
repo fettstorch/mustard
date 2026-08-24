@@ -33,6 +33,15 @@ export class MustardNotesServiceLocal implements MustardNotesService {
     return dtos.map(DtoMustardNote.fromDto)
   }
 
+  async queryNotesForPages(pageUrls: string[]): Promise<MustardNote[]> {
+    if (pageUrls.length === 0) return []
+    const keys = pageUrls.map(notesKey)
+    const result = await browser.storage.local.get(keys)
+    return keys.flatMap((key) =>
+      ((result[key] ?? []) as DtoMustardNote[]).map(DtoMustardNote.fromDto),
+    )
+  }
+
   async upsertNote(note: MustardNote): Promise<void> {
     // No validation for local storage - user can manage their own local storage as they see fit
     // Selector length is still validated to prevent issues with very long selectors

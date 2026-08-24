@@ -116,6 +116,28 @@ async function fetchNotesByIdForPage(
   }
 }
 
+/** Multi-page variant of fetchNotesByIdForPage. */
+async function fetchNotesByIdForPages(
+  pageUrls: string[],
+  noteIds: string[],
+  into: Map<string, DbNote>,
+): Promise<void> {
+  const BATCH_SIZE = 200
+  for (let i = 0; i < noteIds.length; i += BATCH_SIZE) {
+    const batch = noteIds.slice(i, i + BATCH_SIZE)
+    const { data, error } = await supabase
+      .from('notes')
+      .select('*')
+      .in('page_url', pageUrls)
+      .in('id', batch)
+
+    if (error) {
+      throw new Error(`Supabase by-id notes query failed: ${error.message}`)
+    }
+    for (const row of (data || []) as DbNote[]) into.set(row.id, row)
+  }
+}
+
 /**
  * Fetch reposters for a batch of note ids → `noteId → reposterId[]` (all
  * reposters, global — the reposts table is public-read). Batched to stay within
@@ -273,6 +295,58 @@ class MustardNotesServiceRemote implements MustardNotesService {
       )
     } catch (error) {
       console.error('Failed to query remote notes:', error)
+      return []
+    }
+  }
+
+  /**
+   * Batched variant of queryNotes for several pages at once (e.g. every
+   * atproto post embedded in a feed). The cached index gates the network:
+   * only pages it knows to carry followed-author notes join the author query,
+   * so a feed full of unnoted posts costs at most the two by-id lookups.
+   */
+  async queryNotesForPages(pageUrls: string[], userId?: string): Promise<MustardNote[]> {
+    if (!userId || pageUrls.length === 0) return []
+
+    try {
+      const payload = await getCachedIndexPayload(userId)
+      if (!payload) return []
+
+      const { index, repostedNoteIds, mentionedNoteIds, repostersByNoteId } = payload
+      const authorsByPage = new Map(
+        pageUrls.map((pageUrl) => [pageUrl, index.getUsersForPage(pageUrl)]),
+      )
+      const notedPages = pageUrls.filter((pageUrl) => authorsByPage.get(pageUrl)!.length > 0)
+      const notesById = new Map<string, DbNote>()
+
+      if (notedPages.length > 0) {
+        // One query over the author union; rows are re-checked per page below
+        // so an author only surfaces on pages the index vouches for.
+        const authorUnion = [...new Set(notedPages.flatMap((p) => authorsByPage.get(p)!))]
+        const { data, error } = await supabase
+          .from('notes')
+          .select('*')
+          .in('page_url', notedPages)
+          .in('author_id', authorUnion)
+
+        if (error) {
+          throw new Error(`Supabase pages query failed: ${error.message}`)
+        }
+        for (const row of (data || []) as DbNote[]) {
+          if (authorsByPage.get(row.page_url)?.includes(row.author_id)) {
+            notesById.set(row.id, row)
+          }
+        }
+      }
+
+      await fetchNotesByIdForPages(pageUrls, repostedNoteIds, notesById)
+      await fetchNotesByIdForPages(pageUrls, mentionedNoteIds, notesById)
+
+      return [...notesById.values()].map((row) =>
+        dbNoteToMustardNote(row, repostersByNoteId[row.id] ?? []),
+      )
+    } catch (error) {
+      console.error('Failed to query remote notes for pages:', error)
       return []
     }
   }

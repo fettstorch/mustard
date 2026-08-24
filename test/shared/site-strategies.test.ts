@@ -1,7 +1,11 @@
 // @vitest-environment jsdom
 
 import { afterEach, describe, expect, it } from 'vitest'
-import { pageKeyToHref, siteStrategyFor } from '../../src/shared/site-strategies'
+import {
+  pageKeyToHref,
+  resolveAnchoredElement,
+  siteStrategyFor,
+} from '../../src/shared/site-strategies'
 
 const STREAM_PLACE_VOD = 'https://stream.place/iame.li/video/3msjhn6ahhthp'
 
@@ -92,7 +96,7 @@ describe('isVideoNotePage', () => {
     )
   })
 
-  it('accepts atproto post pages but not profiles or feeds', () => {
+  it('accepts atproto post pages and appview feeds (feed videos are post videos)', () => {
     expect(
       siteStrategyFor(
         'https://bsky.app/profile/debbieohi.com/post/3mtm3ff75lc2d',
@@ -103,8 +107,8 @@ describe('isVideoNotePage', () => {
         'https://mu.social/profile/debbieohi.com/post/3mtm3ff75lc2d',
       ).isVideoNotePage(),
     ).toBe(true)
-    expect(siteStrategyFor('https://bsky.app/profile/debbieohi.com').isVideoNotePage()).toBe(false)
-    expect(siteStrategyFor('https://bsky.app/').isVideoNotePage()).toBe(false)
+    expect(siteStrategyFor('https://bsky.app/profile/debbieohi.com').isVideoNotePage()).toBe(true)
+    expect(siteStrategyFor('https://bsky.app/').isVideoNotePage()).toBe(true)
   })
 
   it('rejects unknown pages and invalid urls', () => {
@@ -193,5 +197,77 @@ describe('Bluesky post selectors', () => {
     document.body.innerHTML = '<video></video><video></video>'
     const video = document.querySelectorAll('video')[1]!
     expect(siteStrategyFor(BSKY_POST).createSelector(video)).toBeNull()
+  })
+})
+
+describe('embedded atproto posts (feeds)', () => {
+  const FEED_PAGE = 'https://bsky.app/profile/tangled.org'
+  const POST_KEY = 'at://tangled.org/app.bsky.feed.post/3mttcilenbc23'
+
+  function renderFeed() {
+    document.body.innerHTML = `
+      <div data-testid="feedItem-by-tangled.org">
+        <a href="/profile/tangled.org/post/3mttcilenbc23">2h</a>
+        <p id="post-text">hello</p>
+        <video></video>
+      </div>
+      <div data-testid="feedItem-by-other.dev">
+        <a href="/profile/other.dev/post/abc123">1h</a>
+      </div>
+    `
+  }
+
+  it('collects the canonical keys of embedded posts', () => {
+    renderFeed()
+    expect(siteStrategyFor(FEED_PAGE).collectEmbeddedPostKeys()).toEqual([
+      POST_KEY,
+      'at://other.dev/app.bsky.feed.post/abc123',
+    ])
+    expect(siteStrategyFor('https://example.com/').collectEmbeddedPostKeys()).toEqual([])
+    expect(siteStrategyFor(FEED_PAGE).supportsEmbeddedPosts()).toBe(true)
+    expect(siteStrategyFor('https://example.com/').supportsEmbeddedPosts()).toBe(false)
+  })
+
+  it('keys a click inside an embedded post to the post, with a post-page selector', () => {
+    renderFeed()
+    const strategy = siteStrategyFor(FEED_PAGE)
+    const text = document.getElementById('post-text')!
+    const anchor = strategy.resolveEmbeddedPostAnchor(text, [text])!
+    expect(anchor.pageKey).toBe(POST_KEY)
+    expect(anchor.selector).toBe('[data-testid="postThreadItem-by-tangled.org"]')
+    expect(anchor.anchorElement).toBe(text.closest('[data-testid^="feedItem-by-"]'))
+
+    const video = document.querySelector('video')!
+    const videoAnchor = strategy.resolveEmbeddedPostAnchor(video, [video])!
+    expect(videoAnchor.selector).toBe('[data-testid="postThreadItem-by-tangled.org"] video')
+    expect(videoAnchor.anchorElement).toBe(video)
+  })
+
+  it('yields no post anchor for clicks outside embedded posts', () => {
+    renderFeed()
+    const outside = document.createElement('div')
+    document.body.appendChild(outside)
+    expect(siteStrategyFor(FEED_PAGE).resolveEmbeddedPostAnchor(outside, [outside])).toBeNull()
+  })
+
+  it('re-anchors post-keyed notes to their feed item on feed pages', () => {
+    renderFeed()
+    // jsdom's location is not an appview url — resolveAnchoredElement consults
+    // the current page's strategy, so run against the feed strategy via the
+    // embedded resolver directly plus the selector-precedence contract.
+    const container = siteStrategyFor(FEED_PAGE).resolveEmbeddedPost(POST_KEY)
+    expect(container?.getAttribute('data-testid')).toBe('feedItem-by-tangled.org')
+    expect(
+      siteStrategyFor(FEED_PAGE).resolveEmbeddedPost('at://nope/app.bsky.feed.post/x'),
+    ).toBeNull()
+  })
+
+  it('resolveAnchoredElement prefers the stored selector and never falls back for unknown pages', () => {
+    renderFeed()
+    const anchor = { pageUrl: POST_KEY, elementSelector: '#post-text' }
+    expect(resolveAnchoredElement(anchor)).toBe(document.getElementById('post-text'))
+    // Unresolvable selector on a non-appview page (jsdom location): no embedded
+    // resolution available → null, never the absolute-position fallback.
+    expect(resolveAnchoredElement({ pageUrl: POST_KEY, elementSelector: '#missing' })).toBeNull()
   })
 })
