@@ -1,6 +1,6 @@
 import type { MustardNoteAnchorData } from './model/MustardNoteAnchorData'
 import type { VideoElementAnchorData } from './model/MustardNoteElementAnchorData'
-import { siteStrategyFor } from './site-strategies'
+import { resolveAnchoredElement, siteStrategyFor } from './site-strategies'
 import { isVideoElement } from './video-element'
 
 export const VIDEO_NOTE_DEFAULT_DURATION = 5
@@ -106,8 +106,8 @@ function toFiniteNumber(value: unknown): number | undefined {
  */
 export function seekVideoToTimeframeStart(anchor: MustardNoteAnchorData): void {
   const anchorData = anchor.elementAnchorData
-  if (anchorData?.type !== 'video' || !anchor.elementSelector || isVideoAdShowing()) return
-  const video = document.querySelector(anchor.elementSelector)
+  if (anchorData?.type !== 'video' || isVideoAdShowing()) return
+  const video = resolveAnchoredElement(anchor)
   if (isVideoElement(video)) video.currentTime = anchorData.startAt
 }
 

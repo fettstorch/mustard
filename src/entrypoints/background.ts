@@ -17,6 +17,7 @@ import { mustardNotificationsManager } from '@/background/business/MustardNotifi
 import { DtoMustardNote } from '@/shared/dto/DtoMustardNote'
 import { DtoMustardComment } from '@/shared/dto/DtoMustardComment'
 import { RateLimitError } from '@/shared/errors'
+import { pageKeyToHref } from '@/shared/site-strategies'
 import {
   createNativeNotifications,
   clearNativeNotificationState,
@@ -97,7 +98,9 @@ export default defineBackground(() => {
     const focus: PendingFocus = { pageUrl, noteId }
     await browser.storage.local.set({ [PENDING_FOCUS_KEY]: focus }).catch(() => {})
     await invalidateRemoteIndexCache()
-    await browser.tabs.create({ url: pageUrl, active: true }).catch(() => {})
+    // The focus keeps the canonical key (the content script matches on it);
+    // only the tab needs a browsable URL (e.g. AT-URI keys open on bsky.app).
+    await browser.tabs.create({ url: pageKeyToHref(pageUrl), active: true }).catch(() => {})
   }
 
   /** Broadcast session change to all tabs so content scripts can update their state */
@@ -408,7 +411,13 @@ export default defineBackground(() => {
         await invalidateRemoteIndexCache()
 
         if (message.localNoteIdToDelete) {
-          await mustardNotesManager.deleteNote(message.localNoteIdToDelete, pageUrl, 'local')
+          // A pre-upgrade draft lives under its original (legacy) key even
+          // when the published anchor was canonicalized — delete it there.
+          await mustardNotesManager.deleteNote(
+            message.localNoteIdToDelete,
+            message.localNotePageUrl ?? pageUrl,
+            'local',
+          )
         }
 
         return created ? [DtoMustardNote.toDto(created)] : []
@@ -422,6 +431,15 @@ export default defineBackground(() => {
         {
           includeAllAuthors: message.includeAllAuthors,
         },
+      )
+      return notes.map(DtoMustardNote.toDto)
+    },
+
+    QUERY_NOTES_FOR_PAGES: async (message) => {
+      const session = await getSession()
+      const notes = await mustardNotesManager.queryMustardNotesForPages(
+        message.pageUrls,
+        session?.userId,
       )
       return notes.map(DtoMustardNote.toDto)
     },

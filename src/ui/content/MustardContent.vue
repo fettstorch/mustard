@@ -18,6 +18,7 @@ import { LIMITS } from '@/shared/constants'
 import { filterVisibleNotes, hideNote, makeHiddenNoteRef, unhideNote } from '@/shared/hidden-notes'
 import { showMustardToast } from './mustard-toast'
 import { useVideoNoteVisibility } from './video-note-visibility'
+import { siteStrategyFor } from '@/shared/site-strategies'
 
 const PUBLISH_CONFIRM_DISMISSED_KEY = 'mustard-publish-confirm-dismissed'
 
@@ -72,9 +73,9 @@ function onStorageChanged(changes: Record<string, Browser.storage.StorageChange>
 
 const editorPosition = computed(() => {
   // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-  resizeTick.value // dependency to trigger recalculation
+  resizeTick.value + mustardState.domTick // dependencies to trigger recalculation
   if (!mustardState.editor.isOpen || !mustardState.editor.anchor) return { x: 0, y: 0 }
-  return calculateAnchorPosition(mustardState.editor.anchor)
+  return calculateAnchorPosition(mustardState.editor.anchor) ?? { x: 0, y: 0 }
 })
 
 /** Get drag offset for a note, defaulting to {0,0} */
@@ -91,7 +92,7 @@ function setDragOffset(noteId: string | null, offset: { x: number; y: number }) 
 
 const { isNoteTimeframeActive } = useVideoNoteVisibility({
   getNotes: () => mustardState.notes,
-  getRetriggerTick: () => resizeTick.value,
+  getRetriggerTick: () => resizeTick.value + mustardState.domTick,
 })
 
 /**
@@ -114,7 +115,7 @@ function isNoteDisplayable(note: MustardNoteType): boolean {
 /** Compute positions for all notes (including drag offset) */
 const notesWithPositions = computed(() => {
   // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-  resizeTick.value // dependency to trigger recalculation
+  resizeTick.value + mustardState.domTick // dependencies to trigger recalculation
   if (!mustardState.areNotesVisible) return []
   // Hidden notes are dropped here rather than at query time: they still load, so
   // un-hiding brings one straight back without a re-query. Explicit reveal paths
@@ -125,17 +126,22 @@ const notesWithPositions = computed(() => {
     mustardState.revealedHiddenNoteIds,
   )
     .filter(isNoteDisplayable)
-    .map((note) => {
+    .flatMap((note) => {
+      // Null = unplaceable on this page (a post-keyed note whose post isn't
+      // rendered here) — hide rather than misplace.
       const anchorPos = calculateAnchorPosition(note.anchorData)
+      if (!anchorPos) return []
       const offset = getDragOffset(note.id)
-      return {
-        note,
-        position: {
-          x: anchorPos.x + offset.x,
-          y: anchorPos.y + offset.y,
+      return [
+        {
+          note,
+          position: {
+            x: anchorPos.x + offset.x,
+            y: anchorPos.y + offset.y,
+          },
+          dragOffset: offset,
         },
-        dragOffset: offset,
-      }
+      ]
     })
 })
 
@@ -313,6 +319,16 @@ function publishToRemote(
   linkPreview?: MustardNoteType['linkPreview'],
   linkPreviewDismissed?: boolean,
 ) {
+  // Publishing is the moment a pre-upgrade draft's legacy page key becomes
+  // canonical (e.g. appview URL → AT-URI); canonical keys pass through. The
+  // draft itself still lives under its original key — deletion needs it.
+  const localNotePageUrl = anchorData.pageUrl
+  const canonicalPageUrl = anchorData.pageUrl.startsWith('at://')
+    ? anchorData.pageUrl
+    : siteStrategyFor(anchorData.pageUrl).getPageKey()
+  if (canonicalPageUrl !== anchorData.pageUrl) {
+    anchorData = { ...anchorData, pageUrl: canonicalPageUrl }
+  }
   if (!mustardState.currentUserId) {
     // User not logged in - prompt them to login
     alert('Please log in via the extension popup to publish notes')
@@ -335,6 +351,7 @@ function publishToRemote(
       },
       'remote',
       localNoteIdToDelete,
+      localNoteIdToDelete ? localNotePageUrl : undefined,
     ),
   )
 }

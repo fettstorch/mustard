@@ -43,6 +43,8 @@ import { getSupabaseJwt } from '@/background/auth/SupabaseAuth'
 import type { LinkedIdentity, UserProfileType } from '@/shared/model/UserProfile'
 import { PROVIDER_LABELS } from '@/shared/providers'
 import { displayUrl } from '@/shared/display-url'
+import { DEV_INDEX_CACHE_ENABLED_KEY } from '@/background/business/service/MustardNotesServiceRemote'
+import { pageKeyToHref } from '@/shared/site-strategies'
 import HiddenNoteCard from './HiddenNoteCard.vue'
 import { useHiddenNotes } from './use-hidden-notes'
 
@@ -62,6 +64,10 @@ const showAnchorInEditor = ref(false)
 const altClickEnabled = ref(false)
 // Default ON — users discover native notifications and can switch them off here.
 const browserNotificationsEnabled = ref(true)
+// Dev builds only: the remote index cache is bypassed by default there so
+// fresh data can't be confused with cache staleness; this opts back in.
+const isDevBuild = import.meta.env.DEV
+const devIndexCacheEnabled = ref(false)
 const selectedFontId = ref<string>(DEFAULT_FONT_ID)
 const selectedThemeId = ref<string>(DEFAULT_THEME_ID)
 
@@ -132,6 +138,7 @@ onMounted(async () => {
     SHOW_ANCHOR_IN_EDITOR_KEY,
     ALT_CLICK_ENABLED_KEY,
     BROWSER_NOTIFICATIONS_ENABLED_KEY,
+    DEV_INDEX_CACHE_ENABLED_KEY,
     MUSTARD_FONT_KEY,
     MUSTARD_THEME_KEY,
   ])
@@ -141,6 +148,7 @@ onMounted(async () => {
   altClickEnabled.value = !!result[ALT_CLICK_ENABLED_KEY]
   // Missing == enabled (default on).
   browserNotificationsEnabled.value = result[BROWSER_NOTIFICATIONS_ENABLED_KEY] !== false
+  devIndexCacheEnabled.value = !!result[DEV_INDEX_CACHE_ENABLED_KEY]
   selectedFontId.value = getFontById(result[MUSTARD_FONT_KEY] as string | undefined).id
   selectedThemeId.value = getThemeById(result[MUSTARD_THEME_KEY] as string | undefined).id
 
@@ -195,6 +203,10 @@ function onMinimizeNotesChange() {
 
 function onShowAnchorInEditorChange() {
   browser.storage.local.set({ [SHOW_ANCHOR_IN_EDITOR_KEY]: showAnchorInEditor.value })
+}
+
+function onDevIndexCacheChange() {
+  browser.storage.local.set({ [DEV_INDEX_CACHE_ENABLED_KEY]: devIndexCacheEnabled.value })
 }
 
 function onAltClickEnabledChange() {
@@ -483,6 +495,21 @@ async function disconnect(provider: string, label: string) {
             a short delay.
           </span>
         </div>
+        <div v-if="isDevBuild" class="pref-row pref-row-stack">
+          <label class="pref-row">
+            <input
+              v-model="devIndexCacheEnabled"
+              type="checkbox"
+              class="pref-checkbox"
+              @change="onDevIndexCacheChange"
+            />
+            <span class="pref-label">[dev] Enable remote index cache</span>
+          </label>
+          <span class="pref-hint">
+            Dev builds skip the 5-minute index cache so every note query reflects fresh data. Turn
+            this on to observe production caching behavior. Not shown in release builds.
+          </span>
+        </div>
         <div class="pref-row pref-row-stack">
           <span class="pref-label">Color theme</span>
           <div class="theme-swatches" role="radiogroup" aria-label="Color theme">
@@ -564,7 +591,11 @@ async function disconnect(provider: string, label: string) {
             >
               <span class="hidden-note-missing-text">
                 Note no longer available ·
-                <a :href="entry.ref.pageUrl" target="_blank" rel="noopener noreferrer">
+                <a
+                  :href="pageKeyToHref(entry.ref.pageUrl)"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
                   {{ displayUrl(entry.ref.pageUrl) }}
                 </a>
               </span>

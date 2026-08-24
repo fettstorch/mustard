@@ -16,6 +16,12 @@ export interface MustardNotesService {
    */
   queryNotes(pageUrl: string, userId?: string): Promise<MustardNote[]>
 
+  /**
+   * Returns notes across several pages in one call (e.g. every atproto post
+   * embedded in a feed). Same visibility rules as queryNotes per page.
+   */
+  queryNotesForPages(pageUrls: string[], userId?: string): Promise<MustardNote[]>
+
   /** Returns the created/updated note when the service can (remote); void otherwise (local). */
   upsertNote(note: MustardNote): Promise<MustardNote | void>
   deleteNote(noteId: string, pageUrl: string): Promise<void>

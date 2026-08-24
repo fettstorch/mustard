@@ -14,6 +14,7 @@
  */
 import MustardNote from '@/ui/content/note/MustardNote.vue'
 import { displayUrl } from '@/shared/display-url'
+import { pageKeyToHref } from '@/shared/site-strategies'
 import type { MustardNote as MustardNoteType } from '@/shared/model/MustardNote'
 
 const props = defineProps<{
@@ -39,7 +40,7 @@ const NO_DRAG_OFFSET = { x: 0, y: 0 }
     />
     <a
       class="hidden-note-page"
-      :href="props.note.anchorData.pageUrl"
+      :href="pageKeyToHref(props.note.anchorData.pageUrl)"
       target="_blank"
       rel="noopener noreferrer"
       :title="props.note.anchorData.pageUrl"

@@ -30,6 +30,12 @@ export type UpsertNoteMessage = Satisfies<
     target: 'local' | 'remote'
     /** When publishing, the local note ID to delete after successful remote publish */
     localNoteIdToDelete?: string
+    /**
+     * The page key the local note is stored under, when it differs from the
+     * published anchor's (a pre-upgrade draft keyed by the legacy appview URL
+     * publishes under the canonical AT-URI). Deletion must use this key.
+     */
+    localNotePageUrl?: string
   }
 >
 
@@ -53,6 +59,16 @@ export type QueryNotesMessage = Satisfies<
 // points at a note outside the follow/repost/mention channels (e.g. a joined
 // thread on an unfollowed author's note), this loads just that note instead
 // of reloading the whole page via `includeAllAuthors`.
+// Batched note query for atproto posts embedded in a feed page: one message
+// for all visible posts' canonical keys instead of a QUERY_NOTES per post.
+export type QueryNotesForPagesMessage = Satisfies<
+  BaseMessage,
+  {
+    type: 'QUERY_NOTES_FOR_PAGES'
+    pageUrls: string[]
+  }
+>
+
 export type QueryNotesByIdsMessage = Satisfies<
   BaseMessage,
   {
@@ -442,6 +458,7 @@ export type Message =
   | OpenNoteEditorMessage
   | UpsertNoteMessage
   | QueryNotesMessage
+  | QueryNotesForPagesMessage
   | QueryNotesByIdsMessage
   | QueryUnreadCommentNoteIdsMessage
   | GetLinkPreviewMessage
@@ -494,6 +511,7 @@ type MessageResponses = {
   OPEN_NOTE_EDITOR: void
   UPSERT_NOTE: WriteResponse<DtoMustardNote[]>
   QUERY_NOTES: DtoMustardNote[]
+  QUERY_NOTES_FOR_PAGES: DtoMustardNote[]
   QUERY_NOTES_BY_IDS: DtoMustardNote[]
   QUERY_UNREAD_COMMENT_NOTE_IDS: string[]
   GET_LINK_PREVIEW: LinkPreview | undefined
@@ -593,12 +611,14 @@ export function createUpsertNoteMessage(
   data: Omit<DtoMustardNote, 'id' | 'authorId'>,
   target: 'local' | 'remote',
   localNoteIdToDelete?: string,
+  localNotePageUrl?: string,
 ): UpsertNoteMessage {
   return {
     type: 'UPSERT_NOTE',
     data,
     target,
     localNoteIdToDelete,
+    localNotePageUrl,
   }
 }
 
@@ -611,6 +631,10 @@ export function createQueryNotesMessage(
     pageUrl,
     ...(includeAllAuthors ? { includeAllAuthors } : {}),
   }
+}
+
+export function createQueryNotesForPagesMessage(pageUrls: string[]): QueryNotesForPagesMessage {
+  return { type: 'QUERY_NOTES_FOR_PAGES', pageUrls }
 }
 
 export function createQueryNotesByIdsMessage(

@@ -1,5 +1,6 @@
 import {
   createQueryNotesMessage,
+  createQueryNotesForPagesMessage,
   createQueryNotesByIdsMessage,
   createQueryUnreadCommentNoteIdsMessage,
   createGetAtprotoSessionMessage,
@@ -14,8 +15,7 @@ import {
   RATE_LIMIT_ERROR_CODE,
 } from '@/shared/messaging'
 import { isRemoteMutationMessage } from '@/shared/remote-mutation'
-import { getPageKey } from '@/shared/page-key'
-import { siteStrategyFor } from '@/shared/site-strategies'
+import { resolveAnchoredElement, siteStrategyFor } from '@/shared/site-strategies'
 import type { MustardNoteAnchorData } from '@/shared/model/MustardNoteAnchorData'
 import { LIMITS } from '@/shared/constants'
 import { extractMentions, type MentionTarget } from '@/shared/mentions'
@@ -127,19 +127,21 @@ export default defineContentScript({
     }
 
     /**
-     * Resolves the anchored video element, waiting for SPA players that mount
-     * after the notes query settles (the usual case on a fresh deep link).
+     * Resolves the note's anchored video element via the shared AT-URI-first
+     * resolution (never the raw selector, which can be ambiguous for
+     * same-author threads), waiting for SPA players that mount after the
+     * notes query settles (the usual case on a fresh deep link).
      */
-    function awaitVideoElement(
-      selector: string,
+    function awaitNoteVideo(
+      anchor: MustardNoteAnchorData,
       timeoutMs = 15000,
     ): Promise<HTMLVideoElement | null> {
-      const existing = document.querySelector(selector)
+      const existing = resolveAnchoredElement(anchor)
       if (isVideoElement(existing)) return Promise.resolve(existing)
 
       return new Promise((resolve) => {
         const observer = new MutationObserver(() => {
-          const el = document.querySelector(selector)
+          const el = resolveAnchoredElement(anchor)
           if (!isVideoElement(el)) return
           cleanup()
           resolve(el)
@@ -208,10 +210,8 @@ export default defineContentScript({
       const note = mustardState.notes.find((n) => n.id === noteId)
       const anchorData = note?.anchorData.elementAnchorData
       if (!note || anchorData?.type !== 'video') return
-      const selector = note.anchorData.elementSelector
-      if (!selector) return
 
-      const video = await awaitVideoElement(selector)
+      const video = await awaitNoteVideo(note.anchorData)
       if (!video) return
       // Pre-roll ads hijack the video element; only the content stream that
       // follows them may be seeked.
@@ -330,8 +330,10 @@ export default defineContentScript({
     }
 
     /** Fetch unread-notification counts for the given remote note ids. */
+    let unreadRequestId = 0
     function fetchUnreadForNotes(notes: MustardNote[]) {
       const remoteNoteIds = collectRemoteNoteIds(notes)
+      const requestId = ++unreadRequestId
 
       if (remoteNoteIds.length === 0 || !mustardState.currentUserId) {
         mustardState.unreadByNoteId = {}
@@ -342,6 +344,9 @@ export default defineContentScript({
 
       sendMessage(createQueryNotificationsForNotesMessage(remoteNoteIds))
         .then((response) => {
+          // A newer request owns the state (responses replace it wholesale) —
+          // drop this one so a stale subset can't clobber fresher counts.
+          if (requestId !== unreadRequestId) return
           console.debug('mustard [content-script] received notification counts:', response)
           // Replace entirely so previously-unread-but-now-acknowledged notes lose their dot.
           const next: Record<string, number> = {}
@@ -371,14 +376,27 @@ export default defineContentScript({
      * state and fan out the dependent fetches. `withComments` is opt-in because
      * some flows (e.g. repost, delete) don't need a comment/notification refresh.
      */
+    /**
+     * Applies a notes response scoped to the page keys it was queried for:
+     * only notes stored under those keys are replaced. Notes from other keys
+     * (embedded feed posts, a page's other legacy/canonical key) stay — a
+     * delete/repost response or a racing page query must not wipe them.
+     */
     function applyNotesResponse(
       dtos: DtoMustardNote[] | undefined,
-      options?: { withComments?: boolean },
+      options: { forPageKeys: string[]; withComments?: boolean },
     ): void {
       const notes = (dtos ?? []).map(DtoMustardNote.fromDto)
-      mustardState.notes = notes
+      const replacedKeys = new Set(options.forPageKeys)
+      const keptNotes = mustardState.notes.filter(
+        (note) => !replacedKeys.has(note.anchorData.pageUrl),
+      )
+      // Keep the global newest-renders-on-top order across kept + fresh notes.
+      mustardState.notes = [...keptNotes, ...notes].sort(
+        (a, b) => a.updatedAt.getTime() - b.updatedAt.getTime(),
+      )
       fetchProfilesForNotes(notes)
-      if (options?.withComments) fetchCommentsAndNotificationsForNotes(notes)
+      if (options.withComments) fetchCommentsAndNotificationsForNotes(mustardState.notes)
     }
 
     /**
@@ -392,24 +410,116 @@ export default defineContentScript({
      */
     const runNotesQuery = synchronize(
       async (
-        pageUrl: string,
+        pageUrls: string[],
         options?: { includeAllAuthors?: boolean; withComments?: boolean },
       ): Promise<number> => {
-        const dtos = await sendMessage(createQueryNotesMessage(pageUrl, options?.includeAllAuthors))
-        applyNotesResponse(dtos, { withComments: options?.withComments })
+        // A page can carry legacy keys next to its canonical one (see
+        // getCurrentPageKeys) — query them all and merge.
+        const dtoLists = await Promise.all(
+          pageUrls.map((pageUrl) =>
+            sendMessage(createQueryNotesMessage(pageUrl, options?.includeAllAuthors)),
+          ),
+        )
+        const seenIds = new Set<string>()
+        const dtos = dtoLists.flat().filter((dto) => {
+          if (!dto.id) return true
+          if (seenIds.has(dto.id)) return false
+          seenIds.add(dto.id)
+          return true
+        })
+        // Each response is sorted on its own — re-sort the merged set so newer
+        // notes still render last (on top) across page keys.
+        dtos.sort((a, b) => a.updatedAt - b.updatedAt)
+        applyNotesResponse(dtos, { forPageKeys: pageUrls, withComments: options?.withComments })
         return mustardState.notes.length
       },
     )
+
+    /**
+     * Merge additionally loaded notes (embedded posts in a feed) into state
+     * without disturbing what's already rendered.
+     */
+    function mergeAdditionalNotes(dtos: DtoMustardNote[] | undefined): void {
+      const existingIds = new Set(mustardState.notes.map((n) => n.id))
+      const added = (dtos ?? [])
+        .map(DtoMustardNote.fromDto)
+        .filter((n) => !n.id || !existingIds.has(n.id))
+      if (added.length === 0) return
+      mustardState.notes = [...mustardState.notes, ...added]
+      fetchProfilesForNotes(added)
+      // Guarded: fetchCommentsForNotes treats an all-local set as "no remote
+      // notes on this page" and would reset the whole comments state.
+      if (collectRemoteNoteIds(added).length > 0) {
+        fetchCommentsForNotes(added)
+        fetchUnreadForNotes(mustardState.notes)
+      }
+    }
+
+    /**
+     * Feed pages embed many posts, each addressable by its own canonical key.
+     * Load notes for the posts currently in the DOM (batched, once per key per
+     * page visit) and merge them next to the page's own notes.
+     */
+    let queriedEmbeddedPostKeys = new Set<string>()
+    const loadEmbeddedPostNotes = synchronize(async (): Promise<void> => {
+      const strategy = siteStrategyFor(window.location.href)
+      if (!strategy.supportsEmbeddedPosts()) return
+      const keys = strategy
+        .collectEmbeddedPostKeys()
+        .filter((key) => !queriedEmbeddedPostKeys.has(key) && !isCurrentPageKey(key))
+      if (keys.length === 0) return
+      try {
+        const dtos = await sendMessage(createQueryNotesForPagesMessage(keys))
+        // Mark only after success (this loader is serialized, so no double
+        // query in between) — a failed batch stays eligible for later scans.
+        for (const key of keys) queriedEmbeddedPostKeys.add(key)
+        mergeAdditionalNotes(dtos)
+      } catch (err) {
+        console.debug('mustard [content-script] embedded post query failed:', err)
+      }
+    })
+
+    // Feeds render and grow asynchronously (infinite scroll) — watch the DOM
+    // and re-scan, debounced. Only attached on pages whose strategy embeds
+    // posts, so ordinary sites carry no observer cost.
+    let embeddedPostObserver: MutationObserver | null = null
+    let embeddedPostScanTimer: number | undefined
+    function syncEmbeddedPostObserver(): void {
+      const supports = siteStrategyFor(window.location.href).supportsEmbeddedPosts()
+      if (!supports) {
+        embeddedPostObserver?.disconnect()
+        embeddedPostObserver = null
+        return
+      }
+      loadEmbeddedPostNotes().catch(() => {})
+      if (embeddedPostObserver) return
+      embeddedPostObserver = new MutationObserver(() => {
+        if (embeddedPostScanTimer !== undefined) return
+        embeddedPostScanTimer = window.setTimeout(() => {
+          embeddedPostScanTimer = undefined
+          loadEmbeddedPostNotes().catch(() => {})
+          // SPA screen transitions swap post items without any scroll/resize —
+          // nudge anchor resolution and video tracking to re-evaluate.
+          mustardState.domTick++
+        }, 800)
+      })
+      embeddedPostObserver.observe(document.body, { childList: true, subtree: true })
+    }
 
     /**
      * Apply a local-only notes response: the background returns just the local
      * notes (fast path, no network), so we keep the already-loaded remote notes
      * in place and swap only the local ones.
      */
-    function applyLocalNotesResponse(dtos: DtoMustardNote[] | undefined): void {
+    function applyLocalNotesResponse(dtos: DtoMustardNote[] | undefined, pageKey: string): void {
       const localNotes = (dtos ?? []).map(DtoMustardNote.fromDto)
-      const remoteNotes = mustardState.notes.filter((n) => n.authorId !== 'local')
-      mustardState.notes = [...localNotes, ...remoteNotes]
+      // Swap only the local notes stored under the responding key — a page can
+      // also show local notes from its legacy keys, which this response
+      // doesn't cover.
+      const keptNotes = mustardState.notes.filter(
+        (n) => n.authorId !== 'local' || n.anchorData.pageUrl !== pageKey,
+      )
+      mustardState.notes = [...localNotes, ...keptNotes]
     }
 
     /**
@@ -487,10 +597,21 @@ export default defineContentScript({
       }
     }
 
-    let currentPageUrl = getPageKey(window.location.href)
+    // Canonical key first, plus any legacy keys existing notes may live under
+    // (e.g. appview URLs from before AT-URI keying). Writes always use the
+    // canonical key; loading and focus matching honor the whole set.
+    let currentPageKeys = siteStrategyFor(window.location.href).getPageKeys()
 
     function getCurrentPageUrl(): string {
-      return currentPageUrl
+      return currentPageKeys[0]!
+    }
+
+    function getCurrentPageKeys(): string[] {
+      return currentPageKeys
+    }
+
+    function isCurrentPageKey(pageUrl: string): boolean {
+      return currentPageKeys.includes(pageUrl)
     }
 
     // --- Pending focus (deep-link from the popup) ---
@@ -627,7 +748,7 @@ export default defineContentScript({
     })
 
     function maybeApplyPendingFocus(): void {
-      if (!pendingFocus || pendingFocus.pageUrl !== getCurrentPageUrl()) return
+      if (!pendingFocus || !isCurrentPageKey(pendingFocus.pageUrl)) return
       if (initialNotesQuerySettled.status() === 'pending') return // wait for the first query to resolve
 
       const focus = pendingFocus
@@ -714,7 +835,7 @@ export default defineContentScript({
         // it — otherwise an unrelated tab that happens to boot around the same
         // time (e.g. the onInstalled onboarding tab) can read and delete this
         // one-shot key before the real target tab gets to it.
-        if (focus && focus.pageUrl === getCurrentPageUrl()) {
+        if (focus && isCurrentPageKey(focus.pageUrl)) {
           browser.storage.local.remove(PENDING_FOCUS_KEY).catch(() => {})
           pendingFocus = focus
           maybeApplyPendingFocus()
@@ -723,11 +844,16 @@ export default defineContentScript({
       .catch(() => {})
 
     function handleUrlChange() {
-      const newUrl = getPageKey(window.location.href)
-      if (newUrl === currentPageUrl) return
+      const newPageKeys = siteStrategyFor(window.location.href).getPageKeys()
+      if (newPageKeys[0] === getCurrentPageUrl()) return
 
-      console.debug('mustard [content-script] URL changed:', currentPageUrl, '->', newUrl)
-      currentPageUrl = newUrl
+      console.debug(
+        'mustard [content-script] URL changed:',
+        getCurrentPageUrl(),
+        '->',
+        newPageKeys[0],
+      )
+      currentPageKeys = newPageKeys
 
       mustardState.notes = []
       mustardState.comments = {}
@@ -737,7 +863,9 @@ export default defineContentScript({
       // Temporary notification / "show all" exceptions are page-scoped.
       mustardState.revealedHiddenNoteIds = {}
       mustardState.revealedTimedNoteIds = {}
-      runNotesQuery(newUrl, { withComments: true }).catch(() => {})
+      queriedEmbeddedPostKeys = new Set()
+      runNotesQuery(newPageKeys, { withComments: true }).catch(() => {})
+      syncEmbeddedPostObserver()
     }
 
     window.addEventListener('popstate', handleUrlChange)
@@ -832,20 +960,31 @@ export default defineContentScript({
         event.target as HTMLElement,
         clickStack,
       ) as HTMLElement
-      const rect = target.getBoundingClientRect()
+      // A click inside an embedded post (feed item) keys the note to the POST,
+      // not the page, with a selector that resolves on the post's own page and
+      // the note's position measured against the post's element.
+      const embeddedPost = siteStrategy.resolveEmbeddedPostAnchor(target, clickStack)
+      const rect = (embeddedPost?.anchorElement ?? target).getBoundingClientRect()
       removeHighlight()
       lastContextMenuTarget = target
       return {
-        pageUrl: getCurrentPageUrl(),
-        elementSelector: siteStrategy.createSelector(target) ?? generateSelector(target),
+        pageUrl: embeddedPost?.pageKey ?? getCurrentPageUrl(),
+        elementSelector:
+          embeddedPost?.selector ?? siteStrategy.createSelector(target) ?? generateSelector(target),
         relativePosition: {
           xP: ((event.clientX - rect.left) / rect.width) * 100,
           yP: ((event.clientY - rect.top) / rect.height) * 100,
         },
-        clickPosition: {
-          xVw: (event.clientX / window.innerWidth) * 100,
-          yPx: event.clientY + window.scrollY,
-        },
+        // A note created on a post embedded in a feed can't derive a
+        // meaningful absolute fallback from the feed's layout (the post could
+        // be anywhere). Store a neutral default instead: roughly where the
+        // focused post sits on its own page (top of the content column).
+        clickPosition: embeddedPost
+          ? { xVw: 50, yPx: 300 }
+          : {
+              xVw: (event.clientX / window.innerWidth) * 100,
+              yPx: event.clientY + window.scrollY,
+            },
       }
     }
 
@@ -876,7 +1015,14 @@ export default defineContentScript({
         return Promise.resolve(mustardState.areNotesVisible)
       }
       if (message.type === 'NOTE_DELETED') {
-        if (message.pageUrl === getCurrentPageUrl()) dropDeletedNote(message.noteId)
+        // A feed tab can hold the note under its post key while the broadcast
+        // carries that at:// key — evict wherever the note is actually loaded.
+        if (
+          isCurrentPageKey(message.pageUrl) ||
+          mustardState.notes.some((n) => n.id === message.noteId)
+        ) {
+          dropDeletedNote(message.noteId)
+        }
         return
       }
       if (message.type === 'LOAD_ALL_NOTES') {
@@ -897,7 +1043,7 @@ export default defineContentScript({
         }
         return (async (): Promise<number> => {
           try {
-            const count = await runNotesQuery(getCurrentPageUrl(), {
+            const count = await runNotesQuery(getCurrentPageKeys(), {
               includeAllAuthors: true,
               withComments: true,
             })
@@ -945,10 +1091,19 @@ export default defineContentScript({
           document.getElementById('mustard-session-expired-banner')?.remove()
           fetchProfiles({ userIds: [message.userId] })
         }
-        // Session change can change which notes are visible (follows differ),
-        // so clear per-note client state to avoid stale dots / comments.
+        // A different session sees a different visibility graph — nothing
+        // loaded for the old account may survive. Clear the whole notes state
+        // (like a navigation does) and let the fresh queries rebuild it.
+        mustardState.notes = []
+        mustardState.comments = {}
+        mustardState.commentsLoadState = {}
+        mustardState.expandedCommentNoteIds = {}
         mustardState.unreadByNoteId = {}
-        runNotesQuery(getCurrentPageUrl(), { withComments: true }).catch(() => {})
+        mustardState.revealedHiddenNoteIds = {}
+        mustardState.revealedTimedNoteIds = {}
+        queriedEmbeddedPostKeys = new Set()
+        syncEmbeddedPostObserver()
+        runNotesQuery(getCurrentPageKeys(), { withComments: true }).catch(() => {})
         return
       }
       if (message.type === 'NOTIFICATIONS_CHANGED') {
@@ -1041,7 +1196,10 @@ export default defineContentScript({
     // Query notes for the current page. Settle on failure too — otherwise a
     // rejected boot query (e.g. a transient service-worker or storage
     // failure) leaves maybeApplyPendingFocus's loading guard blocked forever.
-    runNotesQuery(getCurrentPageUrl(), { withComments: true })
+    // Feed pages must scan for embedded posts on the initial load too — not
+    // only after SPA navigations or session changes.
+    syncEmbeddedPostObserver()
+    runNotesQuery(getCurrentPageKeys(), { withComments: true })
       .catch(() => {})
       .finally(() => {
         initialNotesQuerySettled.resolve()
@@ -1169,7 +1327,7 @@ export default defineContentScript({
             // the newly-created note (no index re-query) — merge it in place,
             // retiring the optimistic placeholder and/or converted local note.
             const idsBeforeMerge = new Set(mustardState.notes.map((n) => n.id))
-            if (isLocalOperation) applyLocalNotesResponse(dtos)
+            if (isLocalOperation) applyLocalNotesResponse(dtos, message.data.anchorData.pageUrl)
             else mergeRemoteUpsertResponse(dtos, [optimisticId, message.localNoteIdToDelete])
             // The author must see their fresh timed note even when the video
             // played past its window while they wrote it.
@@ -1191,8 +1349,8 @@ export default defineContentScript({
         sendMessage(message)
           .then((dtos) => {
             console.debug('mustard [content-script] received notes after delete:', dtos)
-            if (isLocalDelete) applyLocalNotesResponse(dtos)
-            else applyNotesResponse(dtos)
+            if (isLocalDelete) applyLocalNotesResponse(dtos, message.pageUrl)
+            else applyNotesResponse(dtos, { forPageKeys: [message.pageUrl] })
             // The deletion is now confirmed, so discard the removed note's
             // per-note UI state and unlock only this note.
             dropDeletedNote(message.noteId)
@@ -1211,7 +1369,7 @@ export default defineContentScript({
           .then((dtos) => {
             console.debug('mustard [content-script] received notes after repost:', dtos)
             // Reposter avatars need their profiles resolved for the stack.
-            applyNotesResponse(dtos)
+            applyNotesResponse(dtos, { forPageKeys: [message.pageUrl] })
           })
           .catch((err) => {
             console.error('mustard [content-script] SET_REPOST failed:', err)

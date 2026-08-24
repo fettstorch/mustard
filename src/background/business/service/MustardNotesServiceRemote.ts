@@ -116,6 +116,28 @@ async function fetchNotesByIdForPage(
   }
 }
 
+/** Multi-page variant of fetchNotesByIdForPage. */
+async function fetchNotesByIdForPages(
+  pageUrls: string[],
+  noteIds: string[],
+  into: Map<string, DbNote>,
+): Promise<void> {
+  const BATCH_SIZE = 200
+  for (let i = 0; i < noteIds.length; i += BATCH_SIZE) {
+    const batch = noteIds.slice(i, i + BATCH_SIZE)
+    const { data, error } = await supabase
+      .from('notes')
+      .select('*')
+      .in('page_url', pageUrls)
+      .in('id', batch)
+
+    if (error) {
+      throw new Error(`Supabase by-id notes query failed: ${error.message}`)
+    }
+    for (const row of (data || []) as DbNote[]) into.set(row.id, row)
+  }
+}
+
 /**
  * Fetch reposters for a batch of note ids → `noteId → reposterId[]` (all
  * reposters, global — the reposts table is public-read). Batched to stay within
@@ -165,9 +187,36 @@ function hydrateIndexCache(stored: StoredIndexCache): IndexCachePayload {
  *   - userId is missing, or
  *   - the Supabase JWT can't be obtained (e.g. session expired).
  */
+/**
+ * Dev builds bypass the index cache TTL by default so every query reflects
+ * fresh data — cache-related confusion is ruled out while developing. The
+ * options page (dev builds only) can re-enable the cache to observe
+ * production behavior. Production builds always cache; the compile-time guard
+ * lets the whole check tree-shake away.
+ */
+export const DEV_INDEX_CACHE_ENABLED_KEY = 'mustard-dev-index-cache-enabled'
+
+async function isIndexCacheEnabled(): Promise<boolean> {
+  if (!import.meta.env.DEV) return true
+  const store = await browser.storage.local.get(DEV_INDEX_CACHE_ENABLED_KEY)
+  return !!store[DEV_INDEX_CACHE_ENABLED_KEY]
+}
+
+/** Coalesces concurrent cold-cache callers into one get-index fetch. */
+let inFlightIndexPayload: { userId: string; promise: Promise<IndexCachePayload | null> } | null =
+  null
+
 async function getCachedIndexPayload(userId?: string): Promise<IndexCachePayload | null> {
   if (!userId) return null
+  if (inFlightIndexPayload?.userId === userId) return inFlightIndexPayload.promise
+  const promise = fetchIndexPayload(userId).finally(() => {
+    if (inFlightIndexPayload?.promise === promise) inFlightIndexPayload = null
+  })
+  inFlightIndexPayload = { userId, promise }
+  return promise
+}
 
+async function fetchIndexPayload(userId: string): Promise<IndexCachePayload | null> {
   // Validate JWT — detects session expiry and triggers logout/banner as a side effect.
   // O(1) from cache when valid; only hits the network when JWT needs refreshing (~hourly).
   const jwt = await getSupabaseJwt()
@@ -176,7 +225,12 @@ async function getCachedIndexPayload(userId?: string): Promise<IndexCachePayload
   const now = Date.now()
   const store = await browser.storage.session.get(INDEX_CACHE_KEY)
   const cached = store[INDEX_CACHE_KEY] as StoredIndexCache | undefined
-  if (cached && cached.userId === userId && now - cached.timestamp < INDEX_CACHE_TTL_MS) {
+  if (
+    cached &&
+    cached.userId === userId &&
+    now - cached.timestamp < INDEX_CACHE_TTL_MS &&
+    (await isIndexCacheEnabled())
+  ) {
     return hydrateIndexCache(cached)
   }
 
@@ -275,6 +329,57 @@ class MustardNotesServiceRemote implements MustardNotesService {
       console.error('Failed to query remote notes:', error)
       return []
     }
+  }
+
+  /**
+   * Batched variant of queryNotes for several pages at once (e.g. every
+   * atproto post embedded in a feed). The cached index gates the network:
+   * only pages it knows to carry followed-author notes join the author query,
+   * so a feed full of unnoted posts costs at most the two by-id lookups.
+   */
+  async queryNotesForPages(pageUrls: string[], userId?: string): Promise<MustardNote[]> {
+    if (!userId || pageUrls.length === 0) return []
+
+    // No catch here (unlike queryNotes): the feed loader marks keys as
+    // handled only on success, so failures must REJECT the message rather
+    // than masquerade as an empty result. A missing payload with a logged-in
+    // user means the index fetch failed — same story.
+    const payload = await getCachedIndexPayload(userId)
+    if (!payload) throw new Error('index unavailable for batched notes query')
+
+    const { index, repostedNoteIds, mentionedNoteIds, repostersByNoteId } = payload
+    const authorsByPage = new Map(
+      pageUrls.map((pageUrl) => [pageUrl, index.getUsersForPage(pageUrl)]),
+    )
+    const notedPages = pageUrls.filter((pageUrl) => authorsByPage.get(pageUrl)!.length > 0)
+    const notesById = new Map<string, DbNote>()
+
+    if (notedPages.length > 0) {
+      // One query over the author union; rows are re-checked per page below
+      // so an author only surfaces on pages the index vouches for.
+      const authorUnion = [...new Set(notedPages.flatMap((p) => authorsByPage.get(p)!))]
+      const { data, error } = await supabase
+        .from('notes')
+        .select('*')
+        .in('page_url', notedPages)
+        .in('author_id', authorUnion)
+
+      if (error) {
+        throw new Error(`Supabase pages query failed: ${error.message}`)
+      }
+      for (const row of (data || []) as DbNote[]) {
+        if (authorsByPage.get(row.page_url)?.includes(row.author_id)) {
+          notesById.set(row.id, row)
+        }
+      }
+    }
+
+    await fetchNotesByIdForPages(pageUrls, repostedNoteIds, notesById)
+    await fetchNotesByIdForPages(pageUrls, mentionedNoteIds, notesById)
+
+    return [...notesById.values()].map((row) =>
+      dbNoteToMustardNote(row, repostersByNoteId[row.id] ?? []),
+    )
   }
 
   /**
