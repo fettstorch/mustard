@@ -15,6 +15,7 @@ import {
 } from '@/shared/messaging'
 import { isRemoteMutationMessage } from '@/shared/remote-mutation'
 import { getPageKey } from '@/shared/page-key'
+import { siteStrategyFor } from '@/shared/site-strategies'
 import type { MustardNoteAnchorData } from '@/shared/model/MustardNoteAnchorData'
 import { LIMITS } from '@/shared/constants'
 import { extractMentions, type MentionTarget } from '@/shared/mentions'
@@ -818,13 +819,25 @@ export default defineContentScript({
     }
 
     function captureAnchorData(event: MouseEvent): MustardNoteAnchorData {
-      const target = event.target as HTMLElement
+      // The site strategy may re-aim the click (e.g. a video hidden under
+      // player chrome) and know stabler selectors than the generic DOM path.
+      const siteStrategy = siteStrategyFor(window.location.href)
+      // Synthetic events (e.g. dispatched in tests) may lack coordinates, and
+      // elementsFromPoint throws on non-finite values — skip the stack then.
+      const clickStack =
+        Number.isFinite(event.clientX) && Number.isFinite(event.clientY)
+          ? document.elementsFromPoint(event.clientX, event.clientY)
+          : []
+      const target = siteStrategy.resolveTargetElement(
+        event.target as HTMLElement,
+        clickStack,
+      ) as HTMLElement
       const rect = target.getBoundingClientRect()
       removeHighlight()
       lastContextMenuTarget = target
       return {
         pageUrl: getCurrentPageUrl(),
-        elementSelector: generateSelector(target),
+        elementSelector: siteStrategy.createSelector(target) ?? generateSelector(target),
         relativePosition: {
           xP: ((event.clientX - rect.left) / rect.width) * 100,
           yP: ((event.clientY - rect.top) / rect.height) * 100,
