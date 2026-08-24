@@ -320,7 +320,9 @@ function publishToRemote(
   linkPreviewDismissed?: boolean,
 ) {
   // Publishing is the moment a pre-upgrade draft's legacy page key becomes
-  // canonical (e.g. appview URL → AT-URI); canonical keys pass through.
+  // canonical (e.g. appview URL → AT-URI); canonical keys pass through. The
+  // draft itself still lives under its original key — deletion needs it.
+  const localNotePageUrl = anchorData.pageUrl
   const canonicalPageUrl = anchorData.pageUrl.startsWith('at://')
     ? anchorData.pageUrl
     : siteStrategyFor(anchorData.pageUrl).getPageKey()
@@ -349,6 +351,7 @@ function publishToRemote(
       },
       'remote',
       localNoteIdToDelete,
+      localNoteIdToDelete ? localNotePageUrl : undefined,
     ),
   )
 }

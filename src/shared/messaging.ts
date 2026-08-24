@@ -30,6 +30,12 @@ export type UpsertNoteMessage = Satisfies<
     target: 'local' | 'remote'
     /** When publishing, the local note ID to delete after successful remote publish */
     localNoteIdToDelete?: string
+    /**
+     * The page key the local note is stored under, when it differs from the
+     * published anchor's (a pre-upgrade draft keyed by the legacy appview URL
+     * publishes under the canonical AT-URI). Deletion must use this key.
+     */
+    localNotePageUrl?: string
   }
 >
 
@@ -605,12 +611,14 @@ export function createUpsertNoteMessage(
   data: Omit<DtoMustardNote, 'id' | 'authorId'>,
   target: 'local' | 'remote',
   localNoteIdToDelete?: string,
+  localNotePageUrl?: string,
 ): UpsertNoteMessage {
   return {
     type: 'UPSERT_NOTE',
     data,
     target,
     localNoteIdToDelete,
+    localNotePageUrl,
   }
 }
 

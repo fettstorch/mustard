@@ -411,7 +411,13 @@ export default defineBackground(() => {
         await invalidateRemoteIndexCache()
 
         if (message.localNoteIdToDelete) {
-          await mustardNotesManager.deleteNote(message.localNoteIdToDelete, pageUrl, 'local')
+          // A pre-upgrade draft lives under its original (legacy) key even
+          // when the published anchor was canonicalized — delete it there.
+          await mustardNotesManager.deleteNote(
+            message.localNoteIdToDelete,
+            message.localNotePageUrl ?? pageUrl,
+            'local',
+          )
         }
 
         return created ? [DtoMustardNote.toDto(created)] : []
