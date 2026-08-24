@@ -72,14 +72,46 @@ const streamPlaceVod: SiteStrategy = {
   matches: (url) =>
     stripWww(url.hostname) === 'stream.place' && /^\/[^/]+\/video\/[^/]+$/.test(url.pathname),
   isVideoNotePage: () => true,
-  resolveTargetElement: (target, stack) =>
-    isVideoElement(target) ? target : (stack.find(isVideoElement) ?? target),
-  createSelector: (element) =>
-    isVideoElement(element) && document.querySelectorAll('video').length === 1 ? 'video' : null,
+  resolveTargetElement: resolveVideoFromClickStack,
+  createSelector: uniqueVideoSelector,
+}
+
+/**
+ * Twitch VODs (`/videos/{id}`); live streams (`/{channel}`) stay excluded —
+ * their playback clock doesn't persist. The player has the same shape as
+ * stream.place's: chrome overlays the single <video>, and the surrounding DOM
+ * is generated styled-components markup with no stable ids or classes.
+ */
+const twitchVod: SiteStrategy = {
+  matches: (url) =>
+    stripWww(url.hostname) === 'twitch.tv' && /^\/videos\/[^/]+$/.test(url.pathname),
+  isVideoNotePage: () => true,
+  resolveTargetElement: resolveVideoFromClickStack,
+  createSelector: uniqueVideoSelector,
+}
+
+/**
+ * Twitch clips (`/{channel}/clip/{slug}`; the clips.twitch.tv share domain
+ * redirects here). Today the clip player happens to share the VOD player's
+ * shape, but clips are a separate Twitch feature that can evolve on its own —
+ * hence its own strategy.
+ */
+const twitchClip: SiteStrategy = {
+  matches: (url) =>
+    stripWww(url.hostname) === 'twitch.tv' && /^\/[^/]+\/clip\/[^/]+$/.test(url.pathname),
+  isVideoNotePage: () => true,
+  resolveTargetElement: resolveVideoFromClickStack,
+  createSelector: uniqueVideoSelector,
 }
 
 /** Ordered by specificity; the catch-all default closes the table. */
-const SITE_STRATEGIES: SiteStrategy[] = [youtubeWatch, streamPlaceVod, defaultStrategy]
+const SITE_STRATEGIES: SiteStrategy[] = [
+  youtubeWatch,
+  streamPlaceVod,
+  twitchVod,
+  twitchClip,
+  defaultStrategy,
+]
 
 /**
  * Resolves the page's strategy once: the most specific match, completed with
@@ -102,6 +134,16 @@ export function siteStrategyFor(pageUrl: string): BoundSiteStrategy {
 }
 
 //--- module private utility
+
+/** Shared hook: prefer the video hidden under player chrome at the click point. */
+function resolveVideoFromClickStack(target: Element, stack: Element[]): Element {
+  return isVideoElement(target) ? target : (stack.find(isVideoElement) ?? target)
+}
+
+/** Shared hook: the bare tag is the stable address when the page has one video. */
+function uniqueVideoSelector(element: Element): string | null {
+  return isVideoElement(element) && document.querySelectorAll('video').length === 1 ? 'video' : null
+}
 
 function stripWww(hostname: string): string {
   return hostname.replace(/^www\./, '')
