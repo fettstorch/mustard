@@ -15,7 +15,7 @@ import {
   RATE_LIMIT_ERROR_CODE,
 } from '@/shared/messaging'
 import { isRemoteMutationMessage } from '@/shared/remote-mutation'
-import { siteStrategyFor } from '@/shared/site-strategies'
+import { resolveAnchoredElement, siteStrategyFor } from '@/shared/site-strategies'
 import type { MustardNoteAnchorData } from '@/shared/model/MustardNoteAnchorData'
 import { LIMITS } from '@/shared/constants'
 import { extractMentions, type MentionTarget } from '@/shared/mentions'
@@ -127,19 +127,21 @@ export default defineContentScript({
     }
 
     /**
-     * Resolves the anchored video element, waiting for SPA players that mount
-     * after the notes query settles (the usual case on a fresh deep link).
+     * Resolves the note's anchored video element via the shared AT-URI-first
+     * resolution (never the raw selector, which can be ambiguous for
+     * same-author threads), waiting for SPA players that mount after the
+     * notes query settles (the usual case on a fresh deep link).
      */
-    function awaitVideoElement(
-      selector: string,
+    function awaitNoteVideo(
+      anchor: MustardNoteAnchorData,
       timeoutMs = 15000,
     ): Promise<HTMLVideoElement | null> {
-      const existing = document.querySelector(selector)
+      const existing = resolveAnchoredElement(anchor)
       if (isVideoElement(existing)) return Promise.resolve(existing)
 
       return new Promise((resolve) => {
         const observer = new MutationObserver(() => {
-          const el = document.querySelector(selector)
+          const el = resolveAnchoredElement(anchor)
           if (!isVideoElement(el)) return
           cleanup()
           resolve(el)
@@ -208,10 +210,8 @@ export default defineContentScript({
       const note = mustardState.notes.find((n) => n.id === noteId)
       const anchorData = note?.anchorData.elementAnchorData
       if (!note || anchorData?.type !== 'video') return
-      const selector = note.anchorData.elementSelector
-      if (!selector) return
 
-      const video = await awaitVideoElement(selector)
+      const video = await awaitNoteVideo(note.anchorData)
       if (!video) return
       // Pre-roll ads hijack the video element; only the content stream that
       // follows them may be seeked.
