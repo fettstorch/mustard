@@ -1066,6 +1066,9 @@ export default defineContentScript({
         // Session change can change which notes are visible (follows differ),
         // so clear per-note client state to avoid stale dots / comments.
         mustardState.unreadByNoteId = {}
+        // A different session sees a different visibility graph — embedded
+        // post keys must be re-queried, not skipped as already-loaded.
+        queriedEmbeddedPostKeys = new Set()
         syncEmbeddedPostObserver()
         runNotesQuery(getCurrentPageKeys(), { withComments: true }).catch(() => {})
         return
