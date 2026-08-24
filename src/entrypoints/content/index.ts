@@ -940,6 +940,9 @@ export default defineContentScript({
       // not the page, with a selector that resolves on the post's own page and
       // the note's position measured against the post's element.
       const embeddedPost = siteStrategy.resolveEmbeddedPostAnchor(target, clickStack)
+      if (import.meta.env.DEV) {
+        console.debug('mustard [capture] target:', target, 'embedded:', embeddedPost)
+      }
       const rect = (embeddedPost?.anchorElement ?? target).getBoundingClientRect()
       removeHighlight()
       lastContextMenuTarget = target
