@@ -376,14 +376,27 @@ export default defineContentScript({
      * state and fan out the dependent fetches. `withComments` is opt-in because
      * some flows (e.g. repost, delete) don't need a comment/notification refresh.
      */
+    /**
+     * Applies a notes response scoped to the page keys it was queried for:
+     * only notes stored under those keys are replaced. Notes from other keys
+     * (embedded feed posts, a page's other legacy/canonical key) stay — a
+     * delete/repost response or a racing page query must not wipe them.
+     */
     function applyNotesResponse(
       dtos: DtoMustardNote[] | undefined,
-      options?: { withComments?: boolean },
+      options: { forPageKeys: string[]; withComments?: boolean },
     ): void {
       const notes = (dtos ?? []).map(DtoMustardNote.fromDto)
-      mustardState.notes = notes
+      const replacedKeys = new Set(options.forPageKeys)
+      const keptNotes = mustardState.notes.filter(
+        (note) => !replacedKeys.has(note.anchorData.pageUrl),
+      )
+      // Keep the global newest-renders-on-top order across kept + fresh notes.
+      mustardState.notes = [...keptNotes, ...notes].sort(
+        (a, b) => a.updatedAt.getTime() - b.updatedAt.getTime(),
+      )
       fetchProfilesForNotes(notes)
-      if (options?.withComments) fetchCommentsAndNotificationsForNotes(notes)
+      if (options.withComments) fetchCommentsAndNotificationsForNotes(mustardState.notes)
     }
 
     /**
@@ -417,7 +430,7 @@ export default defineContentScript({
         // Each response is sorted on its own — re-sort the merged set so newer
         // notes still render last (on top) across page keys.
         dtos.sort((a, b) => a.updatedAt - b.updatedAt)
-        applyNotesResponse(dtos, { withComments: options?.withComments })
+        applyNotesResponse(dtos, { forPageKeys: pageUrls, withComments: options?.withComments })
         return mustardState.notes.length
       },
     )
@@ -1332,7 +1345,7 @@ export default defineContentScript({
           .then((dtos) => {
             console.debug('mustard [content-script] received notes after delete:', dtos)
             if (isLocalDelete) applyLocalNotesResponse(dtos, message.pageUrl)
-            else applyNotesResponse(dtos)
+            else applyNotesResponse(dtos, { forPageKeys: [message.pageUrl] })
             // The deletion is now confirmed, so discard the removed note's
             // per-note UI state and unlock only this note.
             dropDeletedNote(message.noteId)
@@ -1351,7 +1364,7 @@ export default defineContentScript({
           .then((dtos) => {
             console.debug('mustard [content-script] received notes after repost:', dtos)
             // Reposter avatars need their profiles resolved for the stack.
-            applyNotesResponse(dtos)
+            applyNotesResponse(dtos, { forPageKeys: [message.pageUrl] })
           })
           .catch((err) => {
             console.error('mustard [content-script] SET_REPOST failed:', err)
