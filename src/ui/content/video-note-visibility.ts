@@ -53,20 +53,8 @@ export function useVideoNoteVisibility(options: {
       if (tracked) untrackVideo(key, tracked)
 
       if (!isVideoElement(video)) {
-        if (import.meta.env.DEV) {
-          console.debug('mustard [video-tracker] unresolved', key, 'resolved to:', video)
-        }
         hasUnresolvedVideo = true
         continue
-      }
-      if (import.meta.env.DEV) {
-        console.debug(
-          'mustard [video-tracker] tracking',
-          key,
-          video,
-          'connected:',
-          video.isConnected,
-        )
       }
       trackVideo(key, video)
     }
