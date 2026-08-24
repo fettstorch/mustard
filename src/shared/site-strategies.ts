@@ -105,15 +105,33 @@ const twitchClip: SiteStrategy = {
 }
 
 /**
- * Bluesky post pages (`/profile/{handle}/post/{rkey}`). The post's video sits
- * under overlay chrome like the other curated players, but a thread page can
- * hold several videos (replies, quotes) — so the selector is scoped to the
- * enclosing post item via Bluesky's stable `data-testid` markers, falling
- * back to the bare tag when the video is the page's only one.
+ * Appviews known to render atproto posts with bsky.app's page shape and DOM
+ * (same-codebase forks). One line per appview — the strategy itself is shared.
  */
-const blueskyPost: SiteStrategy = {
+const ATPROTO_APPVIEW_HOSTS = new Set(['bsky.app', 'mu.social'])
+
+const ATPROTO_POST_PATH = /^\/profile\/([^/]+)\/post\/([^/]+)$/
+
+/**
+ * Atproto post pages. The same post is viewable on any appview
+ * (bsky.app/profile/x/post/y ≙ mu.social/profile/x/post/y), so notes are
+ * keyed by the post's canonical AT-URI instead of the appview's URL — a note
+ * created on one appview surfaces on all of them. The handle stands in for
+ * the DID (resolving the DID would need a network call at key time).
+ *
+ * The post's video sits under overlay chrome like the other curated players,
+ * but a thread page can hold several videos (replies, quotes) — so the
+ * selector is scoped to the enclosing post item via the appview's stable
+ * `data-testid` markers, falling back to the bare tag when the video is the
+ * page's only one.
+ */
+const atprotoPost: SiteStrategy = {
   matches: (url) =>
-    stripWww(url.hostname) === 'bsky.app' && /^\/profile\/[^/]+\/post\/[^/]+$/.test(url.pathname),
+    ATPROTO_APPVIEW_HOSTS.has(stripWww(url.hostname)) && ATPROTO_POST_PATH.test(url.pathname),
+  getPageKey: (url) => {
+    const [, handle, rkey] = ATPROTO_POST_PATH.exec(url.pathname)!
+    return `at://${handle}/app.bsky.feed.post/${rkey}`
+  },
   isVideoNotePage: () => true,
   resolveTargetElement: resolveVideoFromClickStack,
   createSelector: (element) => {
@@ -139,9 +157,21 @@ const SITE_STRATEGIES: SiteStrategy[] = [
   streamPlaceVod,
   twitchVod,
   twitchClip,
-  blueskyPost,
+  atprotoPost,
   defaultStrategy,
 ]
+
+const AT_URI_POST = /^at:\/\/([^/]+)\/app\.bsky\.feed\.post\/([^/]+)$/
+
+/**
+ * Converts a canonical page key into a URL a browser tab can open. AT-URI
+ * keys open on bsky.app (the reference appview); every other key already is
+ * its page's URL.
+ */
+export function pageKeyToHref(pageKey: string): string {
+  const atUriPost = AT_URI_POST.exec(pageKey)
+  return atUriPost ? `https://bsky.app/profile/${atUriPost[1]}/post/${atUriPost[2]}` : pageKey
+}
 
 /**
  * Resolves the page's strategy once: the most specific match, completed with

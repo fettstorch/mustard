@@ -43,6 +43,7 @@ import { getSupabaseJwt } from '@/background/auth/SupabaseAuth'
 import type { LinkedIdentity, UserProfileType } from '@/shared/model/UserProfile'
 import { PROVIDER_LABELS } from '@/shared/providers'
 import { displayUrl } from '@/shared/display-url'
+import { pageKeyToHref } from '@/shared/site-strategies'
 import HiddenNoteCard from './HiddenNoteCard.vue'
 import { useHiddenNotes } from './use-hidden-notes'
 
@@ -564,7 +565,11 @@ async function disconnect(provider: string, label: string) {
             >
               <span class="hidden-note-missing-text">
                 Note no longer available ·
-                <a :href="entry.ref.pageUrl" target="_blank" rel="noopener noreferrer">
+                <a
+                  :href="pageKeyToHref(entry.ref.pageUrl)"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
                   {{ displayUrl(entry.ref.pageUrl) }}
                 </a>
               </span>

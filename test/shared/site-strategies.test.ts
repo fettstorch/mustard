@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, describe, expect, it } from 'vitest'
-import { siteStrategyFor } from '../../src/shared/site-strategies'
+import { pageKeyToHref, siteStrategyFor } from '../../src/shared/site-strategies'
 
 const STREAM_PLACE_VOD = 'https://stream.place/iame.li/video/3msjhn6ahhthp'
 
@@ -21,6 +21,29 @@ describe('getPageKey', () => {
       'https://example.com/some/path',
     )
     expect(siteStrategyFor(`${STREAM_PLACE_VOD}?t=99`).getPageKey()).toBe(STREAM_PLACE_VOD)
+  })
+
+  it('keys atproto posts by their canonical AT-URI across appviews', () => {
+    const atUri = 'at://tangled.org/app.bsky.feed.post/3mttcilenbc23'
+    expect(
+      siteStrategyFor('https://bsky.app/profile/tangled.org/post/3mttcilenbc23').getPageKey(),
+    ).toBe(atUri)
+    expect(
+      siteStrategyFor('https://mu.social/profile/tangled.org/post/3mttcilenbc23').getPageKey(),
+    ).toBe(atUri)
+  })
+})
+
+describe('pageKeyToHref', () => {
+  it('opens AT-URI keys on the reference appview', () => {
+    expect(pageKeyToHref('at://tangled.org/app.bsky.feed.post/3mttcilenbc23')).toBe(
+      'https://bsky.app/profile/tangled.org/post/3mttcilenbc23',
+    )
+  })
+
+  it('passes ordinary page keys through unchanged', () => {
+    expect(pageKeyToHref('https://example.com/some/path')).toBe('https://example.com/some/path')
+    expect(pageKeyToHref(STREAM_PLACE_VOD)).toBe(STREAM_PLACE_VOD)
   })
 })
 
@@ -48,10 +71,15 @@ describe('isVideoNotePage', () => {
     )
   })
 
-  it('accepts Bluesky post pages but not profiles or feeds', () => {
+  it('accepts atproto post pages but not profiles or feeds', () => {
     expect(
       siteStrategyFor(
         'https://bsky.app/profile/debbieohi.com/post/3mtm3ff75lc2d',
+      ).isVideoNotePage(),
+    ).toBe(true)
+    expect(
+      siteStrategyFor(
+        'https://mu.social/profile/debbieohi.com/post/3mtm3ff75lc2d',
       ).isVideoNotePage(),
     ).toBe(true)
     expect(siteStrategyFor('https://bsky.app/profile/debbieohi.com').isVideoNotePage()).toBe(false)
