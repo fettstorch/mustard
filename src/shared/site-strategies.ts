@@ -117,7 +117,12 @@ const twitchClip: SiteStrategy = {
  * Appviews known to render atproto posts with bsky.app's page shape and DOM
  * (same-codebase forks). One line per appview — the strategy itself is shared.
  */
-const ATPROTO_APPVIEW_HOSTS = new Set(['bsky.app', 'mu.social'])
+const ATPROTO_APPVIEW_HOSTS = new Set([
+  'bsky.app',
+  'mu.social',
+  'witchsky.app',
+  'blacksky.community',
+])
 
 const ATPROTO_POST_PATH = /^\/profile\/([^/]+)\/post\/([^/]+)$/
 
