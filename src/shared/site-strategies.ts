@@ -120,6 +120,7 @@ const twitchClip: SiteStrategy = {
 const ATPROTO_APPVIEW_HOSTS = new Set([
   'bsky.app',
   'mu.social',
+  'deer.social',
   'witchsky.app',
   'blacksky.community',
 ])

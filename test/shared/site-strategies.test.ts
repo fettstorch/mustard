@@ -35,6 +35,9 @@ describe('getPageKey', () => {
       siteStrategyFor('https://witchsky.app/profile/tangled.org/post/3mttcilenbc23').getPageKey(),
     ).toBe(atUri)
     expect(
+      siteStrategyFor('https://deer.social/profile/tangled.org/post/3mttcilenbc23').getPageKey(),
+    ).toBe(atUri)
+    expect(
       siteStrategyFor(
         'https://blacksky.community/profile/tangled.org/post/3mttcilenbc23',
       ).getPageKey(),
