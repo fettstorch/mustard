@@ -45,6 +45,12 @@ export type MustardState = {
   revealedTimedNoteIds: Record<string, boolean>
   /** True when this build is below the backend's minimum: remote writes are blocked, so the UI disables publish/comment controls. */
   clientOutdated: boolean
+  /**
+   * Bumped when the host page's DOM settles after mutations (SPA screen
+   * transitions) so anchor resolution and video tracking re-evaluate without
+   * requiring user scroll/resize. Fed by the content script's observer.
+   */
+  domTick: number
 
   // --- Comments ---
   /** noteId -> comments sorted oldest → newest. Missing means "not fetched yet". */
@@ -81,6 +87,7 @@ export function createMustardState(): MustardState {
     revealedHiddenNoteIds: {},
     revealedTimedNoteIds: {},
     clientOutdated: false,
+    domTick: 0,
 
     comments: {},
     commentsLoadState: {},

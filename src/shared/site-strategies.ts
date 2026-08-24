@@ -179,15 +179,22 @@ const atprotoEmbeddedPostHooks: Pick<
   resolveEmbeddedPost: (pageKey) => {
     const items = [...document.querySelectorAll(ATPROTO_POST_ITEM_SELECTOR)]
     const byPermalink = items.filter((item) => embeddedPostKey(item) === pageKey)
-    if (byPermalink.length > 0) return preferLaidOut(byPermalink)
     // A thread page's focused post carries no self-permalink — identify it by
     // its author handle among the permalink-less items.
     const atUri = AT_URI_POST.exec(pageKey)
-    if (!atUri) return null
-    const byHandle = items.filter(
-      (item) => postItemHandle(item) === atUri[1] && !embeddedPostKey(item),
+    const byHandle = atUri
+      ? items.filter((item) => postItemHandle(item) === atUri[1] && !embeddedPostKey(item))
+      : []
+    // Visibility outranks match tier: during SPA transitions the retained
+    // previous screen can hold a hidden permalink match (the feed item) while
+    // the true item on the active screen is the permalink-less focused post.
+    return (
+      byPermalink.find(isElementVisible) ??
+      byHandle.find(isElementVisible) ??
+      byPermalink[0] ??
+      byHandle[0] ??
+      null
     )
-    return byHandle.length > 0 ? preferLaidOut(byHandle) : null
   },
   resolveEmbeddedPostAnchor: (target, stack) => {
     // Players can be portaled outside the post item's DOM subtree — the
@@ -370,11 +377,13 @@ function embeddedPostKey(item: Element): string | null {
 }
 
 /**
- * Retained navigation-stack screens can leave hidden duplicates of a post
- * item in the DOM — prefer a match that actually has layout.
+ * Whether an element is actually visible on the active screen — retained
+ * navigation-stack screens leave hidden duplicates in the DOM. Falls back to
+ * layout presence where checkVisibility is unavailable (older engines, jsdom).
  */
-function preferLaidOut(candidates: Element[]): Element {
-  return candidates.find((el) => el.getClientRects().length > 0) ?? candidates[0]!
+function isElementVisible(element: Element): boolean {
+  if (typeof element.checkVisibility === 'function') return element.checkVisibility()
+  return element.getClientRects().length > 0
 }
 
 /** The author handle a post item's testid carries. */

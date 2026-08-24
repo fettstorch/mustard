@@ -477,6 +477,9 @@ export default defineContentScript({
         embeddedPostScanTimer = window.setTimeout(() => {
           embeddedPostScanTimer = undefined
           loadEmbeddedPostNotes().catch(() => {})
+          // SPA screen transitions swap post items without any scroll/resize —
+          // nudge anchor resolution and video tracking to re-evaluate.
+          mustardState.domTick++
         }, 800)
       })
       embeddedPostObserver.observe(document.body, { childList: true, subtree: true })

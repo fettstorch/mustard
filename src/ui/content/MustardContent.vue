@@ -72,7 +72,7 @@ function onStorageChanged(changes: Record<string, Browser.storage.StorageChange>
 
 const editorPosition = computed(() => {
   // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-  resizeTick.value // dependency to trigger recalculation
+  resizeTick.value + mustardState.domTick // dependencies to trigger recalculation
   if (!mustardState.editor.isOpen || !mustardState.editor.anchor) return { x: 0, y: 0 }
   return calculateAnchorPosition(mustardState.editor.anchor) ?? { x: 0, y: 0 }
 })
@@ -91,7 +91,7 @@ function setDragOffset(noteId: string | null, offset: { x: number; y: number }) 
 
 const { isNoteTimeframeActive } = useVideoNoteVisibility({
   getNotes: () => mustardState.notes,
-  getRetriggerTick: () => resizeTick.value,
+  getRetriggerTick: () => resizeTick.value + mustardState.domTick,
 })
 
 /**
@@ -114,7 +114,7 @@ function isNoteDisplayable(note: MustardNoteType): boolean {
 /** Compute positions for all notes (including drag offset) */
 const notesWithPositions = computed(() => {
   // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-  resizeTick.value // dependency to trigger recalculation
+  resizeTick.value + mustardState.domTick // dependencies to trigger recalculation
   if (!mustardState.areNotesVisible) return []
   // Hidden notes are dropped here rather than at query time: they still load, so
   // un-hiding brings one straight back without a re-query. Explicit reveal paths
