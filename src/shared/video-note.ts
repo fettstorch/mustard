@@ -1,6 +1,6 @@
-import { when } from '@fettstorch/jule'
 import type { MustardNoteAnchorData } from './model/MustardNoteAnchorData'
 import type { VideoElementAnchorData } from './model/MustardNoteElementAnchorData'
+import { siteStrategyFor } from './site-strategies'
 import { isVideoElement } from './video-element'
 
 export const VIDEO_NOTE_DEFAULT_DURATION = 5
@@ -8,15 +8,15 @@ export const VIDEO_NOTE_TIME_STEP = 1
 const VIDEO_NOTE_MIN_DURATION = VIDEO_NOTE_TIME_STEP
 
 /**
- * Video-note authoring is intentionally limited to the curated YouTube watch
- * surface. Keeping this decision in one strategy makes adding a later curated
+ * Video-note authoring is intentionally limited to curated video surfaces
+ * (see site-strategies.ts). Keeping that decision in one place makes adding a
  * site independent from anchor capture and editor rendering.
  */
 export function getVideoElementAnchorData(
   pageUrl: string,
   element: Element | null,
 ): VideoElementAnchorData | undefined {
-  if (!isVideoElement(element) || !isCuratedVideoPage(pageUrl)) {
+  if (!isVideoElement(element) || !siteStrategyFor(pageUrl).isVideoNotePage()) {
     return undefined
   }
 
@@ -123,19 +123,4 @@ export function isVideoAdShowing(): boolean {
     !!player &&
     (player.classList.contains('ad-showing') || player.classList.contains('ad-interrupting'))
   )
-}
-
-function isCuratedVideoPage(pageUrl: string): boolean {
-  let url: URL
-  try {
-    url = new URL(pageUrl)
-  } catch {
-    return false
-  }
-
-  const strategyKey = `${url.hostname.replace(/^www\./, '')}${url.pathname}`
-  return when(strategyKey)({
-    'youtube.com/watch': () => !!url.searchParams.get('v')?.trim(),
-    else: () => false,
-  })
 }
