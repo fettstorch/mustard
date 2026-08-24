@@ -450,13 +450,13 @@ export default defineContentScript({
         .collectEmbeddedPostKeys()
         .filter((key) => !queriedEmbeddedPostKeys.has(key) && !isCurrentPageKey(key))
       if (keys.length === 0) return
-      for (const key of keys) queriedEmbeddedPostKeys.add(key)
       try {
         const dtos = await sendMessage(createQueryNotesForPagesMessage(keys))
+        // Mark only after success (this loader is serialized, so no double
+        // query in between) — a failed batch stays eligible for later scans.
+        for (const key of keys) queriedEmbeddedPostKeys.add(key)
         mergeAdditionalNotes(dtos)
       } catch (err) {
-        // Allow a later scan to retry these keys after a transient failure.
-        for (const key of keys) queriedEmbeddedPostKeys.delete(key)
         console.debug('mustard [content-script] embedded post query failed:', err)
       }
     })
