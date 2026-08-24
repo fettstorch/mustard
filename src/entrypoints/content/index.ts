@@ -1160,6 +1160,9 @@ export default defineContentScript({
     // Query notes for the current page. Settle on failure too — otherwise a
     // rejected boot query (e.g. a transient service-worker or storage
     // failure) leaves maybeApplyPendingFocus's loading guard blocked forever.
+    // Feed pages must scan for embedded posts on the initial load too — not
+    // only after SPA navigations or session changes.
+    syncEmbeddedPostObserver()
     runNotesQuery(getCurrentPageKeys(), { withComments: true })
       .catch(() => {})
       .finally(() => {
