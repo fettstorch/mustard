@@ -30,6 +30,19 @@ export default defineConfig({
   srcDir: 'src',
   outDir: 'dist',
   outDirTemplate: '{{browser}}',
+  zip: {
+    // The AMO sources zip must contain only what builds the extension. Local
+    // test artifacts, the landing page's media, and previously built zips are
+    // huge and irrelevant — without these exclusions the sources zip balloons
+    // past Firefox's upload limit.
+    excludeSources: [
+      'test-results/**',
+      'playwright-report/**',
+      'docs/**',
+      'dist/**',
+      '.output/**',
+    ],
+  },
 
   // Don't auto-launch a browser instance in dev. WXT's Firefox runner tries to
   // start Firefox and attach to its remote-debug port; when that connection is
