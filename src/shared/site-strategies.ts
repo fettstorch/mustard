@@ -155,6 +155,55 @@ const ATPROTO_APPVIEW_HOSTS = new Set([
 
 const ATPROTO_POST_PATH = /^\/profile\/([^/]+)\/post\/([^/]+)$/
 
+/** Feed entries and thread items both render a post addressable by its AT-URI. */
+const ATPROTO_POST_ITEM_SELECTOR =
+  '[data-testid^="feedItem-by-"], [data-testid^="postThreadItem-by-"]'
+
+/**
+ * Embedded-post handling shared by every atproto surface: feeds and thread
+ * pages both render posts inside testid-marked items carrying the post's
+ * permalink (the focused post of a thread page is the one item without a
+ * self-permalink). The AT-URI is the anchor identity — stored selectors only
+ * refine a position within the resolved post item.
+ */
+const atprotoEmbeddedPostHooks: Pick<
+  Required<SiteStrategy>,
+  'collectEmbeddedPostKeys' | 'resolveEmbeddedPost' | 'resolveEmbeddedPostAnchor'
+> = {
+  collectEmbeddedPostKeys: () => {
+    const keys = [...document.querySelectorAll(ATPROTO_POST_ITEM_SELECTOR)]
+      .map(embeddedPostKey)
+      .filter((key): key is string => !!key)
+    return [...new Set(keys)]
+  },
+  resolveEmbeddedPost: (pageKey) => {
+    const items = [...document.querySelectorAll(ATPROTO_POST_ITEM_SELECTOR)]
+    const byPermalink = items.find((item) => embeddedPostKey(item) === pageKey)
+    if (byPermalink) return byPermalink
+    // A thread page's focused post carries no self-permalink — identify it by
+    // its author handle among the permalink-less items.
+    const atUri = AT_URI_POST.exec(pageKey)
+    if (!atUri) return null
+    return items.find((item) => postItemHandle(item) === atUri[1] && !embeddedPostKey(item)) ?? null
+  },
+  resolveEmbeddedPostAnchor: (target) => {
+    const item = target.closest(ATPROTO_POST_ITEM_SELECTOR)
+    // No permalink means the thread page's focused post: the page key already
+    // IS that post's AT-URI, so no post-scoped override is needed.
+    const pageKey = item && embeddedPostKey(item)
+    if (!item || !pageKey) return null
+    const handle = postItemHandle(item)
+    const isVideo = isVideoElement(target)
+    return {
+      pageKey,
+      // A selector that resolves on the post's own page; other surfaces
+      // re-anchor via resolveEmbeddedPost instead.
+      selector: `[data-testid="postThreadItem-by-${escapeAttributeValue(handle)}"]${isVideo ? ' video' : ''}`,
+      anchorElement: isVideo ? target : item,
+    }
+  },
+}
+
 /**
  * Atproto post pages. The same post is viewable on any appview
  * (bsky.app/profile/x/post/y ≙ mu.social/profile/x/post/y), so notes are
@@ -179,6 +228,7 @@ const atprotoPost: SiteStrategy = {
   getLegacyPageKeys: (url) => [defaultStrategy.getPageKey(url)],
   isVideoNotePage: () => true,
   resolveTargetElement: resolveVideoFromClickStack,
+  ...atprotoEmbeddedPostHooks,
   createSelector: (element) => {
     if (!isVideoElement(element)) return null
     const postItem = element.closest('[data-testid]')
@@ -203,37 +253,12 @@ const atprotoPost: SiteStrategy = {
  * Notes on the page itself (outside any post) keep the appview's URL key, so
  * they stay appview-specific.
  */
-const FEED_ITEM_SELECTOR = '[data-testid^="feedItem-by-"]'
-
 const atprotoFeed: SiteStrategy = {
   matches: (url) => ATPROTO_APPVIEW_HOSTS.has(stripWww(url.hostname)),
   // Feed videos are post videos, so timed notes are available here too.
   isVideoNotePage: () => true,
   resolveTargetElement: resolveVideoFromClickStack,
-  collectEmbeddedPostKeys: () => {
-    const keys = [...document.querySelectorAll(FEED_ITEM_SELECTOR)]
-      .map(embeddedPostKey)
-      .filter((key): key is string => !!key)
-    return [...new Set(keys)]
-  },
-  resolveEmbeddedPost: (pageKey) =>
-    [...document.querySelectorAll(FEED_ITEM_SELECTOR)].find(
-      (item) => embeddedPostKey(item) === pageKey,
-    ) ?? null,
-  resolveEmbeddedPostAnchor: (target) => {
-    const item = target.closest(FEED_ITEM_SELECTOR)
-    const pageKey = item && embeddedPostKey(item)
-    if (!item || !pageKey) return null
-    const handle = item.getAttribute('data-testid')!.slice('feedItem-by-'.length)
-    const isVideo = isVideoElement(target)
-    return {
-      pageKey,
-      // A selector that resolves on the post's own page; feed rendering
-      // ignores it and re-anchors via resolveEmbeddedPost instead.
-      selector: `[data-testid="postThreadItem-by-${escapeAttributeValue(handle)}"]${isVideo ? ' video' : ''}`,
-      anchorElement: isVideo ? target : item,
-    }
-  },
+  ...atprotoEmbeddedPostHooks,
 }
 
 /** Ordered by specificity; the catch-all default closes the table. */
@@ -297,16 +322,21 @@ export function resolveAnchoredElement(anchor: {
   pageUrl: string
   elementSelector: string | null
 }): Element | null {
-  if (anchor.elementSelector) {
-    const element = document.querySelector(anchor.elementSelector)
-    if (element) return element
-  }
-  const container = siteStrategyFor(window.location.href).resolveEmbeddedPost(anchor.pageUrl)
-  if (!container) return null
-  // A video-scoped anchor re-anchors to the post's video inside the feed item.
+  const selectorElement = anchor.elementSelector
+    ? document.querySelector(anchor.elementSelector)
+    : null
+  if (!anchor.pageUrl.startsWith('at://')) return selectorElement
+
+  // Post-keyed notes: the AT-URI is the anchor identity. The stored selector
+  // only refines the position WITHIN the resolved post item — a selector that
+  // resolves outside it has mis-resolved (e.g. a same-author thread item) and
+  // is ignored in favor of the item itself.
+  const postItem = siteStrategyFor(window.location.href).resolveEmbeddedPost(anchor.pageUrl)
+  if (!postItem) return selectorElement
+  if (selectorElement && postItem.contains(selectorElement)) return selectorElement
   return anchor.elementSelector?.endsWith('video')
-    ? (container.querySelector('video') ?? container)
-    : container
+    ? (postItem.querySelector('video') ?? postItem)
+    : postItem
 }
 
 //--- module private utility
@@ -319,6 +349,11 @@ function embeddedPostKey(item: Element): string | null {
     if (match) return `at://${match[1]}/app.bsky.feed.post/${match[2]}`
   }
   return null
+}
+
+/** The author handle a post item's testid carries. */
+function postItemHandle(item: Element): string {
+  return (item.getAttribute('data-testid') ?? '').replace(/^(?:feedItem|postThreadItem)-by-/, '')
 }
 
 /** Quoted attribute value: only quotes and backslashes need escaping. */

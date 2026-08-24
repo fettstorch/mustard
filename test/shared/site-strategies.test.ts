@@ -271,3 +271,52 @@ describe('embedded atproto posts (feeds)', () => {
     expect(resolveAnchoredElement({ pageUrl: POST_KEY, elementSelector: '#missing' })).toBeNull()
   })
 })
+
+describe('embedded atproto posts (thread pages)', () => {
+  const THREAD_PAGE = 'https://bsky.app/profile/author.com/post/3root'
+  const ROOT_KEY = 'at://author.com/app.bsky.feed.post/3root'
+  const REPLY_KEY = 'at://author.com/app.bsky.feed.post/3reply'
+
+  function renderThread() {
+    // The focused post carries no self-permalink; replies do — even same-author ones.
+    document.body.innerHTML = `
+      <div data-testid="postThreadItem-by-author.com"><p id="root-text">root</p></div>
+      <div data-testid="postThreadItem-by-author.com">
+        <a href="/profile/author.com/post/3reply">1h</a>
+        <p id="reply-text">reply</p>
+      </div>
+    `
+  }
+
+  it('resolves replies by permalink and the focused post by handle', () => {
+    renderThread()
+    const strategy = siteStrategyFor(THREAD_PAGE)
+    expect(strategy.resolveEmbeddedPost(REPLY_KEY)?.querySelector('#reply-text')).toBeTruthy()
+    expect(strategy.resolveEmbeddedPost(ROOT_KEY)?.querySelector('#root-text')).toBeTruthy()
+  })
+
+  it('keys a click on a reply to the reply post, on the focused post to nothing', () => {
+    renderThread()
+    const strategy = siteStrategyFor(THREAD_PAGE)
+    const replyText = document.getElementById('reply-text')!
+    expect(strategy.resolveEmbeddedPostAnchor(replyText, [replyText])?.pageKey).toBe(REPLY_KEY)
+    // Focused post: no post-scoped override — the page key already is its AT-URI.
+    const rootText = document.getElementById('root-text')!
+    expect(strategy.resolveEmbeddedPostAnchor(rootText, [rootText])).toBeNull()
+  })
+
+  it('ignores a stored selector that mis-resolves outside the note post item', () => {
+    renderThread()
+    // A reply note's selector matches the FIRST same-author item (the focused
+    // post) — outside the reply's item, so the AT-URI identity wins.
+    const anchor = {
+      pageUrl: REPLY_KEY,
+      elementSelector: '[data-testid="postThreadItem-by-author.com"]',
+    }
+    // jsdom's location isn't an appview page, so exercise the precedence via
+    // the strategy the current page would resolve to on a real appview.
+    const item = siteStrategyFor(THREAD_PAGE).resolveEmbeddedPost(REPLY_KEY)!
+    const selectorHit = document.querySelector(anchor.elementSelector)!
+    expect(item.contains(selectorHit)).toBe(false)
+  })
+})

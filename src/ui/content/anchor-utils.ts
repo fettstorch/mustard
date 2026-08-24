@@ -1,5 +1,5 @@
 import type { MustardNoteAnchorData } from '@/shared/model/MustardNoteAnchorData'
-import { resolveAnchoredElement } from '@/shared/site-strategies'
+import { resolveAnchoredElement, siteStrategyFor } from '@/shared/site-strategies'
 
 /**
  * Viewport position for a note's anchor, or null when the note cannot be
@@ -24,9 +24,15 @@ export function calculateAnchorPosition(
   }
 
   // The absolute click position belongs to the layout of the page the note
-  // was created on. For post-keyed notes (renderable on many surfaces) it is
-  // meaningless — hide the note rather than scatter it.
-  if (anchor.pageUrl.startsWith('at://')) return null
+  // was created on. On the post's own page that layout is the current one, so
+  // the fallback stays valid; on any OTHER surface rendering the post (feeds,
+  // threads) it is meaningless — hide the note rather than scatter it.
+  if (
+    anchor.pageUrl.startsWith('at://') &&
+    siteStrategyFor(window.location.href).getPageKey() !== anchor.pageUrl
+  ) {
+    return null
+  }
 
   // Fallback to click position - convert from document coordinates to viewport coordinates
   return {

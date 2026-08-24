@@ -951,10 +951,16 @@ export default defineContentScript({
           xP: ((event.clientX - rect.left) / rect.width) * 100,
           yP: ((event.clientY - rect.top) / rect.height) * 100,
         },
-        clickPosition: {
-          xVw: (event.clientX / window.innerWidth) * 100,
-          yPx: event.clientY + window.scrollY,
-        },
+        // A note created on a post embedded in a feed can't derive a
+        // meaningful absolute fallback from the feed's layout (the post could
+        // be anywhere). Store a neutral default instead: roughly where the
+        // focused post sits on its own page (top of the content column).
+        clickPosition: embeddedPost
+          ? { xVw: 50, yPx: 300 }
+          : {
+              xVw: (event.clientX / window.innerWidth) * 100,
+              yPx: event.clientY + window.scrollY,
+            },
       }
     }
 
