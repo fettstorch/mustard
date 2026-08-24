@@ -123,7 +123,11 @@ const blueskyPost: SiteStrategy = {
     if (testId) {
       // Quoted attribute value: only quotes and backslashes need escaping.
       const selector = `[data-testid="${testId.replace(/["\\]/g, '\\$&')}"] video`
-      if (document.querySelector(selector) === element) return selector
+      // Same-author posts share a testid: the selector only counts as an
+      // address when the clicked video is its one and only match — matching
+      // first among several would re-anchor to the wrong video on reorder.
+      const matches = document.querySelectorAll(selector)
+      if (matches.length === 1 && matches[0] === element) return selector
     }
     return uniqueVideoSelector(element)
   },

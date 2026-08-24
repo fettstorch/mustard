@@ -123,6 +123,17 @@ describe('Bluesky post selectors', () => {
     )
   })
 
+  it('refuses an ambiguous scope when same-author posts share a testid', () => {
+    document.body.innerHTML = `
+      <div data-testid="postThreadItem-by-debbieohi.com"><video></video></div>
+      <div data-testid="postThreadItem-by-debbieohi.com"><video></video></div>
+    `
+    const firstVideo = document.querySelector('video')!
+    // Even the FIRST match must be refused: the selector would resolve to
+    // whichever post renders first, not to this specific video.
+    expect(siteStrategyFor(BSKY_POST).createSelector(firstVideo)).toBeNull()
+  })
+
   it('falls back to the bare tag for a single unscoped video', () => {
     const video = document.createElement('video')
     document.body.appendChild(video)
