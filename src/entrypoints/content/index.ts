@@ -997,7 +997,11 @@ export default defineContentScript({
         return Promise.resolve(mustardState.areNotesVisible)
       }
       if (message.type === 'NOTE_DELETED') {
-        if (isCurrentPageKey(message.pageUrl)) dropDeletedNote(message.noteId)
+        // A feed tab can hold the note under its post key while the broadcast
+        // carries that at:// key — evict wherever the note is actually loaded.
+        if (isCurrentPageKey(message.pageUrl) || mustardState.notes.some((n) => n.id === message.noteId)) {
+          dropDeletedNote(message.noteId)
+        }
         return
       }
       if (message.type === 'LOAD_ALL_NOTES') {
