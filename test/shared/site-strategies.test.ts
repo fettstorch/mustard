@@ -35,6 +35,19 @@ describe('isVideoNotePage', () => {
     expect(siteStrategyFor('https://stream.place/iame.li').isVideoNotePage()).toBe(false)
   })
 
+  it('accepts Twitch VODs and clips but not live streams', () => {
+    expect(siteStrategyFor('https://www.twitch.tv/videos/2854057658').isVideoNotePage()).toBe(true)
+    expect(
+      siteStrategyFor(
+        'https://www.twitch.tv/reval/clip/SpicyOilyCardTheThing-rSVqAE6dzgz8wC7M',
+      ).isVideoNotePage(),
+    ).toBe(true)
+    expect(siteStrategyFor('https://www.twitch.tv/reval').isVideoNotePage()).toBe(false)
+    expect(siteStrategyFor('https://www.twitch.tv/directory/category/x').isVideoNotePage()).toBe(
+      false,
+    )
+  })
+
   it('rejects unknown pages and invalid urls', () => {
     expect(siteStrategyFor('https://example.com/video/123').isVideoNotePage()).toBe(false)
     expect(siteStrategyFor('not a url').isVideoNotePage()).toBe(false)
@@ -42,12 +55,18 @@ describe('isVideoNotePage', () => {
 })
 
 describe('resolveTargetElement', () => {
-  it('re-aims overlay clicks at the video on stream.place VODs', () => {
+  it('re-aims overlay clicks at the video on stream.place VODs and Twitch', () => {
     const overlay = document.createElement('div')
     const video = document.createElement('video')
     expect(siteStrategyFor(STREAM_PLACE_VOD).resolveTargetElement(overlay, [overlay, video])).toBe(
       video,
     )
+    expect(
+      siteStrategyFor('https://www.twitch.tv/videos/2854057658').resolveTargetElement(overlay, [
+        overlay,
+        video,
+      ]),
+    ).toBe(video)
   })
 
   it('keeps the clicked element when no video is under the click', () => {
