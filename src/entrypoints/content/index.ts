@@ -409,6 +409,9 @@ export default defineContentScript({
           seenIds.add(dto.id)
           return true
         })
+        // Each response is sorted on its own — re-sort the merged set so newer
+        // notes still render last (on top) across page keys.
+        dtos.sort((a, b) => a.updatedAt - b.updatedAt)
         applyNotesResponse(dtos, { withComments: options?.withComments })
         return mustardState.notes.length
       },
