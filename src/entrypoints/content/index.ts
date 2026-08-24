@@ -461,10 +461,6 @@ export default defineContentScript({
      * page visit) and merge them next to the page's own notes.
      */
     let queriedEmbeddedPostKeys = new Set<string>()
-    // Bumped whenever the notes state is rebuilt from scratch (navigation,
-    // session change) so an in-flight embedded batch from the previous
-    // context is discarded instead of merging stale notes.
-    let notesEpoch = 0
     const loadEmbeddedPostNotes = synchronize(async (): Promise<void> => {
       const strategy = siteStrategyFor(window.location.href)
       if (!strategy.supportsEmbeddedPosts()) return
@@ -472,10 +468,8 @@ export default defineContentScript({
         .collectEmbeddedPostKeys()
         .filter((key) => !queriedEmbeddedPostKeys.has(key) && !isCurrentPageKey(key))
       if (keys.length === 0) return
-      const epochAtStart = notesEpoch
       try {
         const dtos = await sendMessage(createQueryNotesForPagesMessage(keys))
-        if (epochAtStart !== notesEpoch) return
         // Mark only after success (this loader is serialized, so no double
         // query in between) — a failed batch stays eligible for later scans.
         for (const key of keys) queriedEmbeddedPostKeys.add(key)
@@ -870,7 +864,6 @@ export default defineContentScript({
       mustardState.revealedHiddenNoteIds = {}
       mustardState.revealedTimedNoteIds = {}
       queriedEmbeddedPostKeys = new Set()
-      notesEpoch++
       runNotesQuery(newPageKeys, { withComments: true }).catch(() => {})
       syncEmbeddedPostObserver()
     }
@@ -1109,7 +1102,6 @@ export default defineContentScript({
         mustardState.revealedHiddenNoteIds = {}
         mustardState.revealedTimedNoteIds = {}
         queriedEmbeddedPostKeys = new Set()
-        notesEpoch++
         syncEmbeddedPostObserver()
         runNotesQuery(getCurrentPageKeys(), { withComments: true }).catch(() => {})
         return
