@@ -187,6 +187,21 @@ function hydrateIndexCache(stored: StoredIndexCache): IndexCachePayload {
  *   - userId is missing, or
  *   - the Supabase JWT can't be obtained (e.g. session expired).
  */
+/**
+ * Dev builds bypass the index cache TTL by default so every query reflects
+ * fresh data — cache-related confusion is ruled out while developing. The
+ * options page (dev builds only) can re-enable the cache to observe
+ * production behavior. Production builds always cache; the compile-time guard
+ * lets the whole check tree-shake away.
+ */
+export const DEV_INDEX_CACHE_ENABLED_KEY = 'mustard-dev-index-cache-enabled'
+
+async function isIndexCacheEnabled(): Promise<boolean> {
+  if (!import.meta.env.DEV) return true
+  const store = await browser.storage.local.get(DEV_INDEX_CACHE_ENABLED_KEY)
+  return !!store[DEV_INDEX_CACHE_ENABLED_KEY]
+}
+
 async function getCachedIndexPayload(userId?: string): Promise<IndexCachePayload | null> {
   if (!userId) return null
 
@@ -198,7 +213,12 @@ async function getCachedIndexPayload(userId?: string): Promise<IndexCachePayload
   const now = Date.now()
   const store = await browser.storage.session.get(INDEX_CACHE_KEY)
   const cached = store[INDEX_CACHE_KEY] as StoredIndexCache | undefined
-  if (cached && cached.userId === userId && now - cached.timestamp < INDEX_CACHE_TTL_MS) {
+  if (
+    cached &&
+    cached.userId === userId &&
+    now - cached.timestamp < INDEX_CACHE_TTL_MS &&
+    (await isIndexCacheEnabled())
+  ) {
     return hydrateIndexCache(cached)
   }
 
