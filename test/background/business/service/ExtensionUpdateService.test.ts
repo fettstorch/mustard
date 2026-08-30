@@ -132,6 +132,27 @@ describe('ExtensionUpdateService contract', () => {
     expect(provider.checkCalls).toBe(0)
   })
 
+  it('does not expire a ready update into another store check', async () => {
+    await fakeBrowser.storage.local.set({
+      'mustard-extension-update-state': {
+        state: {
+          status: 'ready',
+          currentVersion: '2.11.0',
+          latestVersion: '2.12.0',
+          action: { type: 'apply', label: 'Restart and update' },
+        },
+        checkedAt: Date.now() - 7 * 60 * 60 * 1000,
+      },
+    })
+    const provider = new StubProvider()
+
+    await expect(new ExtensionUpdateService(provider).check()).resolves.toMatchObject({
+      status: 'ready',
+      latestVersion: '2.12.0',
+    })
+    expect(provider.checkCalls).toBe(0)
+  })
+
   it('shares in-progress state restoration between concurrent checks', async () => {
     const storedState = {
       state: { status: 'current', currentVersion: '2.11.0' } as const,

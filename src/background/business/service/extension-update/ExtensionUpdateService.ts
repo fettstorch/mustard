@@ -45,6 +45,10 @@ export class ExtensionUpdateService {
 
   async check(): Promise<ExtensionUpdateState> {
     await this.restore()
+    // A downloaded update remains actionable until the extension reloads into
+    // the new version. Its readiness event may be one-shot, so never expire it
+    // into another store check for this installed version.
+    if (this.state.status === 'ready') return this.state
     const isRetryableFailure = this.state.status === 'failed' && this.state.retryable
     if (!isRetryableFailure && Date.now() - this.checkedAt < CHECK_TTL_MS) return this.state
 
