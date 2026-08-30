@@ -97,7 +97,14 @@ export class ExtensionUpdateService {
         | ExtensionUpdateState
         | undefined
       const state = storedValue && 'state' in storedValue ? storedValue.state : storedValue
-      this.checkedAt = storedValue && 'state' in storedValue ? storedValue.checkedAt : 0
+      const storedCheckedAt = storedValue && 'state' in storedValue ? storedValue.checkedAt : 0
+
+      // onUpdateAvailable may win while the storage read is pending. Preserve
+      // that newer actionable state and its timestamp instead of restoring the
+      // older snapshot that was captured when this read began.
+      if (this.state.status === 'ready') return
+
+      this.checkedAt = storedCheckedAt
       if (!state || state.status === 'checking' || state.status === 'downloading') return
 
       if ('currentVersion' in state && state.currentVersion !== currentVersion()) {

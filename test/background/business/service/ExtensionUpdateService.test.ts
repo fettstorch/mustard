@@ -181,6 +181,36 @@ describe('ExtensionUpdateService contract', () => {
     expect(provider.checkCalls).toBe(0)
   })
 
+  it('does not let stale restoration overwrite an update-ready event', async () => {
+    let releaseStorageRead!: () => void
+    const storageReadBlocked = new Promise<void>((resolve) => {
+      releaseStorageRead = resolve
+    })
+    const getStorage = vi.spyOn(browser.storage.local, 'get').mockImplementation(async () => {
+      await storageReadBlocked
+      return {
+        'mustard-extension-update-state': {
+          state: { status: 'current', currentVersion: '2.11.0' },
+          checkedAt: Date.now(),
+        },
+      }
+    })
+    const provider = new StubProvider()
+    const service = new ExtensionUpdateService(provider)
+    const listener = vi.fn()
+    service.subscribe(listener)
+
+    const check = service.check()
+    await vi.waitFor(() => expect(getStorage).toHaveBeenCalledOnce())
+    provider.listener?.('2.12.0')
+    await vi.waitFor(() => expect(listener).toHaveBeenCalledOnce())
+    releaseStorageRead()
+
+    await expect(check).resolves.toMatchObject({ status: 'ready', latestVersion: '2.12.0' })
+    await expect(service.getState()).resolves.toMatchObject({ status: 'ready' })
+    expect(provider.checkCalls).toBe(0)
+  })
+
   it('retries a retryable provider failure immediately', async () => {
     const provider = new StubProvider()
     provider.state = {
