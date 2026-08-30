@@ -5,7 +5,7 @@
  * The main popup menu that appears when users click the Mustard extension icon
  * in the Chrome toolbar.
  */
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, onUnmounted, watch } from 'vue'
 import {
   createGetAtprotoSessionMessage,
   createAtprotoLogoutMessage,
@@ -15,11 +15,15 @@ import {
   createLoadAllNotesMessage,
   createGetAppStatusMessage,
   createRequestUpdateMessage,
+  createCheckExtensionUpdateMessage,
+  createApplyExtensionUpdateMessage,
   sendMessage,
   sendTabMessage,
   type AtprotoSessionResponse,
+  type Message,
 } from '@/shared/messaging'
 import type { UserProfile } from '@/shared/model/UserProfile'
+import type { ExtensionUpdateState } from '@/shared/extension-update'
 import ProviderLogin from './auth/ProviderLogin.vue'
 import MyPagesSection from './MyPagesSection.vue'
 import MentionsSection from './MentionsSection.vue'
@@ -29,6 +33,7 @@ const NOTES_MINIMIZED_KEY = 'mustard-notes-minimized'
 const session = ref<AtprotoSessionResponse>(null)
 const profile = ref<UserProfile | null>(null)
 const isOutdated = ref(false)
+const extensionUpdateState = ref<ExtensionUpdateState | null>(null)
 const areNotesVisible = ref(true)
 const areNotesMinimized = ref(false)
 const activeTabId = ref<number | null>(null)
@@ -46,6 +51,9 @@ onMounted(async () => {
       isOutdated.value = !!status?.outdated
     })
     .catch(() => {})
+
+  browser.runtime.onMessage.addListener(onExtensionUpdateMessage)
+  checkExtensionUpdate()
 
   // Get session via service worker (auth state lives there)
   const existingSession = await sendMessage(createGetAtprotoSessionMessage())
@@ -68,6 +76,33 @@ onMounted(async () => {
     }
   }
 })
+
+onUnmounted(() => browser.runtime.onMessage.removeListener(onExtensionUpdateMessage))
+
+function onExtensionUpdateMessage(message: Message) {
+  if (message.type === 'EXTENSION_UPDATE_STATE_CHANGED') {
+    extensionUpdateState.value = message.state
+  }
+}
+
+function checkExtensionUpdate() {
+  extensionUpdateState.value = { status: 'checking' }
+  sendMessage(createCheckExtensionUpdateMessage())
+    .then((state) => {
+      extensionUpdateState.value = state
+    })
+    .catch(() => {
+      extensionUpdateState.value = {
+        status: 'failed',
+        message: 'Mustard could not check for an update.',
+        retryable: true,
+      }
+    })
+}
+
+function applyExtensionUpdate() {
+  sendMessage(createApplyExtensionUpdateMessage()).catch(() => {})
+}
 
 function onUpdateClick() {
   // Background decides what's possible: Chrome triggers a store update check +
@@ -160,6 +195,49 @@ const logoUrl = browser.runtime.getURL('/mustard_bottle_smile_512.png')
         need to re-login here afterwards.
       </span>
       <button class="update-button" @click="onUpdateClick">Update now</button>
+    </div>
+
+    <!-- Optional store update. This is independent from the mandatory backend
+         compatibility guard above, which takes precedence when both apply. -->
+    <div
+      v-else-if="extensionUpdateState?.status === 'downloading'"
+      class="update-banner optional-update-banner"
+    >
+      <strong>Update available</strong>
+      <span>Mustard {{ extensionUpdateState.latestVersion }} is downloading.</span>
+    </div>
+
+    <div
+      v-else-if="extensionUpdateState?.status === 'action-required'"
+      class="update-banner optional-update-banner"
+    >
+      <strong>Update available</strong>
+      <span>Mustard {{ extensionUpdateState.latestVersion }} is available.</span>
+      <ol class="update-instructions">
+        <li v-for="instruction in extensionUpdateState.action.instructions" :key="instruction">
+          {{ instruction }}
+        </li>
+      </ol>
+    </div>
+
+    <div
+      v-else-if="extensionUpdateState?.status === 'ready'"
+      class="update-banner optional-update-banner"
+    >
+      <strong>Update ready</strong>
+      <span>Restart Mustard to use version {{ extensionUpdateState.latestVersion }}.</span>
+      <button class="update-button" @click="applyExtensionUpdate">
+        {{ extensionUpdateState.action.label }}
+      </button>
+    </div>
+
+    <div
+      v-else-if="extensionUpdateState?.status === 'failed' && extensionUpdateState.retryable"
+      class="update-banner optional-update-banner"
+    >
+      <strong>Update check failed</strong>
+      <span>{{ extensionUpdateState.message }}</span>
+      <button class="update-button" @click="checkExtensionUpdate">Try again</button>
     </div>
 
     <!-- Notes visibility toggle -->
@@ -304,6 +382,15 @@ body::-webkit-scrollbar {
 
 .update-banner strong {
   font-size: 0.875rem;
+}
+
+.optional-update-banner {
+  border-width: 1px;
+}
+
+.update-instructions {
+  margin: 0.25rem 0 0;
+  padding-left: 1.25rem;
 }
 
 .update-button {
