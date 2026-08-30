@@ -28,6 +28,7 @@ export class ExtensionUpdateService {
   }
   private restored = false
   private checkedAt = 0
+  private checkInFlight: Promise<ExtensionUpdateState> | null = null
   private readonly listeners = new Set<(state: ExtensionUpdateState) => void>()
 
   constructor(private readonly provider: ExtensionUpdateProvider = createProvider()) {
@@ -46,6 +47,17 @@ export class ExtensionUpdateService {
     await this.restore()
     if (Date.now() - this.checkedAt < CHECK_TTL_MS) return this.state
 
+    if (this.checkInFlight) return this.checkInFlight
+
+    this.checkInFlight = this.performCheck()
+    try {
+      return await this.checkInFlight
+    } finally {
+      this.checkInFlight = null
+    }
+  }
+
+  private async performCheck(): Promise<ExtensionUpdateState> {
     await this.setState({ status: 'checking' }, false)
     const state = await this.provider.check(currentVersion())
     this.checkedAt = Date.now()

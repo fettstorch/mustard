@@ -10,6 +10,8 @@ import {
   createMarkNotificationsSeenForNoteMessage,
   createGetAppStatusMessage,
   createRequestUpdateMessage,
+  createCheckExtensionUpdateMessage,
+  createApplyExtensionUpdateMessage,
   sendMessage,
   type Message,
   RATE_LIMIT_ERROR_CODE,
@@ -29,6 +31,7 @@ import {
 } from '@/shared/themes'
 import { DtoMustardNote } from '@/shared/dto/DtoMustardNote'
 import { DtoMustardComment } from '@/shared/dto/DtoMustardComment'
+import type { ExtensionUpdateState } from '@/shared/extension-update'
 import MustardContent from '@/ui/content/MustardContent.vue'
 import { createMustardState } from '@/ui/content/mustard-state'
 import { showMustardToast } from '@/ui/content/mustard-toast'
@@ -1083,6 +1086,10 @@ export default defineContentScript({
         showSessionExpiredBanner()
         return
       }
+      if (message.type === 'EXTENSION_UPDATE_STATE_CHANGED') {
+        showOptionalUpdateBanner(message.state)
+        return
+      }
       if (message.type === 'SESSION_CHANGED') {
         mustardState.currentUserId = message.userId
         mustardState.connectedProviders = message.providers
@@ -1123,6 +1130,13 @@ export default defineContentScript({
           showUpdateRequiredBanner()
         }
       })
+      .catch(() => {})
+
+    // Store-driven optional updates are discovered without requiring the popup.
+    // The background caches checks for six hours, so each page can safely ask
+    // for the current state without repeatedly contacting the browser store.
+    sendMessage(createCheckExtensionUpdateMessage())
+      .then(showOptionalUpdateBanner)
       .catch(() => {})
 
     // Fetch current session
@@ -1218,6 +1232,7 @@ export default defineContentScript({
     }
 
     function showUpdateRequiredBanner() {
+      document.getElementById('mustard-extension-update-banner')?.remove()
       showMustardToast({
         id: 'mustard-update-required-banner',
         text: 'Big changes! Mustard needs an update to keep working — click here to update, or do it from your browser’s extensions page. You might also need to re-login from the Mustard menu afterwards.',
@@ -1225,6 +1240,34 @@ export default defineContentScript({
           sendMessage(createRequestUpdateMessage()).catch(() => {})
         },
       })
+    }
+
+    function showOptionalUpdateBanner(state: ExtensionUpdateState) {
+      const toastId = 'mustard-extension-update-banner'
+      if (mustardState.clientOutdated) {
+        document.getElementById(toastId)?.remove()
+        return
+      }
+
+      if (state.status === 'ready') {
+        showMustardToast({
+          id: toastId,
+          text: `Mustard ${state.latestVersion} is ready — click to restart and update`,
+          onClick: () => sendMessage(createApplyExtensionUpdateMessage()).catch(() => {}),
+        })
+        return
+      }
+
+      if (state.status === 'action-required') {
+        showMustardToast({
+          id: toastId,
+          text: `A new Mustard version (${state.latestVersion}) is available — click to update in Firefox`,
+          onClick: () => sendMessage(createRequestUpdateMessage()).catch(() => {}),
+        })
+        return
+      }
+
+      document.getElementById(toastId)?.remove()
     }
 
     // Transient, auto-dismissing feedback for the "show all notes" keyboard
