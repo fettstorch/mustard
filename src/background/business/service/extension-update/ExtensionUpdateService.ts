@@ -70,7 +70,8 @@ export class ExtensionUpdateService {
     return this.state
   }
 
-  apply(): void {
+  async apply(): Promise<void> {
+    await this.restore()
     if (this.state.status !== 'ready') return
     this.provider.apply()
   }

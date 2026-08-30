@@ -61,12 +61,31 @@ describe('ExtensionUpdateService contract', () => {
     const provider = new StubProvider()
     const service = new ExtensionUpdateService(provider)
 
-    service.apply()
+    await service.apply()
     expect(provider.apply).not.toHaveBeenCalled()
 
     provider.listener?.('2.12.0')
     await vi.waitFor(async () => expect((await service.getState()).status).toBe('ready'))
-    service.apply()
+    await service.apply()
+
+    expect(provider.apply).toHaveBeenCalledOnce()
+  })
+
+  it('restores a ready update before applying after a service-worker restart', async () => {
+    await fakeBrowser.storage.local.set({
+      'mustard-extension-update-state': {
+        state: {
+          status: 'ready',
+          currentVersion: '2.11.0',
+          latestVersion: '2.12.0',
+          action: { type: 'apply', label: 'Restart and update' },
+        },
+        checkedAt: Date.now(),
+      },
+    })
+    const provider = new StubProvider()
+
+    await new ExtensionUpdateService(provider).apply()
 
     expect(provider.apply).toHaveBeenCalledOnce()
   })
