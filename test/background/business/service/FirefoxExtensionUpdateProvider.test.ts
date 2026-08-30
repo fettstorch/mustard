@@ -44,6 +44,16 @@ describe('FirefoxExtensionUpdateProvider contract', () => {
     expect(listener).toHaveBeenCalledWith('2.12.0')
   })
 
+  it('does not subscribe when Firefox does not expose onUpdateAvailable', () => {
+    const listener = vi.fn()
+    fakeBrowser.runtime.onUpdateAvailable = undefined
+
+    const unsubscribe = new FirefoxExtensionUpdateProvider().subscribe(listener)
+
+    expect(unsubscribe).not.toThrow()
+    expect(listener).not.toHaveBeenCalled()
+  })
+
   it('opens the AMO listing for a manual update action', async () => {
     const createTab = vi.spyOn(browser.tabs, 'create').mockResolvedValue({} as never)
 

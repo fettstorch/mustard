@@ -59,6 +59,8 @@ export class FirefoxExtensionUpdateProvider implements ExtensionUpdateProvider {
   }
 
   subscribe(listener: (latestVersion: string) => void): () => void {
+    if (!browser.runtime.onUpdateAvailable) return () => {}
+
     const onUpdateAvailable = (details: { version: string }) => listener(details.version)
     browser.runtime.onUpdateAvailable.addListener(onUpdateAvailable)
     return () => browser.runtime.onUpdateAvailable.removeListener(onUpdateAvailable)
