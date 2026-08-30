@@ -94,18 +94,23 @@ export class ExtensionUpdateService {
         | undefined
       let state = storedValue && 'state' in storedValue ? storedValue.state : storedValue
       let checkedAt = storedValue && 'state' in storedValue ? storedValue.checkedAt : 0
+      let replaceStoredState = false
 
       if (state && 'currentVersion' in state && state.currentVersion !== currentVersion()) {
-        await browser.storage.local.remove(STORAGE_KEY)
         state = undefined
         checkedAt = 0
+        replaceStoredState = true
       }
 
       const restorableState =
         !state || state.status === 'checking' || state.status === 'downloading'
           ? ({ status: 'current', currentVersion: currentVersion() } as const)
           : state
-      await this.transitionTo(restorableState, { checkedAt, persist: false, notify: false })
+      await this.transitionTo(restorableState, {
+        checkedAt,
+        persist: replaceStoredState,
+        notify: false,
+      })
     } catch (error) {
       // Do not retain a rejected restoration promise: a later check should be
       // able to retry a transient browser-storage failure.

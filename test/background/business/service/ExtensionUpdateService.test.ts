@@ -239,6 +239,35 @@ describe('ExtensionUpdateService contract', () => {
     expect(provider.checkCalls).toBe(0)
   })
 
+  it('does not clear readiness while replacing state from a previous version', async () => {
+    let releaseStorageRead!: () => void
+    const storageReadBlocked = new Promise<void>((resolve) => {
+      releaseStorageRead = resolve
+    })
+    vi.spyOn(browser.storage.local, 'get').mockImplementationOnce(async () => {
+      await storageReadBlocked
+      return {
+        'mustard-extension-update-state': {
+          state: { status: 'current', currentVersion: '2.10.0' },
+          checkedAt: Date.now(),
+        },
+      }
+    })
+    const provider = new StubProvider()
+    const service = new ExtensionUpdateService(provider)
+
+    const check = service.check()
+    provider.listener?.('2.12.0')
+    releaseStorageRead()
+
+    await expect(check).resolves.toMatchObject({ status: 'ready', latestVersion: '2.12.0' })
+    await expect(browser.storage.local.get('mustard-extension-update-state')).resolves.toEqual({
+      'mustard-extension-update-state': expect.objectContaining({
+        state: expect.objectContaining({ status: 'ready', latestVersion: '2.12.0' }),
+      }),
+    })
+  })
+
   it('retries a retryable provider failure immediately', async () => {
     const provider = new StubProvider()
     provider.state = {
