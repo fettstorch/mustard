@@ -57,6 +57,31 @@ describe('ExtensionUpdateService contract', () => {
     })
   })
 
+  it('does not overwrite readiness when the update event wins the check race', async () => {
+    const provider = new StubProvider()
+    let finishCheck!: (state: ExtensionUpdateState) => void
+    vi.spyOn(provider, 'check').mockImplementation(
+      () =>
+        new Promise<ExtensionUpdateState>((resolve) => {
+          finishCheck = resolve
+        }),
+    )
+    const service = new ExtensionUpdateService(provider)
+
+    const check = service.check()
+    await vi.waitFor(() => expect(provider.check).toHaveBeenCalledOnce())
+    provider.listener?.('2.12.0')
+    await vi.waitFor(async () => expect((await service.getState()).status).toBe('ready'))
+    finishCheck({
+      status: 'downloading',
+      currentVersion: '2.11.0',
+      latestVersion: '2.12.0',
+    })
+
+    await expect(check).resolves.toMatchObject({ status: 'ready', latestVersion: '2.12.0' })
+    await expect(service.getState()).resolves.toMatchObject({ status: 'ready' })
+  })
+
   it('applies an update only after the browser reports it ready', async () => {
     const provider = new StubProvider()
     const service = new ExtensionUpdateService(provider)

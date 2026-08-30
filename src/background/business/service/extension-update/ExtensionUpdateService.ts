@@ -61,6 +61,10 @@ export class ExtensionUpdateService {
   private async performCheck(): Promise<ExtensionUpdateState> {
     await this.setState({ status: 'checking' }, false)
     const state = await this.provider.check(currentVersion())
+    // onUpdateAvailable can report readiness while the explicit store check is
+    // still pending. Never let that older check result replace the newer,
+    // actionable state; the readiness event may not fire a second time.
+    if (this.state.status === 'ready') return this.state
     this.checkedAt = state.status === 'failed' && state.retryable ? 0 : Date.now()
     return this.setState(state)
   }
