@@ -1,8 +1,9 @@
-import type { ExtensionUpdateState } from '@/shared/extension-update'
+import type { ExtensionUpdateAction, ExtensionUpdateState } from '@/shared/extension-update'
 import { isOutdated } from '@/shared/version'
 import type { ExtensionUpdateProvider } from './ExtensionUpdateProvider'
 
 const AMO_ADDON_URL = 'https://addons.mozilla.org/api/v5/addons/addon/mustard-notes/'
+const AMO_LISTING_URL = 'https://addons.mozilla.org/firefox/addon/mustard-notes/'
 
 type AmoAddon = {
   current_version?: {
@@ -32,7 +33,7 @@ export class FirefoxExtensionUpdateProvider implements ExtensionUpdateProvider {
         latestVersion,
         action: {
           type: 'manual',
-          label: 'How to update',
+          label: 'Update in Firefox',
           instructions: [
             'Open Firefox’s Add-ons Manager.',
             'Open the gear menu and select “Check for Updates”.',
@@ -49,8 +50,12 @@ export class FirefoxExtensionUpdateProvider implements ExtensionUpdateProvider {
     }
   }
 
-  apply(): void {
-    browser.runtime.reload()
+  async perform(action: ExtensionUpdateAction): Promise<void> {
+    if (action.type === 'apply') {
+      browser.runtime.reload()
+      return
+    }
+    await browser.tabs.create({ url: AMO_LISTING_URL })
   }
 
   subscribe(listener: (latestVersion: string) => void): () => void {

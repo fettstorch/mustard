@@ -16,7 +16,7 @@ import {
   createGetAppStatusMessage,
   createRequestUpdateMessage,
   createCheckExtensionUpdateMessage,
-  createApplyExtensionUpdateMessage,
+  createPerformExtensionUpdateActionMessage,
   sendMessage,
   sendTabMessage,
   type AtprotoSessionResponse,
@@ -100,8 +100,8 @@ function checkExtensionUpdate() {
     })
 }
 
-function applyExtensionUpdate() {
-  sendMessage(createApplyExtensionUpdateMessage()).catch(() => {})
+function performExtensionUpdateAction() {
+  sendMessage(createPerformExtensionUpdateActionMessage()).catch(() => {})
 }
 
 function onUpdateClick() {
@@ -218,6 +218,9 @@ const logoUrl = browser.runtime.getURL('/mustard_bottle_smile_512.png')
           {{ instruction }}
         </li>
       </ol>
+      <button class="update-button" @click="performExtensionUpdateAction">
+        {{ extensionUpdateState.action.label }}
+      </button>
     </div>
 
     <div
@@ -226,7 +229,7 @@ const logoUrl = browser.runtime.getURL('/mustard_bottle_smile_512.png')
     >
       <strong>Update ready</strong>
       <span>Restart Mustard to use version {{ extensionUpdateState.latestVersion }}.</span>
-      <button class="update-button" @click="applyExtensionUpdate">
+      <button class="update-button" @click="performExtensionUpdateAction">
         {{ extensionUpdateState.action.label }}
       </button>
     </div>

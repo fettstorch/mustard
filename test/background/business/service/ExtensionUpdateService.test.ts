@@ -2,11 +2,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fakeBrowser } from 'wxt/testing/fake-browser'
 import { ExtensionUpdateService } from '@/background/business/service/extension-update/ExtensionUpdateService'
 import type { ExtensionUpdateProvider } from '@/background/business/service/extension-update/ExtensionUpdateProvider'
-import type { ExtensionUpdateState } from '@/shared/extension-update'
+import type { ExtensionUpdateAction, ExtensionUpdateState } from '@/shared/extension-update'
 
 class StubProvider implements ExtensionUpdateProvider {
   state: ExtensionUpdateState = { status: 'current', currentVersion: '2.11.0' }
-  apply = vi.fn()
+  perform = vi.fn(async (_action: ExtensionUpdateAction) => {})
   listener: ((latestVersion: string) => void) | null = null
   checkCalls = 0
 
@@ -36,10 +36,30 @@ describe('ExtensionUpdateService contract', () => {
       status: 'action-required',
       currentVersion: '2.11.0',
       latestVersion: '2.12.0',
-      action: { type: 'manual', label: 'How to update', instructions: ['Check Firefox.'] },
+      action: { type: 'manual', label: 'Update in Firefox', instructions: ['Check Firefox.'] },
     }
 
     await expect(new ExtensionUpdateService(provider).check()).resolves.toEqual(provider.state)
+  })
+
+  it('delegates the current browser-neutral action to the provider', async () => {
+    const provider = new StubProvider()
+    provider.state = {
+      status: 'action-required',
+      currentVersion: '2.11.0',
+      latestVersion: '2.12.0',
+      action: {
+        type: 'manual',
+        label: 'Update in Firefox',
+        instructions: ['Check Firefox.'],
+      },
+    }
+    const service = new ExtensionUpdateService(provider)
+
+    await service.check()
+    await service.performAction()
+
+    expect(provider.perform).toHaveBeenCalledWith(provider.state.action)
   })
 
   it('changes to ready when the browser reports a downloaded update', async () => {
@@ -51,7 +71,7 @@ describe('ExtensionUpdateService contract', () => {
     provider.listener?.('2.12.0')
     await vi.waitFor(() => expect(listener).toHaveBeenCalled())
 
-    await expect(service.getState()).resolves.toMatchObject({
+    await expect(service.check()).resolves.toMatchObject({
       status: 'ready',
       latestVersion: '2.12.0',
     })
@@ -67,11 +87,15 @@ describe('ExtensionUpdateService contract', () => {
         }),
     )
     const service = new ExtensionUpdateService(provider)
+    const listener = vi.fn()
+    service.subscribe(listener)
 
     const check = service.check()
     await vi.waitFor(() => expect(provider.check).toHaveBeenCalledOnce())
     provider.listener?.('2.12.0')
-    await vi.waitFor(async () => expect((await service.getState()).status).toBe('ready'))
+    await vi.waitFor(() =>
+      expect(listener).toHaveBeenCalledWith(expect.objectContaining({ status: 'ready' })),
+    )
     finishCheck({
       status: 'downloading',
       currentVersion: '2.11.0',
@@ -79,21 +103,25 @@ describe('ExtensionUpdateService contract', () => {
     })
 
     await expect(check).resolves.toMatchObject({ status: 'ready', latestVersion: '2.12.0' })
-    await expect(service.getState()).resolves.toMatchObject({ status: 'ready' })
+    await expect(service.check()).resolves.toMatchObject({ status: 'ready' })
   })
 
   it('applies an update only after the browser reports it ready', async () => {
     const provider = new StubProvider()
     const service = new ExtensionUpdateService(provider)
 
-    await service.apply()
-    expect(provider.apply).not.toHaveBeenCalled()
+    await service.performAction()
+    expect(provider.perform).not.toHaveBeenCalled()
 
+    const listener = vi.fn()
+    service.subscribe(listener)
     provider.listener?.('2.12.0')
-    await vi.waitFor(async () => expect((await service.getState()).status).toBe('ready'))
-    await service.apply()
+    await vi.waitFor(() =>
+      expect(listener).toHaveBeenCalledWith(expect.objectContaining({ status: 'ready' })),
+    )
+    await service.performAction()
 
-    expect(provider.apply).toHaveBeenCalledOnce()
+    expect(provider.perform).toHaveBeenCalledWith({ type: 'apply', label: 'Restart and update' })
   })
 
   it('restores a ready update before applying after a service-worker restart', async () => {
@@ -110,9 +138,9 @@ describe('ExtensionUpdateService contract', () => {
     })
     const provider = new StubProvider()
 
-    await new ExtensionUpdateService(provider).apply()
+    await new ExtensionUpdateService(provider).performAction()
 
-    expect(provider.apply).toHaveBeenCalledOnce()
+    expect(provider.perform).toHaveBeenCalledWith({ type: 'apply', label: 'Restart and update' })
   })
 
   it('reuses a recent store check across service-worker restarts', async () => {
@@ -207,7 +235,7 @@ describe('ExtensionUpdateService contract', () => {
     releaseStorageRead()
 
     await expect(check).resolves.toMatchObject({ status: 'ready', latestVersion: '2.12.0' })
-    await expect(service.getState()).resolves.toMatchObject({ status: 'ready' })
+    await expect(service.check()).resolves.toMatchObject({ status: 'ready' })
     expect(provider.checkCalls).toBe(0)
   })
 
@@ -257,7 +285,7 @@ describe('ExtensionUpdateService contract', () => {
       },
     })
 
-    const state = await new ExtensionUpdateService(new StubProvider()).getState()
+    const state = await new ExtensionUpdateService(new StubProvider()).check()
 
     expect(state).toEqual({ status: 'current', currentVersion: '2.11.0' })
   })

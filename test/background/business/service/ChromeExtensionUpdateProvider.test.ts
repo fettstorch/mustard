@@ -41,6 +41,17 @@ describe('ChromeExtensionUpdateProvider contract', () => {
     expect(listener).toHaveBeenCalledWith('2.12.0')
   })
 
+  it('reloads when asked to perform a downloaded update action', async () => {
+    const reload = vi.spyOn(browser.runtime, 'reload').mockImplementation(() => {})
+
+    await new ChromeExtensionUpdateProvider().perform({
+      type: 'apply',
+      label: 'Restart and update',
+    })
+
+    expect(reload).toHaveBeenCalledOnce()
+  })
+
   it('does not surface Chrome throttling as a user-facing failure', async () => {
     vi.spyOn(browser.runtime, 'requestUpdateCheck').mockResolvedValue({ status: 'throttled' })
 

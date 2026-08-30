@@ -1,5 +1,5 @@
 import type { ExtensionUpdateState } from '@/shared/extension-update'
-import { cached } from '@fettstorch/jule'
+import { cached, Observable } from '@fettstorch/jule'
 import { ChromeExtensionUpdateProvider } from './ChromeExtensionUpdateProvider'
 import type { ExtensionUpdateProvider } from './ExtensionUpdateProvider'
 import { FirefoxExtensionUpdateProvider } from './FirefoxExtensionUpdateProvider'
@@ -10,6 +10,12 @@ const CHECK_TTL_MS = 6 * 60 * 60 * 1000
 type StoredUpdateState = {
   state: ExtensionUpdateState
   checkedAt: number
+}
+
+type TransitionOptions = {
+  checkedAt?: number
+  persist?: boolean
+  notify?: boolean
 }
 
 function currentVersion(): string {
@@ -28,18 +34,19 @@ export class ExtensionUpdateService {
     currentVersion: currentVersion(),
   }
   private checkedAt = 0
-  private checkInFlight: Promise<ExtensionUpdateState> | null = null
-  private readonly listeners = new Set<(state: ExtensionUpdateState) => void>()
+  private readonly stateChanges = new Observable<ExtensionUpdateState>()
 
   constructor(private readonly provider: ExtensionUpdateProvider = createProvider()) {
     provider.subscribe((latestVersion) => {
-      this.checkedAt = Date.now()
-      void this.setState({
-        status: 'ready',
-        currentVersion: currentVersion(),
-        latestVersion,
-        action: { type: 'apply', label: 'Restart and update' },
-      })
+      void this.transitionTo(
+        {
+          status: 'ready',
+          currentVersion: currentVersion(),
+          latestVersion,
+          action: { type: 'apply', label: 'Restart and update' },
+        },
+        { checkedAt: Date.now() },
+      )
     })
   }
 
@@ -52,42 +59,31 @@ export class ExtensionUpdateService {
     const isRetryableFailure = this.state.status === 'failed' && this.state.retryable
     if (!isRetryableFailure && Date.now() - this.checkedAt < CHECK_TTL_MS) return this.state
 
-    if (this.checkInFlight) return this.checkInFlight
-
-    this.checkInFlight = this.performCheck()
-    try {
-      return await this.checkInFlight
-    } finally {
-      this.checkInFlight = null
-    }
+    return this.runProviderCheck()
   }
 
-  private async performCheck(): Promise<ExtensionUpdateState> {
-    await this.setState({ status: 'checking' }, false)
-    const state = await this.provider.check(currentVersion())
-    // onUpdateAvailable can report readiness while the explicit store check is
-    // still pending. Never let that older check result replace the newer,
-    // actionable state; the readiness event may not fire a second time.
-    if (this.state.status === 'ready') return this.state
-    this.checkedAt = state.status === 'failed' && state.retryable ? 0 : Date.now()
-    return this.setState(state)
-  }
-
-  async getState(): Promise<ExtensionUpdateState> {
+  async performAction(): Promise<void> {
     await this.restore()
-    return this.state
-  }
-
-  async apply(): Promise<void> {
-    await this.restore()
-    if (this.state.status !== 'ready') return
-    this.provider.apply()
+    if (this.state.status !== 'ready' && this.state.status !== 'action-required') return
+    await this.provider.perform(this.state.action)
   }
 
   subscribe(listener: (state: ExtensionUpdateState) => void): () => void {
-    this.listeners.add(listener)
-    return () => this.listeners.delete(listener)
+    return this.stateChanges.subscribe(listener)
   }
+
+  private readonly runProviderCheck = cached(async (): Promise<ExtensionUpdateState> => {
+    try {
+      await this.transitionTo({ status: 'checking' }, { persist: false })
+      const state = await this.provider.check(currentVersion())
+      const checkedAt = state.status === 'failed' && state.retryable ? 0 : Date.now()
+      return await this.transitionTo(state, { checkedAt })
+    } finally {
+      // Jule coalesces callers on the in-flight promise; evict once settled so
+      // the persisted result TTL remains the authority for later checks.
+      this.runProviderCheck.evict()
+    }
+  })
 
   private readonly restore = cached(async (): Promise<void> => {
     try {
@@ -96,22 +92,20 @@ export class ExtensionUpdateService {
         | StoredUpdateState
         | ExtensionUpdateState
         | undefined
-      const state = storedValue && 'state' in storedValue ? storedValue.state : storedValue
-      const storedCheckedAt = storedValue && 'state' in storedValue ? storedValue.checkedAt : 0
+      let state = storedValue && 'state' in storedValue ? storedValue.state : storedValue
+      let checkedAt = storedValue && 'state' in storedValue ? storedValue.checkedAt : 0
 
-      // onUpdateAvailable may win while the storage read is pending. Preserve
-      // that newer actionable state and its timestamp instead of restoring the
-      // older snapshot that was captured when this read began.
-      if (this.state.status === 'ready') return
-
-      this.checkedAt = storedCheckedAt
-      if (!state || state.status === 'checking' || state.status === 'downloading') return
-
-      if ('currentVersion' in state && state.currentVersion !== currentVersion()) {
+      if (state && 'currentVersion' in state && state.currentVersion !== currentVersion()) {
         await browser.storage.local.remove(STORAGE_KEY)
-        return
+        state = undefined
+        checkedAt = 0
       }
-      this.state = state
+
+      const restorableState =
+        !state || state.status === 'checking' || state.status === 'downloading'
+          ? ({ status: 'current', currentVersion: currentVersion() } as const)
+          : state
+      await this.transitionTo(restorableState, { checkedAt, persist: false, notify: false })
     } catch (error) {
       // Do not retain a rejected restoration promise: a later check should be
       // able to retry a transient browser-storage failure.
@@ -120,16 +114,22 @@ export class ExtensionUpdateService {
     }
   })
 
-  private async setState(
+  private async transitionTo(
     state: ExtensionUpdateState,
-    persist = true,
+    options: TransitionOptions = {},
   ): Promise<ExtensionUpdateState> {
+    // Ready is terminal for the installed version: neither an older provider
+    // result nor a stale storage snapshot may replace its restart action.
+    if (this.state.status === 'ready' && state.status !== 'ready') return this.state
+
+    const { checkedAt = this.checkedAt, persist = true, notify = true } = options
     this.state = state
+    this.checkedAt = checkedAt
     if (persist) {
       const stored: StoredUpdateState = { state, checkedAt: this.checkedAt }
       await browser.storage.local.set({ [STORAGE_KEY]: stored })
     }
-    for (const listener of this.listeners) listener(state)
+    if (notify) this.stateChanges.emit(state)
     return state
   }
 }

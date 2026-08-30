@@ -9,6 +9,8 @@ export type ApplyExtensionUpdateAction = {
   label: string
 }
 
+export type ExtensionUpdateAction = ManualExtensionUpdateAction | ApplyExtensionUpdateAction
+
 /** Browser-neutral state exposed by the background update coordinator. */
 export type ExtensionUpdateState =
   | { status: 'checking' }

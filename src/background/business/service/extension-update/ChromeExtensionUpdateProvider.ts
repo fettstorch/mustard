@@ -1,4 +1,4 @@
-import type { ExtensionUpdateState } from '@/shared/extension-update'
+import type { ExtensionUpdateAction, ExtensionUpdateState } from '@/shared/extension-update'
 import type { ExtensionUpdateProvider } from './ExtensionUpdateProvider'
 
 type UpdateCheckResult = {
@@ -45,8 +45,8 @@ export class ChromeExtensionUpdateProvider implements ExtensionUpdateProvider {
     }
   }
 
-  apply(): void {
-    browser.runtime.reload()
+  async perform(action: ExtensionUpdateAction): Promise<void> {
+    if (action.type === 'apply') browser.runtime.reload()
   }
 
   subscribe(listener: (latestVersion: string) => void): () => void {

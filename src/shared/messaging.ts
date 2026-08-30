@@ -342,7 +342,7 @@ export type RequestUpdateMessage = Satisfies<
   }
 >
 
-// Popup → background: check the installed browser's store for an optional update.
+// Any extension surface → background: check the installed browser's store for an optional update.
 export type CheckExtensionUpdateMessage = Satisfies<
   BaseMessage,
   {
@@ -350,15 +350,15 @@ export type CheckExtensionUpdateMessage = Satisfies<
   }
 >
 
-// Popup → background: apply an update that the browser has finished downloading.
-export type ApplyExtensionUpdateMessage = Satisfies<
+// Any extension surface → background: perform the action supported by the current update state.
+export type PerformExtensionUpdateActionMessage = Satisfies<
   BaseMessage,
   {
-    type: 'APPLY_EXTENSION_UPDATE'
+    type: 'PERFORM_EXTENSION_UPDATE_ACTION'
   }
 >
 
-// Background → popup: browser-driven update progress changed after the check returned.
+// Background → extension surfaces: browser-driven update progress changed after the check returned.
 export type ExtensionUpdateStateChangedMessage = Satisfies<
   BaseMessage,
   {
@@ -510,7 +510,7 @@ export type Message =
   | GetAppStatusMessage
   | RequestUpdateMessage
   | CheckExtensionUpdateMessage
-  | ApplyExtensionUpdateMessage
+  | PerformExtensionUpdateActionMessage
   | ExtensionUpdateStateChangedMessage
   | QueryCommentsMessage
   | UpsertCommentMessage
@@ -566,7 +566,7 @@ type MessageResponses = {
   GET_APP_STATUS: AppStatusResponse
   REQUEST_UPDATE: void
   CHECK_EXTENSION_UPDATE: ExtensionUpdateState
-  APPLY_EXTENSION_UPDATE: void
+  PERFORM_EXTENSION_UPDATE_ACTION: void
   EXTENSION_UPDATE_STATE_CHANGED: void
   QUERY_COMMENTS: QueryCommentsResponse
   UPSERT_COMMENT: WriteResponse<DtoMustardComment[]>
@@ -815,8 +815,8 @@ export function createCheckExtensionUpdateMessage(): CheckExtensionUpdateMessage
   return { type: 'CHECK_EXTENSION_UPDATE' }
 }
 
-export function createApplyExtensionUpdateMessage(): ApplyExtensionUpdateMessage {
-  return { type: 'APPLY_EXTENSION_UPDATE' }
+export function createPerformExtensionUpdateActionMessage(): PerformExtensionUpdateActionMessage {
+  return { type: 'PERFORM_EXTENSION_UPDATE_ACTION' }
 }
 
 export function createExtensionUpdateStateChangedMessage(

@@ -679,7 +679,7 @@ export default defineBackground(() => {
 
     CHECK_EXTENSION_UPDATE: () => extensionUpdateService.check(),
 
-    APPLY_EXTENSION_UPDATE: () => extensionUpdateService.apply(),
+    PERFORM_EXTENSION_UPDATE_ACTION: () => extensionUpdateService.performAction(),
 
     GET_PROFILES: async (message) => {
       try {

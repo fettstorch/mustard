@@ -11,7 +11,7 @@ import {
   createGetAppStatusMessage,
   createRequestUpdateMessage,
   createCheckExtensionUpdateMessage,
-  createApplyExtensionUpdateMessage,
+  createPerformExtensionUpdateActionMessage,
   sendMessage,
   type Message,
   RATE_LIMIT_ERROR_CODE,
@@ -1253,7 +1253,7 @@ export default defineContentScript({
         showMustardToast({
           id: toastId,
           text: `Mustard ${state.latestVersion} is ready — click to restart and update`,
-          onClick: () => sendMessage(createApplyExtensionUpdateMessage()).catch(() => {}),
+          onClick: () => sendMessage(createPerformExtensionUpdateActionMessage()).catch(() => {}),
         })
         return
       }
@@ -1261,8 +1261,8 @@ export default defineContentScript({
       if (state.status === 'action-required') {
         showMustardToast({
           id: toastId,
-          text: `A new Mustard version (${state.latestVersion}) is available — click to update in Firefox`,
-          onClick: () => sendMessage(createRequestUpdateMessage()).catch(() => {}),
+          text: `A new Mustard version (${state.latestVersion}) is available — click to update`,
+          onClick: () => sendMessage(createPerformExtensionUpdateActionMessage()).catch(() => {}),
         })
         return
       }
