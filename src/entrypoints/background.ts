@@ -78,7 +78,10 @@ export default defineBackground(() => {
   const extensionUpdateService = new ExtensionUpdateService()
 
   extensionUpdateService.subscribe((state) => {
-    browser.runtime.sendMessage(createExtensionUpdateStateChangedMessage(state)).catch(() => {})
+    const message = createExtensionUpdateStateChangedMessage(state)
+    // Extension pages (popup) and content scripts use separate delivery paths.
+    browser.runtime.sendMessage(message).catch(() => {})
+    void broadcastToAllTabs(message)
   })
 
   console.log('Mustard background service worker loaded')
