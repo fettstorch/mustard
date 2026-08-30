@@ -88,6 +88,39 @@ describe('ExtensionUpdateService contract', () => {
     expect(provider.checkCalls).toBe(0)
   })
 
+  it('retries a retryable provider failure immediately', async () => {
+    const provider = new StubProvider()
+    provider.state = {
+      status: 'failed',
+      message: 'Temporary store failure.',
+      retryable: true,
+    }
+    const service = new ExtensionUpdateService(provider)
+
+    await service.check()
+    provider.state = { status: 'current', currentVersion: '2.11.0' }
+
+    await expect(service.check()).resolves.toEqual(provider.state)
+    expect(provider.checkCalls).toBe(2)
+  })
+
+  it('retries a recent persisted retryable failure after a service-worker restart', async () => {
+    await fakeBrowser.storage.local.set({
+      'mustard-extension-update-state': {
+        state: {
+          status: 'failed',
+          message: 'Temporary store failure.',
+          retryable: true,
+        },
+        checkedAt: Date.now(),
+      },
+    })
+    const provider = new StubProvider()
+
+    await expect(new ExtensionUpdateService(provider).check()).resolves.toEqual(provider.state)
+    expect(provider.checkCalls).toBe(1)
+  })
+
   it('discards persisted update state after the installed version changes', async () => {
     await fakeBrowser.storage.local.set({
       'mustard-extension-update-state': {

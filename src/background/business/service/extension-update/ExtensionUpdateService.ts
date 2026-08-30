@@ -45,7 +45,8 @@ export class ExtensionUpdateService {
 
   async check(): Promise<ExtensionUpdateState> {
     await this.restore()
-    if (Date.now() - this.checkedAt < CHECK_TTL_MS) return this.state
+    const isRetryableFailure = this.state.status === 'failed' && this.state.retryable
+    if (!isRetryableFailure && Date.now() - this.checkedAt < CHECK_TTL_MS) return this.state
 
     if (this.checkInFlight) return this.checkInFlight
 
@@ -60,7 +61,7 @@ export class ExtensionUpdateService {
   private async performCheck(): Promise<ExtensionUpdateState> {
     await this.setState({ status: 'checking' }, false)
     const state = await this.provider.check(currentVersion())
-    this.checkedAt = Date.now()
+    this.checkedAt = state.status === 'failed' && state.retryable ? 0 : Date.now()
     return this.setState(state)
   }
 
