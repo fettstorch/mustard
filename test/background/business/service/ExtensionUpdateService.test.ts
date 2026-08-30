@@ -88,6 +88,34 @@ describe('ExtensionUpdateService contract', () => {
     expect(provider.checkCalls).toBe(0)
   })
 
+  it('shares in-progress state restoration between concurrent checks', async () => {
+    const storedState = {
+      state: { status: 'current', currentVersion: '2.11.0' } as const,
+      checkedAt: Date.now(),
+    }
+    let releaseStorageRead!: () => void
+    const storageReadBlocked = new Promise<void>((resolve) => {
+      releaseStorageRead = resolve
+    })
+    const getStorage = vi.spyOn(browser.storage.local, 'get').mockImplementation(async () => {
+      await storageReadBlocked
+      return { 'mustard-extension-update-state': storedState }
+    })
+    const provider = new StubProvider()
+    const service = new ExtensionUpdateService(provider)
+
+    const firstCheck = service.check()
+    const secondCheck = service.check()
+    await vi.waitFor(() => expect(getStorage).toHaveBeenCalledOnce())
+    releaseStorageRead()
+
+    await expect(Promise.all([firstCheck, secondCheck])).resolves.toEqual([
+      storedState.state,
+      storedState.state,
+    ])
+    expect(provider.checkCalls).toBe(0)
+  })
+
   it('retries a retryable provider failure immediately', async () => {
     const provider = new StubProvider()
     provider.state = {

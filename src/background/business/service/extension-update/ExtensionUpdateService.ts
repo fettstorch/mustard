@@ -1,4 +1,5 @@
 import type { ExtensionUpdateState } from '@/shared/extension-update'
+import { cached } from '@fettstorch/jule'
 import { ChromeExtensionUpdateProvider } from './ChromeExtensionUpdateProvider'
 import type { ExtensionUpdateProvider } from './ExtensionUpdateProvider'
 import { FirefoxExtensionUpdateProvider } from './FirefoxExtensionUpdateProvider'
@@ -26,7 +27,6 @@ export class ExtensionUpdateService {
     status: 'current',
     currentVersion: currentVersion(),
   }
-  private restored = false
   private checkedAt = 0
   private checkInFlight: Promise<ExtensionUpdateState> | null = null
   private readonly listeners = new Set<(state: ExtensionUpdateState) => void>()
@@ -80,21 +80,29 @@ export class ExtensionUpdateService {
     return () => this.listeners.delete(listener)
   }
 
-  private async restore(): Promise<void> {
-    if (this.restored) return
-    this.restored = true
-    const stored = await browser.storage.local.get(STORAGE_KEY)
-    const storedValue = stored[STORAGE_KEY] as StoredUpdateState | ExtensionUpdateState | undefined
-    const state = storedValue && 'state' in storedValue ? storedValue.state : storedValue
-    this.checkedAt = storedValue && 'state' in storedValue ? storedValue.checkedAt : 0
-    if (!state || state.status === 'checking' || state.status === 'downloading') return
+  private readonly restore = cached(async (): Promise<void> => {
+    try {
+      const stored = await browser.storage.local.get(STORAGE_KEY)
+      const storedValue = stored[STORAGE_KEY] as
+        | StoredUpdateState
+        | ExtensionUpdateState
+        | undefined
+      const state = storedValue && 'state' in storedValue ? storedValue.state : storedValue
+      this.checkedAt = storedValue && 'state' in storedValue ? storedValue.checkedAt : 0
+      if (!state || state.status === 'checking' || state.status === 'downloading') return
 
-    if ('currentVersion' in state && state.currentVersion !== currentVersion()) {
-      await browser.storage.local.remove(STORAGE_KEY)
-      return
+      if ('currentVersion' in state && state.currentVersion !== currentVersion()) {
+        await browser.storage.local.remove(STORAGE_KEY)
+        return
+      }
+      this.state = state
+    } catch (error) {
+      // Do not retain a rejected restoration promise: a later check should be
+      // able to retry a transient browser-storage failure.
+      this.restore.evict()
+      throw error
     }
-    this.state = state
-  }
+  })
 
   private async setState(
     state: ExtensionUpdateState,
