@@ -10,6 +10,7 @@ import {
   type QueryNotificationsForNotesResponse,
   type WriteResponse,
   RATE_LIMIT_ERROR_CODE,
+  createExtensionUpdateStateChangedMessage,
 } from '@/shared/messaging'
 import { mustardNotesManager } from '@/background/business/MustardNotesManager'
 import { mustardCommentsManager } from '@/background/business/MustardCommentsManager'
@@ -58,6 +59,7 @@ import { CLIENT_OUTDATED_ERROR, isRemoteMutationMessage } from '@/shared/remote-
 import { githubAvatarUrl } from '@/shared/providers'
 import { PENDING_FOCUS_KEY, type PendingFocus } from '@/shared/pending-focus'
 import { unhideNote } from '@/shared/hidden-notes'
+import { ExtensionUpdateService } from '@/background/business/service/extension-update/ExtensionUpdateService'
 
 /** Builds a github UserProfile from an id + login, falling back to the id when the login is unknown. */
 function buildGithubProfile(id: string, login: string | undefined): UserProfile {
@@ -73,6 +75,14 @@ function buildGithubProfile(id: string, login: string | undefined): UserProfile 
 export default defineBackground(() => {
   const profileService = new MustardProfileServiceBsky()
   const mutualsService = new MustardMutualsServiceBsky()
+  const extensionUpdateService = new ExtensionUpdateService()
+
+  extensionUpdateService.subscribe((state) => {
+    const message = createExtensionUpdateStateChangedMessage(state)
+    // Extension pages (popup) and content scripts use separate delivery paths.
+    browser.runtime.sendMessage(message).catch(() => {})
+    void broadcastToAllTabs(message)
+  })
 
   console.log('Mustard background service worker loaded')
 
@@ -666,6 +676,10 @@ export default defineBackground(() => {
     GET_APP_STATUS: () => getAppStatus(),
 
     REQUEST_UPDATE: () => requestClientUpdate(),
+
+    CHECK_EXTENSION_UPDATE: () => extensionUpdateService.check(),
+
+    PERFORM_EXTENSION_UPDATE_ACTION: () => extensionUpdateService.performAction(),
 
     GET_PROFILES: async (message) => {
       try {

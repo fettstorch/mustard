@@ -8,6 +8,7 @@ import type { MentionTarget } from './mentions'
 import type { BskyProfile } from './model/BskyProfile'
 import type { MentionCandidate } from './model/MentionCandidate'
 import type { LinkPreview } from './model/LinkPreview'
+import type { ExtensionUpdateState } from './extension-update'
 
 type BaseMessage = {
   type: string
@@ -341,6 +342,31 @@ export type RequestUpdateMessage = Satisfies<
   }
 >
 
+// Any extension surface → background: check the installed browser's store for an optional update.
+export type CheckExtensionUpdateMessage = Satisfies<
+  BaseMessage,
+  {
+    type: 'CHECK_EXTENSION_UPDATE'
+  }
+>
+
+// Any extension surface → background: perform the action supported by the current update state.
+export type PerformExtensionUpdateActionMessage = Satisfies<
+  BaseMessage,
+  {
+    type: 'PERFORM_EXTENSION_UPDATE_ACTION'
+  }
+>
+
+// Background → extension surfaces: browser-driven update progress changed after the check returned.
+export type ExtensionUpdateStateChangedMessage = Satisfies<
+  BaseMessage,
+  {
+    type: 'EXTENSION_UPDATE_STATE_CHANGED'
+    state: ExtensionUpdateState
+  }
+>
+
 // Content script → service worker: query all comments for a batch of remote note ids.
 // Response: Record<noteId, DtoMustardComment[]> (oldest → newest within each list).
 export type QueryCommentsMessage = Satisfies<
@@ -483,6 +509,9 @@ export type Message =
   | OpenOptionsPageMessage
   | GetAppStatusMessage
   | RequestUpdateMessage
+  | CheckExtensionUpdateMessage
+  | PerformExtensionUpdateActionMessage
+  | ExtensionUpdateStateChangedMessage
   | QueryCommentsMessage
   | UpsertCommentMessage
   | DeleteCommentMessage
@@ -536,6 +565,9 @@ type MessageResponses = {
   OPEN_OPTIONS_PAGE: void
   GET_APP_STATUS: AppStatusResponse
   REQUEST_UPDATE: void
+  CHECK_EXTENSION_UPDATE: ExtensionUpdateState
+  PERFORM_EXTENSION_UPDATE_ACTION: void
+  EXTENSION_UPDATE_STATE_CHANGED: void
   QUERY_COMMENTS: QueryCommentsResponse
   UPSERT_COMMENT: WriteResponse<DtoMustardComment[]>
   DELETE_COMMENT: DtoMustardComment[]
@@ -777,6 +809,20 @@ export function createRequestUpdateMessage(): RequestUpdateMessage {
   return {
     type: 'REQUEST_UPDATE',
   }
+}
+
+export function createCheckExtensionUpdateMessage(): CheckExtensionUpdateMessage {
+  return { type: 'CHECK_EXTENSION_UPDATE' }
+}
+
+export function createPerformExtensionUpdateActionMessage(): PerformExtensionUpdateActionMessage {
+  return { type: 'PERFORM_EXTENSION_UPDATE_ACTION' }
+}
+
+export function createExtensionUpdateStateChangedMessage(
+  state: ExtensionUpdateState,
+): ExtensionUpdateStateChangedMessage {
+  return { type: 'EXTENSION_UPDATE_STATE_CHANGED', state }
 }
 
 export function createQueryCommentsMessage(noteIds: string[]): QueryCommentsMessage {
