@@ -8,6 +8,7 @@ const props = defineProps<{
   clientRect: (() => DOMRect | null) | null | undefined
   onSelect: (candidate: MentionCandidate) => void
   footer?: string
+  inline?: boolean
 }>()
 
 const selectedIndex = ref(0)
@@ -68,7 +69,8 @@ defineExpose({ onKeyDown })
 <template>
   <div
     class="mustard-mention-picker mustard-notes-bg mustard-notes-border mustard-notes-txt"
-    :style="{ top: position.top + 'px', left: position.left + 'px' }"
+    :class="{ 'mustard-mention-picker-inline': inline }"
+    :style="inline ? undefined : { top: position.top + 'px', left: position.left + 'px' }"
     @mousedown.prevent
   >
     <div v-if="!items.length" class="mention-empty">
@@ -125,6 +127,12 @@ defineExpose({ onKeyDown })
   flex-direction: column;
   font-family: var(--mustard-font);
   box-sizing: border-box;
+}
+
+.mustard-mention-picker-inline {
+  position: static;
+  width: 100%;
+  max-height: 240px;
 }
 
 .mustard-mention-picker *,

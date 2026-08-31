@@ -136,6 +136,7 @@ async function submit() {
       :client-rect="inputRect"
       :on-select="selectProfile"
       footer="Bluesky profiles"
+      inline
     />
     <button
       type="submit"
