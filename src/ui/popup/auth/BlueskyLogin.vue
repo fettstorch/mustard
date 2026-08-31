@@ -28,13 +28,13 @@ let searchSequence = 0
 
 watch(blueskyHandle, (value) => {
   clearTimeout(searchTimer)
+  const sequence = ++searchSequence
   const query = value.trim().replace(/^@/, '')
   if (query.length < 2) {
     suggestions.value = []
     return
   }
 
-  const sequence = ++searchSequence
   searchTimer = setTimeout(async () => {
     const result = await sendMessage(createSearchBskyActorsMessage(query)).catch(() => [])
     if (sequence === searchSequence) suggestions.value = result
