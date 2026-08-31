@@ -29,8 +29,13 @@ const inputRef = ref<HTMLInputElement | null>(null)
 const pickerRef = ref<InstanceType<typeof MentionPicker> | null>(null)
 const isInputFocused = ref(false)
 const showSuggestions = ref(false)
+const activeSuggestionId = ref<string>()
 let searchTimer: ReturnType<typeof setTimeout> | undefined
 let searchSequence = 0
+
+const isPickerOpen = computed(
+  () => isInputFocused.value && showSuggestions.value && pickerItems.value.length > 0,
+)
 
 const pickerItems = computed<MentionCandidate[]>(() =>
   suggestions.value.map((profile) => ({
@@ -116,8 +121,13 @@ async function submit() {
       id="bluesky-login-handle"
       v-model="blueskyHandle"
       type="text"
+      role="combobox"
       name="username"
       autocomplete="username"
+      aria-autocomplete="list"
+      aria-controls="bluesky-login-suggestions"
+      :aria-expanded="isPickerOpen"
+      :aria-activedescendant="isPickerOpen ? activeSuggestionId : undefined"
       autocapitalize="none"
       spellcheck="false"
       placeholder="your.handle.bsky.social"
@@ -129,12 +139,14 @@ async function submit() {
       @keydown="onInputKeyDown"
     />
     <MentionPicker
-      v-if="isInputFocused && showSuggestions && pickerItems.length"
+      v-if="isPickerOpen"
       ref="pickerRef"
+      id="bluesky-login-suggestions"
       :items="pickerItems"
       :query="blueskyHandle"
       :client-rect="inputRect"
       :on-select="selectProfile"
+      :on-highlight-change="(id) => (activeSuggestionId = id)"
       footer="Bluesky profiles"
       inline
     />

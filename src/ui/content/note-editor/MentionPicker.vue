@@ -7,8 +7,10 @@ const props = defineProps<{
   query: string
   clientRect: (() => DOMRect | null) | null | undefined
   onSelect: (candidate: MentionCandidate) => void
+  id?: string
   footer?: string
   inline?: boolean
+  onHighlightChange?: (optionId: string | undefined) => void
 }>()
 
 const selectedIndex = ref(0)
@@ -16,11 +18,17 @@ const listRef = ref<HTMLElement | null>(null)
 
 // Reset highlight to the top whenever the result set changes.
 watch(
-  () => props.items,
+  () => [props.items, props.id] as const,
   () => {
     selectedIndex.value = 0
+    props.onHighlightChange?.(props.id && props.items.length ? `${props.id}-option-0` : undefined)
   },
+  { immediate: true },
 )
+
+watch(selectedIndex, (index) => {
+  props.onHighlightChange?.(props.id ? `${props.id}-option-${index}` : undefined)
+})
 
 const position = computed(() => {
   const rect = props.clientRect?.()
@@ -68,6 +76,8 @@ defineExpose({ onKeyDown })
 
 <template>
   <div
+    :id="id"
+    role="listbox"
     class="mustard-mention-picker mustard-notes-bg mustard-notes-border mustard-notes-txt"
     :class="{ 'mustard-mention-picker-inline': inline }"
     :style="inline ? undefined : { top: position.top + 'px', left: position.left + 'px' }"
@@ -85,8 +95,11 @@ defineExpose({ onKeyDown })
       <div ref="listRef" class="mention-list">
         <button
           v-for="(item, index) in items"
+          :id="id ? `${id}-option-${index}` : undefined"
           :key="`${item.provider}:${item.accountId}`"
           type="button"
+          role="option"
+          :aria-selected="index === selectedIndex"
           class="mention-row"
           :class="{ 'mention-row-selected': index === selectedIndex }"
           :title="'@' + item.handle"
