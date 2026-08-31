@@ -80,6 +80,11 @@ function onInputKeyDown(event: KeyboardEvent) {
   if (pickerRef.value?.onKeyDown?.(event)) event.preventDefault()
 }
 
+function onInputFocus() {
+  isInputFocused.value = true
+  showSuggestions.value = true
+}
+
 async function submit() {
   const handle = blueskyHandle.value.trim()
   if (!handle) return
@@ -118,10 +123,7 @@ async function submit() {
       placeholder="your.handle.bsky.social"
       class="mustard-notes-input"
       :disabled="isLoggingIn"
-      @focus="
-        isInputFocused = true
-        showSuggestions = true
-      "
+      @focus="onInputFocus"
       @input="showSuggestions = true"
       @blur="isInputFocused = false"
       @keydown="onInputKeyDown"
