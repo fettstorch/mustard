@@ -47,6 +47,7 @@ import {
 import { MustardProfileServiceBsky } from '@/background/business/service/MustardProfileServiceBsky'
 import type { UserProfile, LinkedIdentity } from '@/shared/model/UserProfile'
 import { MustardMutualsServiceBsky } from '@/background/business/service/MustardMutualsServiceBsky'
+import { MustardActorSearchServiceBsky } from '@/background/business/service/MustardActorSearchServiceBsky'
 import { invalidateRemoteIndexCache } from '@/background/business/service/MustardNotesServiceRemote'
 import { resolveLinkPreviewForNote } from '@/background/business/service/LinkPreviewUnfurlServiceRemote'
 import { loadLinkPreviewThumbnail } from '@/background/business/service/LinkPreviewThumbnailServiceRemote'
@@ -75,6 +76,7 @@ function buildGithubProfile(id: string, login: string | undefined): UserProfile 
 export default defineBackground(() => {
   const profileService = new MustardProfileServiceBsky()
   const mutualsService = new MustardMutualsServiceBsky()
+  const actorSearchService = new MustardActorSearchServiceBsky()
   const extensionUpdateService = new ExtensionUpdateService()
 
   extensionUpdateService.subscribe((state) => {
@@ -746,6 +748,8 @@ export default defineBackground(() => {
         return []
       }
     },
+
+    SEARCH_BSKY_ACTORS: async (message) => actorSearchService.search(message.query),
 
     GET_GITHUB_MENTION_CANDIDATES: async () => {
       try {

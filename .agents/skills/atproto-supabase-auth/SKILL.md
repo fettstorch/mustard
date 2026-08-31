@@ -155,6 +155,11 @@ with the same identity-upsert → UUID → JWT mint.
 
 ## Gotchas
 
+- **Login handle fields need browser semantics**: keep the Bluesky handle entry
+  inside a real form with an associated label, a stable `name`, and
+  `autocomplete="username"` so password managers can identify it. Public
+  pre-login suggestions must use the unauthenticated AppView actor typeahead;
+  the mention candidate flow is session-bound and only contains mutuals.
 - **Keep the two refresh-token layers distinct**: the Mustard refresh token is
   an opaque client-side credential for rotating short-lived Supabase JWTs;
   the ATProto OAuth refresh token stays server-side in `oauth_session` and

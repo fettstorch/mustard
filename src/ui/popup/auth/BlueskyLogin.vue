@@ -5,12 +5,16 @@
  * Handles the Bluesky/AT Protocol login flow.
  * Uses messaging to service worker because popup can close during OAuth flow.
  */
-import { ref } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import {
   createAtprotoLoginMessage,
+  createSearchBskyActorsMessage,
   sendMessage,
   type AtprotoSessionResponse,
 } from '@/shared/messaging'
+import type { BskyProfile } from '@/shared/model/BskyProfile'
+import type { MentionCandidate } from '@/shared/model/MentionCandidate'
+import MentionPicker from '@/ui/content/note-editor/MentionPicker.vue'
 
 const emit = defineEmits<{
   success: [session: NonNullable<AtprotoSessionResponse>]
@@ -20,6 +24,71 @@ const emit = defineEmits<{
 const blueskyHandle = ref('')
 const isLoggingIn = ref(false)
 const errorMessage = ref<string | null>(null)
+const suggestions = ref<BskyProfile[]>([])
+const inputRef = ref<HTMLInputElement | null>(null)
+const pickerRef = ref<InstanceType<typeof MentionPicker> | null>(null)
+const isInputFocused = ref(false)
+const showSuggestions = ref(false)
+const activeSuggestionId = ref<string>()
+let searchTimer: ReturnType<typeof setTimeout> | undefined
+let searchSequence = 0
+
+const isPickerOpen = computed(
+  () => isInputFocused.value && showSuggestions.value && pickerItems.value.length > 0,
+)
+
+const pickerItems = computed<MentionCandidate[]>(() =>
+  suggestions.value.map((profile) => ({
+    provider: 'atproto',
+    accountId: profile.id,
+    handle: profile.handle,
+    displayName: profile.displayName,
+    avatarUrl: profile.avatarUrl,
+  })),
+)
+
+const inputRect = () => inputRef.value?.getBoundingClientRect() ?? null
+
+watch(blueskyHandle, (value) => {
+  clearTimeout(searchTimer)
+  const sequence = ++searchSequence
+  const query = value.trim().replace(/^@/, '')
+  if (query.length < 2) {
+    suggestions.value = []
+    return
+  }
+
+  searchTimer = setTimeout(async () => {
+    const result = await sendMessage(createSearchBskyActorsMessage(query)).catch((error) => {
+      console.error('Failed to search Bluesky actors:', error)
+      return []
+    })
+    if (sequence === searchSequence) suggestions.value = result
+  }, 200)
+})
+
+onBeforeUnmount(() => clearTimeout(searchTimer))
+
+function selectProfile(profile: MentionCandidate) {
+  blueskyHandle.value = profile.handle
+  suggestions.value = []
+  showSuggestions.value = false
+  inputRef.value?.focus()
+}
+
+function onInputKeyDown(event: KeyboardEvent) {
+  if (event.key === 'Escape') {
+    showSuggestions.value = false
+    return
+  }
+  if (!showSuggestions.value) return
+  if (pickerRef.value?.onKeyDown?.(event)) event.preventDefault()
+}
+
+function onInputFocus() {
+  isInputFocused.value = true
+  showSuggestions.value = true
+}
 
 async function submit() {
   const handle = blueskyHandle.value.trim()
@@ -45,25 +114,51 @@ async function submit() {
 </script>
 
 <template>
-  <div class="login-form">
-    <p class="login-label">Login with Bluesky</p>
+  <form class="login-form" @submit.prevent="submit">
+    <label class="login-label" for="bluesky-login-handle">Login with Bluesky</label>
     <input
+      ref="inputRef"
+      id="bluesky-login-handle"
       v-model="blueskyHandle"
       type="text"
+      role="combobox"
+      name="username"
+      autocomplete="username"
+      aria-autocomplete="list"
+      aria-controls="bluesky-login-suggestions"
+      :aria-expanded="isPickerOpen"
+      :aria-activedescendant="isPickerOpen ? activeSuggestionId : undefined"
+      autocapitalize="none"
+      spellcheck="false"
       placeholder="your.handle.bsky.social"
       class="mustard-notes-input"
-      @keyup.enter="submit"
       :disabled="isLoggingIn"
+      @focus="onInputFocus"
+      @input="showSuggestions = true"
+      @blur="isInputFocused = false"
+      @keydown="onInputKeyDown"
+    />
+    <MentionPicker
+      v-if="isPickerOpen"
+      ref="pickerRef"
+      id="bluesky-login-suggestions"
+      :items="pickerItems"
+      :query="blueskyHandle"
+      :client-rect="inputRect"
+      :on-select="selectProfile"
+      :on-highlight-change="(id) => (activeSuggestionId = id)"
+      footer="Bluesky profiles"
+      inline
     />
     <button
-      @click="submit"
+      type="submit"
       class="mustard-notes-btn-primary"
       :disabled="isLoggingIn || !blueskyHandle.trim()"
     >
       {{ isLoggingIn ? 'Logging in...' : 'Login' }}
     </button>
     <p v-if="errorMessage" class="login-error">{{ errorMessage }}</p>
-  </div>
+  </form>
 </template>
 
 <style scoped>

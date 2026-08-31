@@ -220,6 +220,18 @@ export type GetMutualsMessage = Satisfies<
 
 type GetMutualsResponse = BskyProfile[]
 
+// Popup -> service worker: public Bluesky actor suggestions while entering the
+// handle used to initiate OAuth. This deliberately works before authentication.
+export type SearchBskyActorsMessage = Satisfies<
+  BaseMessage,
+  {
+    type: 'SEARCH_BSKY_ACTORS'
+    query: string
+  }
+>
+
+type SearchBskyActorsResponse = BskyProfile[]
+
 // Content script → service worker: the github accounts the caller follows who
 // are also Mustard users. Combined with mutuals to power @-mention autocomplete.
 // Response: GithubMentionCandidate[].
@@ -499,6 +511,7 @@ export type Message =
   | DisconnectProviderMessage
   | GetProfilesMessage
   | GetMutualsMessage
+  | SearchBskyActorsMessage
   | GetGithubMentionCandidatesMessage
   | GetNotesVisibleMessage
   | SetNotesVisibleMessage
@@ -555,6 +568,7 @@ type MessageResponses = {
   DISCONNECT_PROVIDER: { accountDeleted: boolean } | null
   GET_PROFILES: GetProfilesResponse
   GET_MUTUALS: GetMutualsResponse
+  SEARCH_BSKY_ACTORS: SearchBskyActorsResponse
   GET_GITHUB_MENTION_CANDIDATES: GetGithubMentionCandidatesResponse
   GET_NOTES_VISIBLE: boolean
   SET_NOTES_VISIBLE: boolean
@@ -770,6 +784,13 @@ export function createGetProfilesMessage(
 export function createGetMutualsMessage(): GetMutualsMessage {
   return {
     type: 'GET_MUTUALS',
+  }
+}
+
+export function createSearchBskyActorsMessage(query: string): SearchBskyActorsMessage {
+  return {
+    type: 'SEARCH_BSKY_ACTORS',
+    query,
   }
 }
 
