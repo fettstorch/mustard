@@ -36,7 +36,10 @@ watch(blueskyHandle, (value) => {
   }
 
   searchTimer = setTimeout(async () => {
-    const result = await sendMessage(createSearchBskyActorsMessage(query)).catch(() => [])
+    const result = await sendMessage(createSearchBskyActorsMessage(query)).catch((error) => {
+      console.error('Failed to search Bluesky actors:', error)
+      return []
+    })
     if (sequence === searchSequence) suggestions.value = result
   }, 200)
 })
