@@ -5,12 +5,14 @@
  * Handles the Bluesky/AT Protocol login flow.
  * Uses messaging to service worker because popup can close during OAuth flow.
  */
-import { ref } from 'vue'
+import { onBeforeUnmount, ref, watch } from 'vue'
 import {
   createAtprotoLoginMessage,
+  createSearchBskyActorsMessage,
   sendMessage,
   type AtprotoSessionResponse,
 } from '@/shared/messaging'
+import type { BskyProfile } from '@/shared/model/BskyProfile'
 
 const emit = defineEmits<{
   success: [session: NonNullable<AtprotoSessionResponse>]
@@ -20,6 +22,26 @@ const emit = defineEmits<{
 const blueskyHandle = ref('')
 const isLoggingIn = ref(false)
 const errorMessage = ref<string | null>(null)
+const suggestions = ref<BskyProfile[]>([])
+let searchTimer: ReturnType<typeof setTimeout> | undefined
+let searchSequence = 0
+
+watch(blueskyHandle, (value) => {
+  clearTimeout(searchTimer)
+  const query = value.trim().replace(/^@/, '')
+  if (query.length < 2) {
+    suggestions.value = []
+    return
+  }
+
+  const sequence = ++searchSequence
+  searchTimer = setTimeout(async () => {
+    const result = await sendMessage(createSearchBskyActorsMessage(query)).catch(() => [])
+    if (sequence === searchSequence) suggestions.value = result
+  }, 200)
+})
+
+onBeforeUnmount(() => clearTimeout(searchTimer))
 
 async function submit() {
   const handle = blueskyHandle.value.trim()
@@ -45,25 +67,38 @@ async function submit() {
 </script>
 
 <template>
-  <div class="login-form">
-    <p class="login-label">Login with Bluesky</p>
+  <form class="login-form" @submit.prevent="submit">
+    <label class="login-label" for="bluesky-login-handle">Login with Bluesky</label>
     <input
+      id="bluesky-login-handle"
       v-model="blueskyHandle"
       type="text"
+      name="username"
+      autocomplete="username"
+      autocapitalize="none"
+      spellcheck="false"
+      list="bluesky-login-suggestions"
       placeholder="your.handle.bsky.social"
       class="mustard-notes-input"
-      @keyup.enter="submit"
       :disabled="isLoggingIn"
     />
+    <datalist id="bluesky-login-suggestions">
+      <option
+        v-for="profile in suggestions"
+        :key="profile.id"
+        :value="profile.handle"
+        :label="profile.displayName"
+      />
+    </datalist>
     <button
-      @click="submit"
+      type="submit"
       class="mustard-notes-btn-primary"
       :disabled="isLoggingIn || !blueskyHandle.trim()"
     >
       {{ isLoggingIn ? 'Logging in...' : 'Login' }}
     </button>
     <p v-if="errorMessage" class="login-error">{{ errorMessage }}</p>
-  </div>
+  </form>
 </template>
 
 <style scoped>

@@ -12,6 +12,11 @@ test.describe('Popup login tabs', () => {
     await expect(githubTab).toBeVisible()
     await expect(blueskyTab).toHaveAttribute('aria-selected', 'true')
     await expect(githubTab).toHaveAttribute('aria-selected', 'false')
+
+    const handleInput = page.getByRole('combobox', { name: 'Login with Bluesky' })
+    await expect(handleInput).toHaveAttribute('name', 'username')
+    await expect(handleInput).toHaveAttribute('autocomplete', 'username')
+    await expect(handleInput).toHaveAttribute('list', 'bluesky-login-suggestions')
   })
 
   test('switches to GitHub tab on click', async ({ context, popupUrl }) => {
