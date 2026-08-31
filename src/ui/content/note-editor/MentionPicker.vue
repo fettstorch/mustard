@@ -7,6 +7,7 @@ const props = defineProps<{
   query: string
   clientRect: (() => DOMRect | null) | null | undefined
   onSelect: (candidate: MentionCandidate) => void
+  footer?: string
 }>()
 
 const selectedIndex = ref(0)
@@ -106,7 +107,9 @@ defineExpose({ onKeyDown })
           </span>
         </button>
       </div>
-      <div class="mention-footer">Bluesky mutuals & GitHub follows</div>
+      <div v-if="footer !== ''" class="mention-footer">
+        {{ footer ?? 'Bluesky mutuals & GitHub follows' }}
+      </div>
     </template>
   </div>
 </template>
