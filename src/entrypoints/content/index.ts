@@ -1133,7 +1133,7 @@ export default defineContentScript({
       .catch(() => {})
 
     // Store-driven optional updates are discovered without requiring the popup.
-    // The background caches checks for six hours, so each page can safely ask
+    // The background caches checks for 30 minutes, so each page can safely ask
     // for the current state without repeatedly contacting the browser store.
     sendMessage(createCheckExtensionUpdateMessage())
       .then(showOptionalUpdateBanner)
@@ -1253,7 +1253,12 @@ export default defineContentScript({
         showMustardToast({
           id: toastId,
           text: `Mustard ${state.latestVersion} is ready — click to restart and update`,
-          onClick: () => sendMessage(createPerformExtensionUpdateActionMessage()).catch(() => {}),
+          // Remove the injected DOM before runtime.reload() invalidates this
+          // content script; otherwise the old page keeps an orphaned toast.
+          onClick: (dismiss) => {
+            dismiss()
+            sendMessage(createPerformExtensionUpdateActionMessage()).catch(() => {})
+          },
         })
         return
       }
@@ -1261,8 +1266,7 @@ export default defineContentScript({
       if (state.status === 'action-required') {
         showMustardToast({
           id: toastId,
-          text: `A new Mustard version (${state.latestVersion}) is available — click to update`,
-          onClick: () => sendMessage(createPerformExtensionUpdateActionMessage()).catch(() => {}),
+          text: `Mustard ${state.latestVersion} is available — open about:addons, then use the gear menu to check for updates`,
         })
         return
       }
