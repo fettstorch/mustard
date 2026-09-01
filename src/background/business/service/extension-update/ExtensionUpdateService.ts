@@ -8,6 +8,8 @@ const STORAGE_KEY = 'mustard-extension-update-state'
 const SEEN_TOAST_VERSION_KEY = 'mustard-extension-update-toast-version'
 const CHECK_TTL_MS = 30 * 60 * 1000
 
+type UpdateToastStatus = Extract<ExtensionUpdateState, { latestVersion: string }>['status']
+
 type StoredUpdateState = {
   state: ExtensionUpdateState
   checkedAt: number
@@ -74,11 +76,20 @@ export class ExtensionUpdateService {
     return this.stateChanges.subscribe(listener)
   }
 
-  claimToast(version: string): Promise<boolean> {
+  claimToast(version: string, status: UpdateToastStatus): Promise<boolean> {
+    const claimKey = `${version}:${status}`
     const claim = this.toastClaimQueue.then(async () => {
       const stored = await browser.storage.local.get(SEEN_TOAST_VERSION_KEY)
-      if (stored[SEEN_TOAST_VERSION_KEY] === version) return false
-      await browser.storage.local.set({ [SEEN_TOAST_VERSION_KEY]: version })
+      const storedClaims = stored[SEEN_TOAST_VERSION_KEY]
+      const claims = Array.isArray(storedClaims)
+        ? (storedClaims as string[])
+        : typeof storedClaims === 'string'
+          ? [`${storedClaims}:action-required`]
+          : []
+      if (claims.includes(claimKey)) return false
+      await browser.storage.local.set({
+        [SEEN_TOAST_VERSION_KEY]: [...claims, claimKey],
+      })
       return true
     })
     this.toastClaimQueue = claim.then(

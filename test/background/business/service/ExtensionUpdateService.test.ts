@@ -173,21 +173,33 @@ describe('ExtensionUpdateService contract', () => {
     expect(provider.checkCalls).toBe(1)
   })
 
-  it('claims the in-page update toast only once per store version', async () => {
+  it('claims the in-page update toast once per store version and update state', async () => {
     const service = new ExtensionUpdateService(new StubProvider())
 
-    await expect(service.claimToast('2.12.0')).resolves.toBe(true)
-    await expect(service.claimToast('2.12.0')).resolves.toBe(false)
-    await expect(service.claimToast('2.13.0')).resolves.toBe(true)
+    await expect(service.claimToast('2.12.0', 'action-required')).resolves.toBe(true)
+    await expect(service.claimToast('2.12.0', 'action-required')).resolves.toBe(false)
+    await expect(service.claimToast('2.12.0', 'ready')).resolves.toBe(true)
+    await expect(service.claimToast('2.12.0', 'ready')).resolves.toBe(false)
+    await expect(service.claimToast('2.13.0', 'action-required')).resolves.toBe(true)
   })
 
   it('restores the seen toast version after a service-worker restart', async () => {
     const firstService = new ExtensionUpdateService(new StubProvider())
-    await firstService.claimToast('2.12.0')
+    await firstService.claimToast('2.12.0', 'ready')
 
     const restartedService = new ExtensionUpdateService(new StubProvider())
 
-    await expect(restartedService.claimToast('2.12.0')).resolves.toBe(false)
+    await expect(restartedService.claimToast('2.12.0', 'ready')).resolves.toBe(false)
+  })
+
+  it('allows readiness to supersede a legacy manual toast claim', async () => {
+    await fakeBrowser.storage.local.set({
+      'mustard-extension-update-toast-version': '2.12.0',
+    })
+    const service = new ExtensionUpdateService(new StubProvider())
+
+    await expect(service.claimToast('2.12.0', 'action-required')).resolves.toBe(false)
+    await expect(service.claimToast('2.12.0', 'ready')).resolves.toBe(true)
   })
 
   it('does not expire a ready update into another store check', async () => {

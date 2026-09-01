@@ -1251,8 +1251,11 @@ export default defineContentScript({
       }
 
       if (state.status === 'ready') {
-        if (document.getElementById(toastId)) return
-        if (!(await sendMessage(createClaimExtensionUpdateToastMessage(state.latestVersion))))
+        if (
+          !(await sendMessage(
+            createClaimExtensionUpdateToastMessage(state.latestVersion, state.status),
+          ))
+        )
           return
         if (mustardState.clientOutdated) return
         showMustardToast({
@@ -1270,8 +1273,11 @@ export default defineContentScript({
       }
 
       if (state.status === 'action-required') {
-        if (document.getElementById(toastId)) return
-        if (!(await sendMessage(createClaimExtensionUpdateToastMessage(state.latestVersion))))
+        if (
+          !(await sendMessage(
+            createClaimExtensionUpdateToastMessage(state.latestVersion, state.status),
+          ))
+        )
           return
         if (mustardState.clientOutdated) return
         showMustardToast({

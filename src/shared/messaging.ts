@@ -363,12 +363,13 @@ export type CheckExtensionUpdateMessage = Satisfies<
 >
 
 // Content script → background: atomically claim the one in-page toast shown
-// for a store version. Popup update notices are intentionally unaffected.
+// for a store version and update state. Popup update notices are intentionally unaffected.
 export type ClaimExtensionUpdateToastMessage = Satisfies<
   BaseMessage,
   {
     type: 'CLAIM_EXTENSION_UPDATE_TOAST'
     version: string
+    status: 'action-required' | 'ready'
   }
 >
 
@@ -850,8 +851,9 @@ export function createCheckExtensionUpdateMessage(): CheckExtensionUpdateMessage
 
 export function createClaimExtensionUpdateToastMessage(
   version: string,
+  status: 'action-required' | 'ready',
 ): ClaimExtensionUpdateToastMessage {
-  return { type: 'CLAIM_EXTENSION_UPDATE_TOAST', version }
+  return { type: 'CLAIM_EXTENSION_UPDATE_TOAST', version, status }
 }
 
 export function createPerformExtensionUpdateActionMessage(): PerformExtensionUpdateActionMessage {
