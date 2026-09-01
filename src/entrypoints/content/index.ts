@@ -1136,9 +1136,16 @@ export default defineContentScript({
     // Store-driven optional updates are discovered without requiring the popup.
     // The background caches checks for 30 minutes, so each page can safely ask
     // for the current state without repeatedly contacting the browser store.
-    sendMessage(createCheckExtensionUpdateMessage())
-      .then(showOptionalUpdateBanner)
-      .catch(() => {})
+    function checkOptionalExtensionUpdate() {
+      sendMessage(createCheckExtensionUpdateMessage())
+        .then(showOptionalUpdateBanner)
+        .catch(() => {})
+    }
+
+    checkOptionalExtensionUpdate()
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') checkOptionalExtensionUpdate()
+    })
 
     // Fetch current session
     sendMessage(createGetAtprotoSessionMessage())
@@ -1249,6 +1256,7 @@ export default defineContentScript({
         document.getElementById(toastId)?.remove()
         return
       }
+      if (document.visibilityState !== 'visible') return
 
       if (state.status === 'ready') {
         if (
