@@ -1254,6 +1254,7 @@ export default defineContentScript({
         if (document.getElementById(toastId)) return
         if (!(await sendMessage(createClaimExtensionUpdateToastMessage(state.latestVersion))))
           return
+        if (mustardState.clientOutdated) return
         showMustardToast({
           id: toastId,
           text: `Mustard ${state.latestVersion} is ready — click to restart and update`,
@@ -1272,6 +1273,7 @@ export default defineContentScript({
         if (document.getElementById(toastId)) return
         if (!(await sendMessage(createClaimExtensionUpdateToastMessage(state.latestVersion))))
           return
+        if (mustardState.clientOutdated) return
         showMustardToast({
           id: toastId,
           text: `Mustard ${state.latestVersion} is available — open about:addons, then use the gear menu to check for updates`,
