@@ -1263,8 +1263,11 @@ export default defineContentScript({
           !(await sendMessage(
             createClaimExtensionUpdateToastMessage(state.latestVersion, state.status),
           ))
-        )
+        ) {
+          const existingToast = document.getElementById(toastId)
+          if (existingToast?.dataset.updateStatus === 'action-required') existingToast.remove()
           return
+        }
         if (mustardState.clientOutdated) return
         showMustardToast({
           id: toastId,
@@ -1277,10 +1280,12 @@ export default defineContentScript({
           },
           autoDismissMs: 60_000,
         })
+        document.getElementById(toastId)!.dataset.updateStatus = state.status
         return
       }
 
       if (state.status === 'action-required') {
+        if (document.getElementById(toastId)?.dataset.updateStatus === 'ready') return
         if (
           !(await sendMessage(
             createClaimExtensionUpdateToastMessage(state.latestVersion, state.status),
@@ -1294,6 +1299,7 @@ export default defineContentScript({
           onClick: (dismiss) => dismiss(),
           autoDismissMs: 60_000,
         })
+        document.getElementById(toastId)!.dataset.updateStatus = state.status
         return
       }
 
