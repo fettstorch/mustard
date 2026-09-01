@@ -11,6 +11,7 @@ import {
   createGetAppStatusMessage,
   createRequestUpdateMessage,
   createCheckExtensionUpdateMessage,
+  createClaimExtensionUpdateToastMessage,
   createPerformExtensionUpdateActionMessage,
   sendMessage,
   type Message,
@@ -1242,7 +1243,7 @@ export default defineContentScript({
       })
     }
 
-    function showOptionalUpdateBanner(state: ExtensionUpdateState) {
+    async function showOptionalUpdateBanner(state: ExtensionUpdateState) {
       const toastId = 'mustard-extension-update-banner'
       if (mustardState.clientOutdated) {
         document.getElementById(toastId)?.remove()
@@ -1250,6 +1251,9 @@ export default defineContentScript({
       }
 
       if (state.status === 'ready') {
+        if (document.getElementById(toastId)) return
+        if (!(await sendMessage(createClaimExtensionUpdateToastMessage(state.latestVersion))))
+          return
         showMustardToast({
           id: toastId,
           text: `Mustard ${state.latestVersion} is ready — click to restart and update`,
@@ -1259,14 +1263,20 @@ export default defineContentScript({
             dismiss()
             sendMessage(createPerformExtensionUpdateActionMessage()).catch(() => {})
           },
+          autoDismissMs: 60_000,
         })
         return
       }
 
       if (state.status === 'action-required') {
+        if (document.getElementById(toastId)) return
+        if (!(await sendMessage(createClaimExtensionUpdateToastMessage(state.latestVersion))))
+          return
         showMustardToast({
           id: toastId,
           text: `Mustard ${state.latestVersion} is available — open about:addons, then use the gear menu to check for updates`,
+          onClick: (dismiss) => dismiss(),
+          autoDismissMs: 60_000,
         })
         return
       }

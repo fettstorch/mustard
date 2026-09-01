@@ -173,6 +173,23 @@ describe('ExtensionUpdateService contract', () => {
     expect(provider.checkCalls).toBe(1)
   })
 
+  it('claims the in-page update toast only once per store version', async () => {
+    const service = new ExtensionUpdateService(new StubProvider())
+
+    await expect(service.claimToast('2.12.0')).resolves.toBe(true)
+    await expect(service.claimToast('2.12.0')).resolves.toBe(false)
+    await expect(service.claimToast('2.13.0')).resolves.toBe(true)
+  })
+
+  it('restores the seen toast version after a service-worker restart', async () => {
+    const firstService = new ExtensionUpdateService(new StubProvider())
+    await firstService.claimToast('2.12.0')
+
+    const restartedService = new ExtensionUpdateService(new StubProvider())
+
+    await expect(restartedService.claimToast('2.12.0')).resolves.toBe(false)
+  })
+
   it('does not expire a ready update into another store check', async () => {
     await fakeBrowser.storage.local.set({
       'mustard-extension-update-state': {

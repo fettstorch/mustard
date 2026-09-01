@@ -5,6 +5,7 @@ import type { ExtensionUpdateProvider } from './ExtensionUpdateProvider'
 import { FirefoxExtensionUpdateProvider } from './FirefoxExtensionUpdateProvider'
 
 const STORAGE_KEY = 'mustard-extension-update-state'
+const SEEN_TOAST_VERSION_KEY = 'mustard-extension-update-toast-version'
 const CHECK_TTL_MS = 30 * 60 * 1000
 
 type StoredUpdateState = {
@@ -35,6 +36,7 @@ export class ExtensionUpdateService {
   }
   private checkedAt = 0
   private readonly stateChanges = new Observable<ExtensionUpdateState>()
+  private toastClaimQueue = Promise.resolve()
 
   constructor(private readonly provider: ExtensionUpdateProvider = createProvider()) {
     provider.subscribe((latestVersion) => {
@@ -70,6 +72,20 @@ export class ExtensionUpdateService {
 
   subscribe(listener: (state: ExtensionUpdateState) => void): () => void {
     return this.stateChanges.subscribe(listener)
+  }
+
+  claimToast(version: string): Promise<boolean> {
+    const claim = this.toastClaimQueue.then(async () => {
+      const stored = await browser.storage.local.get(SEEN_TOAST_VERSION_KEY)
+      if (stored[SEEN_TOAST_VERSION_KEY] === version) return false
+      await browser.storage.local.set({ [SEEN_TOAST_VERSION_KEY]: version })
+      return true
+    })
+    this.toastClaimQueue = claim.then(
+      () => undefined,
+      () => undefined,
+    )
+    return claim
   }
 
   private readonly runProviderCheck = cached(async (): Promise<ExtensionUpdateState> => {

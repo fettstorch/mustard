@@ -362,6 +362,16 @@ export type CheckExtensionUpdateMessage = Satisfies<
   }
 >
 
+// Content script → background: atomically claim the one in-page toast shown
+// for a store version. Popup update notices are intentionally unaffected.
+export type ClaimExtensionUpdateToastMessage = Satisfies<
+  BaseMessage,
+  {
+    type: 'CLAIM_EXTENSION_UPDATE_TOAST'
+    version: string
+  }
+>
+
 // Any extension surface → background: perform the action supported by the current update state.
 export type PerformExtensionUpdateActionMessage = Satisfies<
   BaseMessage,
@@ -523,6 +533,7 @@ export type Message =
   | GetAppStatusMessage
   | RequestUpdateMessage
   | CheckExtensionUpdateMessage
+  | ClaimExtensionUpdateToastMessage
   | PerformExtensionUpdateActionMessage
   | ExtensionUpdateStateChangedMessage
   | QueryCommentsMessage
@@ -580,6 +591,7 @@ type MessageResponses = {
   GET_APP_STATUS: AppStatusResponse
   REQUEST_UPDATE: void
   CHECK_EXTENSION_UPDATE: ExtensionUpdateState
+  CLAIM_EXTENSION_UPDATE_TOAST: boolean
   PERFORM_EXTENSION_UPDATE_ACTION: void
   EXTENSION_UPDATE_STATE_CHANGED: void
   QUERY_COMMENTS: QueryCommentsResponse
@@ -834,6 +846,12 @@ export function createRequestUpdateMessage(): RequestUpdateMessage {
 
 export function createCheckExtensionUpdateMessage(): CheckExtensionUpdateMessage {
   return { type: 'CHECK_EXTENSION_UPDATE' }
+}
+
+export function createClaimExtensionUpdateToastMessage(
+  version: string,
+): ClaimExtensionUpdateToastMessage {
+  return { type: 'CLAIM_EXTENSION_UPDATE_TOAST', version }
 }
 
 export function createPerformExtensionUpdateActionMessage(): PerformExtensionUpdateActionMessage {
