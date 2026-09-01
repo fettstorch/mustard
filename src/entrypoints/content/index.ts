@@ -11,6 +11,7 @@ import {
   createGetAppStatusMessage,
   createRequestUpdateMessage,
   createCheckExtensionUpdateMessage,
+  createClaimExtensionUpdateToastMessage,
   createPerformExtensionUpdateActionMessage,
   sendMessage,
   type Message,
@@ -1133,11 +1134,18 @@ export default defineContentScript({
       .catch(() => {})
 
     // Store-driven optional updates are discovered without requiring the popup.
-    // The background caches checks for six hours, so each page can safely ask
+    // The background caches checks for 30 minutes, so each page can safely ask
     // for the current state without repeatedly contacting the browser store.
-    sendMessage(createCheckExtensionUpdateMessage())
-      .then(showOptionalUpdateBanner)
-      .catch(() => {})
+    function checkOptionalExtensionUpdate() {
+      sendMessage(createCheckExtensionUpdateMessage())
+        .then(showOptionalUpdateBanner)
+        .catch(() => {})
+    }
+
+    checkOptionalExtensionUpdate()
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') checkOptionalExtensionUpdate()
+    })
 
     // Fetch current session
     sendMessage(createGetAtprotoSessionMessage())
@@ -1242,28 +1250,56 @@ export default defineContentScript({
       })
     }
 
-    function showOptionalUpdateBanner(state: ExtensionUpdateState) {
+    async function showOptionalUpdateBanner(state: ExtensionUpdateState) {
       const toastId = 'mustard-extension-update-banner'
       if (mustardState.clientOutdated) {
         document.getElementById(toastId)?.remove()
         return
       }
+      if (document.visibilityState !== 'visible') return
 
       if (state.status === 'ready') {
+        if (
+          !(await sendMessage(
+            createClaimExtensionUpdateToastMessage(state.latestVersion, state.status),
+          ))
+        ) {
+          const existingToast = document.getElementById(toastId)
+          if (existingToast?.dataset.updateStatus === 'action-required') existingToast.remove()
+          return
+        }
+        if (mustardState.clientOutdated) return
         showMustardToast({
           id: toastId,
           text: `Mustard ${state.latestVersion} is ready — click to restart and update`,
-          onClick: () => sendMessage(createPerformExtensionUpdateActionMessage()).catch(() => {}),
+          // Remove the injected DOM before runtime.reload() invalidates this
+          // content script; otherwise the old page keeps an orphaned toast.
+          onClick: (dismiss) => {
+            dismiss()
+            sendMessage(createPerformExtensionUpdateActionMessage()).catch(() => {})
+          },
+          autoDismissMs: 60_000,
         })
+        document.getElementById(toastId)!.dataset.updateStatus = state.status
         return
       }
 
       if (state.status === 'action-required') {
+        if (document.getElementById(toastId)?.dataset.updateStatus === 'ready') return
+        if (
+          !(await sendMessage(
+            createClaimExtensionUpdateToastMessage(state.latestVersion, state.status),
+          ))
+        )
+          return
+        if (mustardState.clientOutdated) return
         showMustardToast({
           id: toastId,
-          text: `A new Mustard version (${state.latestVersion}) is available — click to update`,
-          onClick: () => sendMessage(createPerformExtensionUpdateActionMessage()).catch(() => {}),
+          text: `Mustard ${state.latestVersion} is available — open about:addons, then use the gear menu to check for updates`,
+          onClick: (dismiss) => dismiss(),
+          autoDismissMs: 60_000,
         })
+        document.getElementById(toastId)!.dataset.updateStatus = state.status
         return
       }
 

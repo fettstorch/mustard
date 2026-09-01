@@ -36,13 +36,13 @@ describe('ExtensionUpdateService contract', () => {
       status: 'action-required',
       currentVersion: '2.11.0',
       latestVersion: '2.12.0',
-      action: { type: 'manual', label: 'Update in Firefox', instructions: ['Check Firefox.'] },
+      action: { type: 'manual', instructions: ['Check Firefox.'] },
     }
 
     await expect(new ExtensionUpdateService(provider).check()).resolves.toEqual(provider.state)
   })
 
-  it('delegates the current browser-neutral action to the provider', async () => {
+  it('does not delegate a manual instruction state as an update action', async () => {
     const provider = new StubProvider()
     provider.state = {
       status: 'action-required',
@@ -50,7 +50,6 @@ describe('ExtensionUpdateService contract', () => {
       latestVersion: '2.12.0',
       action: {
         type: 'manual',
-        label: 'Update in Firefox',
         instructions: ['Check Firefox.'],
       },
     }
@@ -59,7 +58,7 @@ describe('ExtensionUpdateService contract', () => {
     await service.check()
     await service.performAction()
 
-    expect(provider.perform).toHaveBeenCalledWith(provider.state.action)
+    expect(provider.perform).not.toHaveBeenCalled()
   })
 
   it('changes to ready when the browser reports a downloaded update', async () => {
@@ -158,6 +157,49 @@ describe('ExtensionUpdateService contract', () => {
       currentVersion: '2.11.0',
     })
     expect(provider.checkCalls).toBe(0)
+  })
+
+  it('refreshes a persisted store check after thirty minutes', async () => {
+    await fakeBrowser.storage.local.set({
+      'mustard-extension-update-state': {
+        state: { status: 'current', currentVersion: '2.11.0' },
+        checkedAt: Date.now() - 31 * 60 * 1000,
+      },
+    })
+    const provider = new StubProvider()
+
+    await new ExtensionUpdateService(provider).check()
+
+    expect(provider.checkCalls).toBe(1)
+  })
+
+  it('claims the in-page update toast once per store version and update state', async () => {
+    const service = new ExtensionUpdateService(new StubProvider())
+
+    await expect(service.claimToast('2.12.0', 'action-required')).resolves.toBe(true)
+    await expect(service.claimToast('2.12.0', 'action-required')).resolves.toBe(false)
+    await expect(service.claimToast('2.12.0', 'ready')).resolves.toBe(true)
+    await expect(service.claimToast('2.12.0', 'ready')).resolves.toBe(false)
+    await expect(service.claimToast('2.13.0', 'action-required')).resolves.toBe(true)
+  })
+
+  it('restores the seen toast version after a service-worker restart', async () => {
+    const firstService = new ExtensionUpdateService(new StubProvider())
+    await firstService.claimToast('2.12.0', 'ready')
+
+    const restartedService = new ExtensionUpdateService(new StubProvider())
+
+    await expect(restartedService.claimToast('2.12.0', 'ready')).resolves.toBe(false)
+  })
+
+  it('allows readiness to supersede a legacy manual toast claim', async () => {
+    await fakeBrowser.storage.local.set({
+      'mustard-extension-update-toast-version': '2.12.0',
+    })
+    const service = new ExtensionUpdateService(new StubProvider())
+
+    await expect(service.claimToast('2.12.0', 'action-required')).resolves.toBe(false)
+    await expect(service.claimToast('2.12.0', 'ready')).resolves.toBe(true)
   })
 
   it('does not expire a ready update into another store check', async () => {

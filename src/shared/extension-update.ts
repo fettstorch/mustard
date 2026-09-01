@@ -1,6 +1,5 @@
 export type ManualExtensionUpdateAction = {
   type: 'manual'
-  label: string
   instructions: string[]
 }
 

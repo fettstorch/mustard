@@ -681,6 +681,9 @@ export default defineBackground(() => {
 
     CHECK_EXTENSION_UPDATE: () => extensionUpdateService.check(),
 
+    CLAIM_EXTENSION_UPDATE_TOAST: (message) =>
+      extensionUpdateService.claimToast(message.version, message.status),
+
     PERFORM_EXTENSION_UPDATE_ACTION: () => extensionUpdateService.performAction(),
 
     GET_PROFILES: async (message) => {

@@ -5,7 +5,10 @@ import type { ExtensionUpdateProvider } from './ExtensionUpdateProvider'
 import { FirefoxExtensionUpdateProvider } from './FirefoxExtensionUpdateProvider'
 
 const STORAGE_KEY = 'mustard-extension-update-state'
-const CHECK_TTL_MS = 6 * 60 * 60 * 1000
+const SEEN_TOAST_VERSION_KEY = 'mustard-extension-update-toast-version'
+const CHECK_TTL_MS = 30 * 60 * 1000
+
+type UpdateToastStatus = Extract<ExtensionUpdateState, { latestVersion: string }>['status']
 
 type StoredUpdateState = {
   state: ExtensionUpdateState
@@ -35,6 +38,7 @@ export class ExtensionUpdateService {
   }
   private checkedAt = 0
   private readonly stateChanges = new Observable<ExtensionUpdateState>()
+  private toastClaimQueue = Promise.resolve()
 
   constructor(private readonly provider: ExtensionUpdateProvider = createProvider()) {
     provider.subscribe((latestVersion) => {
@@ -64,12 +68,35 @@ export class ExtensionUpdateService {
 
   async performAction(): Promise<void> {
     await this.restore()
-    if (this.state.status !== 'ready' && this.state.status !== 'action-required') return
+    if (this.state.status !== 'ready') return
     await this.provider.perform(this.state.action)
   }
 
   subscribe(listener: (state: ExtensionUpdateState) => void): () => void {
     return this.stateChanges.subscribe(listener)
+  }
+
+  claimToast(version: string, status: UpdateToastStatus): Promise<boolean> {
+    const claimKey = `${version}:${status}`
+    const claim = this.toastClaimQueue.then(async () => {
+      const stored = await browser.storage.local.get(SEEN_TOAST_VERSION_KEY)
+      const storedClaims = stored[SEEN_TOAST_VERSION_KEY]
+      const claims = Array.isArray(storedClaims)
+        ? (storedClaims as string[])
+        : typeof storedClaims === 'string'
+          ? [`${storedClaims}:action-required`]
+          : []
+      if (claims.includes(claimKey)) return false
+      await browser.storage.local.set({
+        [SEEN_TOAST_VERSION_KEY]: [...claims, claimKey],
+      })
+      return true
+    })
+    this.toastClaimQueue = claim.then(
+      () => undefined,
+      () => undefined,
+    )
+    return claim
   }
 
   private readonly runProviderCheck = cached(async (): Promise<ExtensionUpdateState> => {
