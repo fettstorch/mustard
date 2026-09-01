@@ -36,13 +36,13 @@ describe('ExtensionUpdateService contract', () => {
       status: 'action-required',
       currentVersion: '2.11.0',
       latestVersion: '2.12.0',
-      action: { type: 'manual', label: 'Update in Firefox', instructions: ['Check Firefox.'] },
+      action: { type: 'manual', instructions: ['Check Firefox.'] },
     }
 
     await expect(new ExtensionUpdateService(provider).check()).resolves.toEqual(provider.state)
   })
 
-  it('delegates the current browser-neutral action to the provider', async () => {
+  it('does not delegate a manual instruction state as an update action', async () => {
     const provider = new StubProvider()
     provider.state = {
       status: 'action-required',
@@ -50,7 +50,6 @@ describe('ExtensionUpdateService contract', () => {
       latestVersion: '2.12.0',
       action: {
         type: 'manual',
-        label: 'Update in Firefox',
         instructions: ['Check Firefox.'],
       },
     }
@@ -59,7 +58,7 @@ describe('ExtensionUpdateService contract', () => {
     await service.check()
     await service.performAction()
 
-    expect(provider.perform).toHaveBeenCalledWith(provider.state.action)
+    expect(provider.perform).not.toHaveBeenCalled()
   })
 
   it('changes to ready when the browser reports a downloaded update', async () => {
@@ -158,6 +157,20 @@ describe('ExtensionUpdateService contract', () => {
       currentVersion: '2.11.0',
     })
     expect(provider.checkCalls).toBe(0)
+  })
+
+  it('refreshes a persisted store check after thirty minutes', async () => {
+    await fakeBrowser.storage.local.set({
+      'mustard-extension-update-state': {
+        state: { status: 'current', currentVersion: '2.11.0' },
+        checkedAt: Date.now() - 31 * 60 * 1000,
+      },
+    })
+    const provider = new StubProvider()
+
+    await new ExtensionUpdateService(provider).check()
+
+    expect(provider.checkCalls).toBe(1)
   })
 
   it('does not expire a ready update into another store check', async () => {

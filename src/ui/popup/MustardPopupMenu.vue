@@ -218,9 +218,6 @@ const logoUrl = browser.runtime.getURL('/mustard_bottle_smile_512.png')
           {{ instruction }}
         </li>
       </ol>
-      <button class="update-button" @click="performExtensionUpdateAction">
-        {{ extensionUpdateState.action.label }}
-      </button>
     </div>
 
     <div

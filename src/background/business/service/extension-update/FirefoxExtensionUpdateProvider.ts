@@ -3,8 +3,6 @@ import { isOutdated } from '@/shared/version'
 import type { ExtensionUpdateProvider } from './ExtensionUpdateProvider'
 
 const AMO_ADDON_URL = 'https://addons.mozilla.org/api/v5/addons/addon/mustard-notes/'
-const AMO_LISTING_URL = 'https://addons.mozilla.org/firefox/addon/mustard-notes/'
-
 type AmoAddon = {
   current_version?: {
     version?: string
@@ -33,11 +31,10 @@ export class FirefoxExtensionUpdateProvider implements ExtensionUpdateProvider {
         latestVersion,
         action: {
           type: 'manual',
-          label: 'Update in Firefox',
           instructions: [
-            'Open Firefox’s Add-ons Manager.',
+            'Open about:addons in Firefox.',
             'Open the gear menu and select “Check for Updates”.',
-            'Return to Mustard after Firefox downloads the update.',
+            'Firefox will download the update and apply it automatically when Mustard restarts.',
           ],
         },
       }
@@ -55,7 +52,9 @@ export class FirefoxExtensionUpdateProvider implements ExtensionUpdateProvider {
       browser.runtime.reload()
       return
     }
-    await browser.tabs.create({ url: AMO_LISTING_URL })
+    // Firefox blocks extensions from opening about:addons, and its WebExtension
+    // API has no method for requesting an add-on update. The popup therefore
+    // presents the supported manual steps without a misleading action button.
   }
 
   subscribe(listener: (latestVersion: string) => void): () => void {

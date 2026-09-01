@@ -54,18 +54,14 @@ describe('FirefoxExtensionUpdateProvider contract', () => {
     expect(listener).not.toHaveBeenCalled()
   })
 
-  it('opens the AMO listing for a manual update action', async () => {
-    const createTab = vi.spyOn(browser.tabs, 'create').mockResolvedValue({} as never)
-
+  it('does not send users to the AMO listing for a manual update action', async () => {
+    const createTab = vi.spyOn(browser.tabs, 'create')
     await new FirefoxExtensionUpdateProvider().perform({
       type: 'manual',
-      label: 'Update in Firefox',
       instructions: ['Check Firefox.'],
     })
 
-    expect(createTab).toHaveBeenCalledWith({
-      url: 'https://addons.mozilla.org/firefox/addon/mustard-notes/',
-    })
+    expect(createTab).not.toHaveBeenCalled()
   })
 
   it('reports a retryable failure when AMO cannot be queried', async () => {

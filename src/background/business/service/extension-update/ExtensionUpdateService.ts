@@ -5,7 +5,7 @@ import type { ExtensionUpdateProvider } from './ExtensionUpdateProvider'
 import { FirefoxExtensionUpdateProvider } from './FirefoxExtensionUpdateProvider'
 
 const STORAGE_KEY = 'mustard-extension-update-state'
-const CHECK_TTL_MS = 6 * 60 * 60 * 1000
+const CHECK_TTL_MS = 30 * 60 * 1000
 
 type StoredUpdateState = {
   state: ExtensionUpdateState
@@ -64,7 +64,7 @@ export class ExtensionUpdateService {
 
   async performAction(): Promise<void> {
     await this.restore()
-    if (this.state.status !== 'ready' && this.state.status !== 'action-required') return
+    if (this.state.status !== 'ready') return
     await this.provider.perform(this.state.action)
   }
 
