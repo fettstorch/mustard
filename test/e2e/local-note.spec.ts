@@ -345,6 +345,7 @@ test.describe('Content script smoke', () => {
     await expect(image).toBeVisible()
     await expect(handle).toBeAttached()
 
+    const initialImageWidth = await image.evaluate((element) => element.getBoundingClientRect().width)
     const handleBox = await handle.boundingBox()
     if (!handleBox) throw new Error('Resize handle has no bounding box')
     await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2)
@@ -370,6 +371,8 @@ test.describe('Content script smoke', () => {
     })
 
     expect(geometry.imageWidth).toBeLessThanOrEqual(geometry.editorWidth)
+    expect(geometry.imageWidth).toBeGreaterThan(initialImageWidth)
+    expect(geometry.editorWidth).toBeLessThanOrEqual(300)
     expect(geometry.wrapperWidth).toBeLessThanOrEqual(geometry.editorWidth)
     expect(geometry.imageRight).toBeLessThanOrEqual(geometry.editorRight)
     expect(geometry.wrapperRight).toBeLessThanOrEqual(geometry.editorRight)
