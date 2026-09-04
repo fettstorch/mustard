@@ -355,7 +355,9 @@ test.describe('Content script smoke', () => {
     await page.mouse.down()
     await page.mouse.move(initialHandleBox.x - 150, initialHandleBox.y - 75)
     await page.mouse.up()
-    const reducedImageWidth = await image.evaluate((element) => element.getBoundingClientRect().width)
+    const reducedImageWidth = await image.evaluate(
+      (element) => element.getBoundingClientRect().width,
+    )
 
     const handleBox = await handle.boundingBox()
     if (!handleBox) throw new Error('Resize handle has no bounding box after reducing the image')
