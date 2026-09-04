@@ -77,11 +77,7 @@ export const ResizableImage = Image.extend({
           const pos = getPos()
           if (pos === undefined) return
 
-          editor
-            .chain()
-            .setNodeSelection(pos)
-            .updateAttributes(this.name, { width, height })
-            .run()
+          editor.chain().setNodeSelection(pos).updateAttributes(this.name, { width, height }).run()
         },
         onUpdate: (updatedNode) => updatedNode.type === node.type,
         options: {
