@@ -110,14 +110,58 @@
   opacity: 0.5;
 }
 
-/* Note image: fills content width, preserves aspect ratio */
+/* Note image: legacy/un-sized images fill the content width; resized images
+ * use their persisted width while remaining constrained to the note. */
 .mustard-note-image {
-  min-width: 100%;
   max-width: 100%;
   height: auto;
   border-radius: 4px;
   display: block;
   margin: 4px 0;
+}
+
+.mustard-note-image:not([width]):not([style*='width']) {
+  min-width: 100%;
+}
+
+/* Tiptap's image NodeView supplies interaction but intentionally no visuals. */
+.ProseMirror [data-resize-container=''] {
+  max-width: 100%;
+}
+
+.ProseMirror [data-resize-wrapper=''] {
+  max-width: 100%;
+}
+
+.ProseMirror [data-resize-handle='bottom-right'] {
+  box-sizing: border-box;
+  width: 20px;
+  height: 20px;
+  right: 2px !important;
+  bottom: 2px !important;
+  border: 1px solid rgb(255 255 255 / 75%);
+  border-radius: 4px;
+  background-color: rgb(32 30 27 / 72%);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='white' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 14 14 6M9 6h5v5M11 14H6V9'/%3E%3C/svg%3E");
+  background-size: 16px;
+  background-position: center;
+  background-repeat: no-repeat;
+  cursor: nwse-resize;
+  opacity: 0;
+  transition: opacity 120ms ease;
+  touch-action: none;
+}
+
+.ProseMirror [data-resize-wrapper='']:hover [data-resize-handle='bottom-right'],
+.ProseMirror [data-resize-handle='bottom-right']:focus-visible,
+.ProseMirror [data-resize-state='true'] [data-resize-handle='bottom-right'] {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .ProseMirror [data-resize-handle='bottom-right'] {
+    opacity: 1;
+  }
 }
 
 /* Fenced code blocks in notes, comments, and their TipTap editors.
