@@ -57,12 +57,13 @@ export const ResizableImage = Image.extend({
 
     return ({ node, getPos, HTMLAttributes, editor }) => {
       const image = document.createElement('img')
-      Object.entries(HTMLAttributes).forEach(([key, value]) => {
+      const imageAttributes = { ...this.options.HTMLAttributes, ...HTMLAttributes }
+      Object.entries(imageAttributes).forEach(([key, value]) => {
         if (value != null && key !== 'width' && key !== 'height') {
           image.setAttribute(key, String(value))
         }
       })
-      image.src = String(HTMLAttributes.src)
+      image.src = String(imageAttributes.src)
 
       const nodeView = new ResizableNodeView({
         element: image,

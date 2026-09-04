@@ -343,6 +343,7 @@ test.describe('Content script smoke', () => {
     const image = editor.locator('[data-resize-wrapper] > img')
     const handle = editor.locator('[data-resize-handle="bottom-right"]')
     await expect(image).toBeVisible()
+    await expect(image).toHaveClass(/mustard-note-image/)
     await expect(handle).toBeAttached()
 
     const initialImageWidth = await image.evaluate((element) => element.getBoundingClientRect().width)
