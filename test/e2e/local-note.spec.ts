@@ -340,7 +340,7 @@ test.describe('Content script smoke', () => {
     await page.keyboard.type('https://images.example/cat.png')
     await page.keyboard.press('Space')
 
-    const image = editor.locator('.mustard-note-image')
+    const image = editor.locator('[data-resize-wrapper] > img')
     const handle = editor.locator('[data-resize-handle="bottom-right"]')
     await expect(image).toBeVisible()
     await expect(handle).toBeAttached()
