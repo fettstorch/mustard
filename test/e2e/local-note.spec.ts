@@ -336,7 +336,8 @@ test.describe('Content script smoke', () => {
 
     const editor = mustard.locator('.tiptap[contenteditable="true"]')
     await expect(editor).toBeVisible({ timeout: 8_000 })
-    await editor.fill('https://images.example/cat.png')
+    await editor.click()
+    await page.keyboard.type('https://images.example/cat.png')
     await page.keyboard.press('Space')
 
     const image = editor.locator('.mustard-note-image')
