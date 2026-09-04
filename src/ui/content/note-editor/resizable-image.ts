@@ -27,26 +27,51 @@ export function serializeImageWidth(width: unknown): string | undefined {
   return `${SIZE_TITLE_PREFIX}${rounded}`
 }
 
+function escapeMarkdownImageDestination(value: string): string {
+  return value.replace(/[\\()<>]/g, '\\$&')
+}
+
+function escapeMarkdownImageAlt(value: string): string {
+  return value.replace(/[\\[\]]/g, '\\$&')
+}
+
+function parseMarkdownImageAlt(value: string): string {
+  // marked resolves escaped brackets in token.text but retains escaped
+  // backslashes, so finish that last step before storing the node attribute.
+  return value.replace(/\\\\/g, '\\')
+}
+
+function escapeMarkdownImageTitle(value: string): string {
+  return value.replace(/[\\"]/g, '\\$&')
+}
+
+export function serializeMarkdownImage(attributes: {
+  src?: unknown
+  alt?: unknown
+  title?: unknown
+  width?: unknown
+}): string {
+  const src = escapeMarkdownImageDestination(String(attributes.src ?? ''))
+  const alt = escapeMarkdownImageAlt(String(attributes.alt ?? ''))
+  const sizeTitle = serializeImageWidth(attributes.width)
+  const title = escapeMarkdownImageTitle(sizeTitle ?? String(attributes.title ?? ''))
+
+  return title ? `![${alt}](${src} "${title}")` : `![${alt}](${src})`
+}
+
 /** Tiptap's Image node with resize dimensions preserved by Markdown. */
 export const ResizableImage = Image.extend({
   parseMarkdown: (token, helpers) => {
     const width = parseImageWidth(token.title)
     return helpers.createNode('image', {
       src: token.href,
-      alt: token.text,
+      alt: parseMarkdownImageAlt(token.text ?? ''),
       title: width === undefined ? token.title : null,
       width: width ?? null,
     })
   },
 
-  renderMarkdown: (node) => {
-    const src = node.attrs?.src ?? ''
-    const alt = node.attrs?.alt ?? ''
-    const sizeTitle = serializeImageWidth(node.attrs?.width)
-    const title = sizeTitle ?? node.attrs?.title ?? ''
-
-    return title ? `![${alt}](${src} "${title}")` : `![${alt}](${src})`
-  },
+  renderMarkdown: (node) => serializeMarkdownImage(node.attrs ?? {}),
 
   addNodeView() {
     if (!this.options.resize || !this.options.resize.enabled || typeof document === 'undefined') {
