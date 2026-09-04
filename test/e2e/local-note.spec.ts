@@ -391,4 +391,37 @@ test.describe('Content script smoke', () => {
     expect(geometry.imageRight).toBeLessThanOrEqual(geometry.editorRight)
     expect(geometry.wrapperRight).toBeLessThanOrEqual(geometry.editorRight)
   })
+
+  test('keeps a failed editor image visible and interactive', async ({ context }) => {
+    await context.route('https://images.example/**', (route) => route.abort())
+
+    const page = await context.newPage()
+    await page.goto(fixtureUrl)
+    const mustard = page.locator('#mustard-host')
+    await expect(mustard).toBeAttached({ timeout: 8_000 })
+    await page.locator('#content').dispatchEvent('contextmenu', {
+      button: 2,
+      clientX: 100,
+      clientY: 100,
+    })
+
+    let serviceWorker = context.serviceWorkers()[0]
+    if (!serviceWorker) serviceWorker = await context.waitForEvent('serviceworker')
+    await serviceWorker.evaluate(async (url: string) => {
+      const [tab] = await chrome.tabs.query({ url: `${url}*` })
+      if (tab?.id === undefined) throw new Error(`No tab found for ${url}`)
+      await chrome.tabs.sendMessage(tab.id, { type: 'OPEN_NOTE_EDITOR' })
+    }, fixtureUrl)
+
+    const editor = mustard.locator('.tiptap[contenteditable="true"]')
+    await expect(editor).toBeVisible({ timeout: 8_000 })
+    await editor.click()
+    await page.keyboard.type('https://images.example/missing.png')
+    await page.keyboard.press('Space')
+
+    const nodeView = editor.locator('[data-resize-container]')
+    await expect(nodeView).toBeAttached()
+    await expect(nodeView).toHaveCSS('visibility', 'visible')
+    await expect(nodeView).toHaveCSS('pointer-events', 'auto')
+  })
 })

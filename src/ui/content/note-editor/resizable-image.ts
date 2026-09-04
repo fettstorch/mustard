@@ -98,10 +98,12 @@ export const ResizableImage = Image.extend({
       const dom = nodeView.dom as HTMLElement
       dom.style.visibility = 'hidden'
       dom.style.pointerEvents = 'none'
-      image.onload = () => {
+      const revealNodeView = () => {
         dom.style.visibility = ''
         dom.style.pointerEvents = ''
       }
+      image.onload = revealNodeView
+      image.onerror = revealNodeView
 
       return nodeView
     }
