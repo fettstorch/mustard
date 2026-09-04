@@ -1,4 +1,5 @@
 import { Image } from '@tiptap/extension-image'
+import { ResizableNodeView } from '@tiptap/core'
 
 const SIZE_TITLE_PREFIX = 'mustard:image-width='
 const MIN_IMAGE_WIDTH = 48
@@ -45,5 +46,63 @@ export const ResizableImage = Image.extend({
     const title = sizeTitle ?? node.attrs?.title ?? ''
 
     return title ? `![${alt}](${src} "${title}")` : `![${alt}](${src})`
+  },
+
+  addNodeView() {
+    if (!this.options.resize || !this.options.resize.enabled || typeof document === 'undefined') {
+      return null
+    }
+
+    const { directions, minWidth, minHeight, alwaysPreserveAspectRatio } = this.options.resize
+
+    return ({ node, getPos, HTMLAttributes, editor }) => {
+      const image = document.createElement('img')
+      Object.entries(HTMLAttributes).forEach(([key, value]) => {
+        if (value != null && key !== 'width' && key !== 'height') {
+          image.setAttribute(key, String(value))
+        }
+      })
+      image.src = String(HTMLAttributes.src)
+
+      const nodeView = new ResizableNodeView({
+        element: image,
+        editor,
+        node,
+        getPos,
+        onResize: (width, height) => {
+          image.style.width = `${width}px`
+          image.style.height = `${height}px`
+        },
+        onCommit: (width, height) => {
+          const pos = getPos()
+          if (pos === undefined) return
+
+          editor
+            .chain()
+            .setNodeSelection(pos)
+            .updateAttributes(this.name, { width, height })
+            .run()
+        },
+        onUpdate: (updatedNode) => updatedNode.type === node.type,
+        options: {
+          directions,
+          min: { width: minWidth, height: minHeight },
+          // The stock Image extension leaves this unbounded. Its wrapper can
+          // therefore grow past the note even though CSS clips the image.
+          max: { width: Math.max(MIN_IMAGE_WIDTH, editor.view.dom.clientWidth) },
+          preserveAspectRatio: alwaysPreserveAspectRatio === true,
+        },
+      })
+
+      const dom = nodeView.dom as HTMLElement
+      dom.style.visibility = 'hidden'
+      dom.style.pointerEvents = 'none'
+      image.onload = () => {
+        dom.style.visibility = ''
+        dom.style.pointerEvents = ''
+      }
+
+      return nodeView
+    }
   },
 })
