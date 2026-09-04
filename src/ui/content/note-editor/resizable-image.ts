@@ -64,6 +64,10 @@ export const ResizableImage = Image.extend({
         }
       })
       image.src = String(imageAttributes.src)
+      const configuredMaxWidth = Number.parseFloat(getComputedStyle(editor.view.dom).maxWidth)
+      const maxWidth = Number.isFinite(configuredMaxWidth)
+        ? configuredMaxWidth
+        : editor.view.dom.clientWidth
 
       const nodeView = new ResizableNodeView({
         element: image,
@@ -84,9 +88,9 @@ export const ResizableImage = Image.extend({
         options: {
           directions,
           min: { width: minWidth, height: minHeight },
-          // The stock Image extension leaves this unbounded. Its wrapper can
-          // therefore grow past the note even though CSS clips the image.
-          max: { width: Math.max(MIN_IMAGE_WIDTH, editor.view.dom.clientWidth) },
+          // The stock Image extension leaves this unbounded. Use the CSS cap,
+          // not the editor's narrower initial width, so it can grow up to it.
+          max: { width: Math.max(MIN_IMAGE_WIDTH, maxWidth) },
           preserveAspectRatio: alwaysPreserveAspectRatio === true,
         },
       })
