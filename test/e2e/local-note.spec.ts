@@ -390,6 +390,25 @@ test.describe('Content script smoke', () => {
     expect(geometry.wrapperWidth).toBeLessThanOrEqual(geometry.editorWidth)
     expect(geometry.imageRight).toBeLessThanOrEqual(geometry.editorRight)
     expect(geometry.wrapperRight).toBeLessThanOrEqual(geometry.editorRight)
+
+    await page.setViewportSize({ width: 800, height: 800 })
+    await expect
+      .poll(() => image.evaluate((element) => element.getBoundingClientRect().width))
+      .toBeCloseTo(200, 0)
+
+    await page.setViewportSize({ width: 1_600, height: 800 })
+    const expandedHandleBox = await handle.boundingBox()
+    if (!expandedHandleBox) throw new Error('Resize handle has no bounding box after widening')
+    await page.mouse.move(
+      expandedHandleBox.x + expandedHandleBox.width / 2,
+      expandedHandleBox.y + expandedHandleBox.height / 2,
+    )
+    await page.mouse.down()
+    await page.mouse.move(expandedHandleBox.x + 800, expandedHandleBox.y + 400)
+    await page.mouse.up()
+    await expect
+      .poll(() => image.evaluate((element) => element.getBoundingClientRect().width))
+      .toBeCloseTo(400, 0)
   })
 
   test('keeps a failed editor image visible and interactive', async ({ context }) => {

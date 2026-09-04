@@ -124,12 +124,6 @@
   min-width: 100%;
 }
 
-/* Let the editor grow from its minimum width toward its configured maximum
- * during a drag. The NodeView applies the exact maximum numerically. */
-.ProseMirror [data-resize-state='true'] .mustard-note-image {
-  max-width: none;
-}
-
 .ProseMirror [data-resize-handle='bottom-right'] {
   box-sizing: border-box;
   width: 20px;
