@@ -346,9 +346,19 @@ test.describe('Content script smoke', () => {
     await expect(image).toHaveClass(/mustard-note-image/)
     await expect(handle).toBeAttached()
 
-    const initialImageWidth = await image.evaluate((element) => element.getBoundingClientRect().width)
+    const initialHandleBox = await handle.boundingBox()
+    if (!initialHandleBox) throw new Error('Resize handle has no bounding box')
+    await page.mouse.move(
+      initialHandleBox.x + initialHandleBox.width / 2,
+      initialHandleBox.y + initialHandleBox.height / 2,
+    )
+    await page.mouse.down()
+    await page.mouse.move(initialHandleBox.x - 150, initialHandleBox.y - 75)
+    await page.mouse.up()
+    const reducedImageWidth = await image.evaluate((element) => element.getBoundingClientRect().width)
+
     const handleBox = await handle.boundingBox()
-    if (!handleBox) throw new Error('Resize handle has no bounding box')
+    if (!handleBox) throw new Error('Resize handle has no bounding box after reducing the image')
     await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2)
     await page.mouse.down()
     await page.mouse.move(handleBox.x + 800, handleBox.y + 400)
@@ -372,7 +382,7 @@ test.describe('Content script smoke', () => {
     })
 
     expect(geometry.imageWidth).toBeLessThanOrEqual(geometry.editorWidth)
-    expect(geometry.imageWidth).toBeGreaterThan(initialImageWidth)
+    expect(geometry.imageWidth).toBeGreaterThan(reducedImageWidth)
     expect(geometry.editorWidth).toBeLessThanOrEqual(300)
     expect(geometry.wrapperWidth).toBeLessThanOrEqual(geometry.editorWidth)
     expect(geometry.imageRight).toBeLessThanOrEqual(geometry.editorRight)
