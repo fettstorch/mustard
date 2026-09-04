@@ -386,6 +386,7 @@ test.describe('Content script smoke', () => {
     expect(geometry.imageWidth).toBeLessThanOrEqual(geometry.editorWidth)
     expect(geometry.imageWidth).toBeGreaterThan(reducedImageWidth)
     expect(geometry.editorWidth).toBeLessThanOrEqual(300)
+    expect(geometry.imageWidth).toBeCloseTo(300, 0)
     expect(geometry.wrapperWidth).toBeLessThanOrEqual(geometry.editorWidth)
     expect(geometry.imageRight).toBeLessThanOrEqual(geometry.editorRight)
     expect(geometry.wrapperRight).toBeLessThanOrEqual(geometry.editorRight)
