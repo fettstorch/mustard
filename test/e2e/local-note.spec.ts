@@ -308,4 +308,69 @@ test.describe('Content script smoke', () => {
     expect(widths.preRight).toBeLessThanOrEqual(widths.contentRight)
     expect(widths.preRight).toBeLessThanOrEqual(widths.noteContentRight)
   })
+
+  test('does not resize an editor image beyond the note content width', async ({ context }) => {
+    const png = await readFile(path.resolve('src/assets/icons/mustard_bottle_smile_48.png'))
+    await context.route('https://images.example/**', (route) =>
+      route.fulfill({ contentType: 'image/png', body: png }),
+    )
+
+    const page = await context.newPage()
+    await page.setViewportSize({ width: 1_200, height: 800 })
+    await page.goto(fixtureUrl)
+    const mustard = page.locator('#mustard-host')
+    await expect(mustard).toBeAttached({ timeout: 8_000 })
+    await page.locator('#content').dispatchEvent('contextmenu', {
+      button: 2,
+      clientX: 100,
+      clientY: 100,
+    })
+
+    let serviceWorker = context.serviceWorkers()[0]
+    if (!serviceWorker) serviceWorker = await context.waitForEvent('serviceworker')
+    await serviceWorker.evaluate(async (url: string) => {
+      const [tab] = await chrome.tabs.query({ url: `${url}*` })
+      if (tab?.id === undefined) throw new Error(`No tab found for ${url}`)
+      await chrome.tabs.sendMessage(tab.id, { type: 'OPEN_NOTE_EDITOR' })
+    }, fixtureUrl)
+
+    const editor = mustard.locator('.tiptap[contenteditable="true"]')
+    await expect(editor).toBeVisible({ timeout: 8_000 })
+    await editor.fill('https://images.example/cat.png')
+    await page.keyboard.press('Space')
+
+    const image = editor.locator('.mustard-note-image')
+    const handle = editor.locator('[data-resize-handle="bottom-right"]')
+    await expect(image).toBeVisible()
+    await expect(handle).toBeAttached()
+
+    const handleBox = await handle.boundingBox()
+    if (!handleBox) throw new Error('Resize handle has no bounding box')
+    await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(handleBox.x + 800, handleBox.y + 400)
+    await page.mouse.up()
+
+    const geometry = await image.evaluate((element) => {
+      const editor = element.closest('.ProseMirror')
+      const wrapper = element.closest('[data-resize-wrapper]')
+      if (!editor || !wrapper) throw new Error('Image is missing its resize containers')
+      const imageRect = element.getBoundingClientRect()
+      const editorRect = editor.getBoundingClientRect()
+      const wrapperRect = wrapper.getBoundingClientRect()
+      return {
+        imageWidth: imageRect.width,
+        imageRight: imageRect.right,
+        editorWidth: editorRect.width,
+        editorRight: editorRect.right,
+        wrapperWidth: wrapperRect.width,
+        wrapperRight: wrapperRect.right,
+      }
+    })
+
+    expect(geometry.imageWidth).toBeLessThanOrEqual(geometry.editorWidth)
+    expect(geometry.wrapperWidth).toBeLessThanOrEqual(geometry.editorWidth)
+    expect(geometry.imageRight).toBeLessThanOrEqual(geometry.editorRight)
+    expect(geometry.wrapperRight).toBeLessThanOrEqual(geometry.editorRight)
+  })
 })
