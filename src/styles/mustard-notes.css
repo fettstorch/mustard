@@ -126,11 +126,19 @@
 
 /* Tiptap's image NodeView supplies interaction but intentionally no visuals. */
 .ProseMirror [data-resize-container=''] {
+  width: fit-content;
   max-width: 100%;
+  overflow: clip;
 }
 
 .ProseMirror [data-resize-wrapper=''] {
+  width: fit-content;
   max-width: 100%;
+  overflow: clip;
+}
+
+.ProseMirror [data-resize-wrapper=''] > .mustard-note-image {
+  max-width: 100% !important;
 }
 
 .ProseMirror [data-resize-handle='bottom-right'] {
