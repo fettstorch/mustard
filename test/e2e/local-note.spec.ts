@@ -53,6 +53,13 @@ test.describe('Content script smoke', () => {
     await saveButton.click()
 
     await expect(saveButton).not.toBeVisible({ timeout: 5_000 })
+    const savedNote = page.locator('.mustard-note').filter({ hasText: 'E2E smoke note' })
+    const noteDate = savedNote.locator('.mustard-note-date')
+    await expect(noteDate).toHaveCSS('width', '0px')
+    await expect(noteDate).toHaveCSS('opacity', '0')
+    await savedNote.hover()
+    await expect(noteDate).not.toHaveCSS('width', '0px')
+    await expect(noteDate).toHaveCSS('opacity', '0.5')
 
     await page.reload()
     await expect(page.locator('#mustard-host')).toBeAttached({ timeout: 8_000 })

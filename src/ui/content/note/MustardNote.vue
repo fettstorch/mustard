@@ -476,13 +476,15 @@ watch(unreadCount, (count) => {
               {{ videoStartAtLabel }}
             </button>
             <div class="mustard-note-date">
-              {{ formattedDate }}
-              <IconButton
-                v-if="isRemoteNote && isMyOwnNote"
-                icon="published"
-                :static="true"
-                title="This note is published"
-              />
+              <span class="mustard-note-date-inner">
+                {{ formattedDate }}
+                <IconButton
+                  v-if="isRemoteNote && isMyOwnNote"
+                  icon="published"
+                  :static="true"
+                  title="This note is published"
+                />
+              </span>
             </div>
           </div>
           <div
@@ -787,13 +789,28 @@ watch(unreadCount, (count) => {
 }
 
 .mustard-note-date {
+  display: inline-grid;
+  grid-template-columns: minmax(0, 0fr);
+  overflow: hidden;
+  font-size: 0.75em;
+  opacity: 0;
+  margin-left: auto;
+  transition:
+    grid-template-columns 0.2s ease,
+    opacity 0.15s ease;
+}
+
+.mustard-note:hover .mustard-note-date {
+  grid-template-columns: minmax(0, 1fr);
+  opacity: 0.5;
+}
+
+.mustard-note-date-inner {
   display: flex;
-  justify-content: flex-end;
+  min-width: 0;
   align-items: center;
   gap: 2px;
-  font-size: 0.75em;
-  opacity: 0.5;
-  margin-left: auto;
+  white-space: nowrap;
 }
 
 .mustard-note-date :deep(.icon-static) {
