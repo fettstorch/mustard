@@ -309,7 +309,9 @@ test.describe('Content script smoke', () => {
     expect(widths.preRight).toBeLessThanOrEqual(widths.noteContentRight)
   })
 
-  test('does not resize an editor image beyond the note content width', async ({ context }) => {
+  test('lets an editor image grow beyond the former viewport-relative note width', async ({
+    context,
+  }) => {
     const png = await readFile(path.resolve('src/assets/icons/mustard_bottle_smile_48.png'))
     await context.route('https://images.example/**', (route) =>
       route.fulfill({ contentType: 'image/png', body: png }),
@@ -375,6 +377,7 @@ test.describe('Content script smoke', () => {
       const wrapperRect = wrapper.getBoundingClientRect()
       return {
         imageWidth: imageRect.width,
+        imageHeight: imageRect.height,
         imageRight: imageRect.right,
         editorWidth: editorRect.width,
         editorRight: editorRect.right,
@@ -385,30 +388,20 @@ test.describe('Content script smoke', () => {
 
     expect(geometry.imageWidth).toBeLessThanOrEqual(geometry.editorWidth)
     expect(geometry.imageWidth).toBeGreaterThan(reducedImageWidth)
-    expect(geometry.editorWidth).toBeLessThanOrEqual(300)
-    expect(geometry.imageWidth).toBeCloseTo(300, 0)
+    expect(geometry.imageWidth).toBeGreaterThan(300)
+    expect(geometry.imageHeight).toBeCloseTo(geometry.imageWidth, 0)
     expect(geometry.wrapperWidth).toBeLessThanOrEqual(geometry.editorWidth)
     expect(geometry.imageRight).toBeLessThanOrEqual(geometry.editorRight)
     expect(geometry.wrapperRight).toBeLessThanOrEqual(geometry.editorRight)
 
+    const grownImageWidth = geometry.imageWidth
     await page.setViewportSize({ width: 800, height: 800 })
     await expect
       .poll(() => image.evaluate((element) => element.getBoundingClientRect().width))
-      .toBeCloseTo(200, 0)
-
-    await page.setViewportSize({ width: 1_600, height: 800 })
-    const expandedHandleBox = await handle.boundingBox()
-    if (!expandedHandleBox) throw new Error('Resize handle has no bounding box after widening')
-    await page.mouse.move(
-      expandedHandleBox.x + expandedHandleBox.width / 2,
-      expandedHandleBox.y + expandedHandleBox.height / 2,
-    )
-    await page.mouse.down()
-    await page.mouse.move(expandedHandleBox.x + 800, expandedHandleBox.y + 400)
-    await page.mouse.up()
+      .toBeCloseTo(grownImageWidth, 0)
     await expect
-      .poll(() => image.evaluate((element) => element.getBoundingClientRect().width))
-      .toBeCloseTo(400, 0)
+      .poll(() => image.evaluate((element) => element.getBoundingClientRect().height))
+      .toBeCloseTo(grownImageWidth, 0)
   })
 
   test('keeps a failed editor image visible and interactive', async ({ context }) => {

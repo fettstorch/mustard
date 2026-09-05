@@ -110,10 +110,11 @@
   opacity: 0.5;
 }
 
-/* Note image: legacy/un-sized images fill the content width; resized images
- * use their persisted width while remaining constrained to the note. */
+/* Legacy/un-sized images fill the content width. Resized images establish the
+ * note's width themselves, so their persisted aspect ratio is not distorted by
+ * a viewport-relative container cap. Contexts such as comments can still apply
+ * their own explicit maximum. */
 .mustard-note-image {
-  max-width: 100%;
   height: auto;
   border-radius: 4px;
   display: block;
