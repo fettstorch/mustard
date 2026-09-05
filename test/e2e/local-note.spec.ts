@@ -395,12 +395,30 @@ test.describe('Content script smoke', () => {
     expect(geometry.wrapperRight).toBeLessThanOrEqual(geometry.editorRight)
 
     const grownImageWidth = geometry.imageWidth
+    await mustard.getByTitle('Save this note locally').click()
+    const savedNote = mustard.locator('.mustard-note')
+    const savedImage = savedNote.locator('.mustard-note-image')
+    await expect(savedImage).toBeVisible()
+    const savedGeometry = await savedImage.evaluate((element) => {
+      const content = element.closest('.mustard-note-content')
+      if (!content) throw new Error('Saved image is missing its note content')
+      return {
+        imageWidth: element.getBoundingClientRect().width,
+        imageHeight: element.getBoundingClientRect().height,
+        contentWidth: content.getBoundingClientRect().width,
+      }
+    })
+
+    expect(savedGeometry.imageWidth).toBeCloseTo(geometry.imageWidth, 0)
+    expect(savedGeometry.imageHeight).toBeCloseTo(geometry.imageHeight, 0)
+    expect(savedGeometry.contentWidth).toBeCloseTo(geometry.editorWidth, 0)
+
     await page.setViewportSize({ width: 800, height: 800 })
     await expect
-      .poll(() => image.evaluate((element) => element.getBoundingClientRect().width))
+      .poll(() => savedImage.evaluate((element) => element.getBoundingClientRect().width))
       .toBeCloseTo(grownImageWidth, 0)
     await expect
-      .poll(() => image.evaluate((element) => element.getBoundingClientRect().height))
+      .poll(() => savedImage.evaluate((element) => element.getBoundingClientRect().height))
       .toBeCloseTo(grownImageWidth, 0)
   })
 

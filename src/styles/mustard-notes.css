@@ -110,6 +110,14 @@
   opacity: 0.5;
 }
 
+/* The editable and rendered forms share one sizing contract so saving a note
+ * does not change its content geometry. */
+:is(#mustard-host, .mustard-surface)
+  :is(.mustard-note-editor .ProseMirror, .mustard-note .mustard-note-content) {
+  min-width: min(var(--mustard-note-content-width), var(--mustard-note-content-max-width));
+  max-width: var(--mustard-note-content-max-width);
+}
+
 /* Legacy/un-sized images fill the content width. Resized images establish the
  * note's width themselves, so their persisted aspect ratio is not distorted by
  * a viewport-relative container cap. Contexts such as comments can still apply

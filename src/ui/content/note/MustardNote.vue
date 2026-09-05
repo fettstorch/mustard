@@ -698,8 +698,6 @@ watch(unreadCount, (count) => {
 /* --- Content styles --- */
 
 .mustard-note-content {
-  min-width: min(var(--mustard-note-content-width), var(--mustard-note-content-max-width));
-  max-width: var(--mustard-note-content-max-width);
   word-break: break-word;
 }
 
