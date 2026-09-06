@@ -44,7 +44,7 @@ md.core.ruler.after('inline', 'mustard_image_links', (state) => {
         linkOpen.type !== 'link_open' ||
         linkClose.type !== 'link_close' ||
         !href ||
-        text.content !== href ||
+        md.normalizeLink(text.content) !== href ||
         !IMAGE_URL_REGEX.test(href)
       ) {
         continue

@@ -65,6 +65,13 @@ describe('renderContent resized images', () => {
     expect(rendered).not.toContain('<a ')
   })
 
+  it('renders bare image URLs whose href is normalized by Markdown', () => {
+    const rendered = renderContent('https://example.com/猫.jpg')
+
+    expect(rendered).toContain('<img src="https://example.com/%E7%8C%AB.jpg"')
+    expect(rendered).not.toContain('<a ')
+  })
+
   it('renders extensionless Bluesky CDN links as images', () => {
     const url =
       'https://cdn.bsky.app/img/feed_fullsize/plain/did:plc:vggsjzvhakoa7l2m2mguqv4w/bafkreiedlmvzozvjcagvznzu5g3co2lhdxa2uftn42ku7odpo52tlfwmge'
