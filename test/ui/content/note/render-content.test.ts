@@ -86,4 +86,17 @@ describe('renderContent resized images', () => {
 
     expect(rendered).toContain(`<img src="${url}"`)
   })
+
+  it('preserves extensionless Bluesky image URLs in Markdown code', () => {
+    const url =
+      'https://cdn.bsky.app/img/feed_fullsize/plain/did:plc:vggsjzvhakoa7l2m2mguqv4w/bafkreiedlmvzozvjcagvznzu5g3co2lhdxa2uftfwmge'
+
+    const inline = renderContent(`\`${url}\``)
+    const fenced = renderContent(['```', url, '```'].join('\n'))
+
+    expect(inline).toContain(`<code>${url}</code>`)
+    expect(fenced).toContain(`${url}\n</code></pre>`)
+    expect(inline).not.toContain('<img')
+    expect(fenced).not.toContain('<img')
+  })
 })

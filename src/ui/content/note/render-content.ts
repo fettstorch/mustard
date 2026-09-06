@@ -8,6 +8,7 @@ import {
 } from '@/shared/providers'
 import { parseImageWidth } from '../note-editor/resizable-image'
 import { IMAGE_URL_PATTERN } from '@/shared/image-url'
+import { maskMarkdownCode } from '@/shared/link-preview'
 
 const md = new MarkdownIt({
   html: false, // XSS prevention: don't render raw HTML
@@ -95,7 +96,12 @@ function rewriteMentions(content: string, resolveProfile?: MentionProfileResolve
  */
 function preprocessContent(content: string, resolveProfile?: MentionProfileResolver): string {
   const withMentions = rewriteMentions(content, resolveProfile)
-  return withMentions.replace(BARE_IMAGE_URL_REGEX, (url) => `![](${url})`)
+  const matches = [...maskMarkdownCode(withMentions).matchAll(BARE_IMAGE_URL_REGEX)]
+  return matches.reduceRight((result, match) => {
+    const start = match.index!
+    const end = start + match[0].length
+    return `${result.slice(0, start)}![](${withMentions.slice(start, end)})${result.slice(end)}`
+  }, withMentions)
 }
 
 // Matches <p> elements containing only whitespace and/or <br> tags.
