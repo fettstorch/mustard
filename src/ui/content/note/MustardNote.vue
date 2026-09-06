@@ -794,14 +794,14 @@ watch(unreadCount, (count) => {
  * to grow into when the note widens.
  *
  * Inline-size containment keeps comment contents out of the fit-content
- * note's intrinsic width calculation. The wrapper still fills the width
- * established by the note's primary content, and the inner overflow clips
- * any wide comment image / URL to that inherited bound. */
+ * note's intrinsic width calculation. Opening a narrow note may establish a
+ * 400px usability floor, while wider notes keep the width established by their
+ * primary content. The inner overflow clips any wide comment image / URL to
+ * that bound. */
 .mustard-note-thread-wrapper {
   display: grid;
-  /* The note is width: fit-content. Exclude comments from that intrinsic
-   * width calculation so opening a thread fills, but never widens, the note
-   * width established by its primary content. Block sizing remains unchanged. */
+  /* The note is width: fit-content. Exclude comment contents from its intrinsic
+   * width calculation so they cannot widen the note past the explicit floor. */
   contain: inline-size;
   grid-template-rows: 0fr;
   grid-template-columns: minmax(0, 1fr);
@@ -813,6 +813,10 @@ watch(unreadCount, (count) => {
 }
 
 .mustard-note-thread-wrapper.is-open {
+  /* Keep the resulting note at a 400px floor, accounting for its 0.5em inline
+   * padding and 3px border on each side. Once the note is wider, containment
+   * above ensures the thread only fills that existing width. */
+  min-width: min(calc(400px - 1em - 6px), var(--mustard-note-content-max-width));
   grid-template-rows: 1fr;
   opacity: 1;
 }
