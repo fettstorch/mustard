@@ -58,6 +58,13 @@ describe('renderContent resized images', () => {
     expect(rendered).not.toContain('width=')
   })
 
+  it('renders bare image URLs without a link wrapper', () => {
+    const rendered = renderContent('https://example.com/cat.gif')
+
+    expect(rendered).toContain('<img')
+    expect(rendered).not.toContain('<a ')
+  })
+
   it('renders extensionless Bluesky CDN links as images', () => {
     const url =
       'https://cdn.bsky.app/img/feed_fullsize/plain/did:plc:vggsjzvhakoa7l2m2mguqv4w/bafkreiedlmvzozvjcagvznzu5g3co2lhdxa2uftn42ku7odpo52tlfwmge'

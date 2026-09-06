@@ -56,7 +56,12 @@ md.core.ruler.after('inline', 'mustard_image_links', (state) => {
         ['alt', ''],
       ]
       image.children = []
-      children[index] = image
+      if (linkOpen.markup === 'linkify') {
+        children.splice(index - 1, 3, image)
+        index--
+      } else {
+        children[index] = image
+      }
     }
   }
 })
