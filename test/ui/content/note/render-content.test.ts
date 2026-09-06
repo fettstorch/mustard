@@ -44,7 +44,7 @@ describe('renderContent code blocks', () => {
   })
 })
 
-describe('renderContent resized images', () => {
+describe('renderContent images', () => {
   it('renders persisted width metadata without exposing it as a tooltip', () => {
     const rendered = renderContent('![](https://example.com/cat.gif "mustard:image-width=248")')
 
@@ -56,5 +56,86 @@ describe('renderContent resized images', () => {
     const rendered = renderContent('![](https://example.com/cat.gif)')
 
     expect(rendered).not.toContain('width=')
+  })
+
+  it('renders bare image URLs without a link wrapper', () => {
+    const rendered = renderContent('https://example.com/cat.gif')
+
+    expect(rendered).toContain('<img')
+    expect(rendered).not.toContain('<a ')
+  })
+
+  it('renders bare image URLs whose href is normalized by Markdown', () => {
+    const rendered = renderContent('https://example.com/猫.jpg')
+
+    expect(rendered).toContain('<img src="https://example.com/%E7%8C%AB.jpg"')
+    expect(rendered).not.toContain('<a ')
+  })
+
+  it('renders extensionless Bluesky CDN links as images', () => {
+    const url =
+      'https://cdn.bsky.app/img/feed_fullsize/plain/did:plc:vggsjzvhakoa7l2m2mguqv4w/bafkreiedlmvzozvjcagvznzu5g3co2lhdxa2uftn42ku7odpo52tlfwmge'
+
+    const rendered = renderContent(`[${url}](${url})`)
+
+    expect(rendered).toContain(`<img src="${url}"`)
+    expect(rendered).toContain('class="mustard-note-image"')
+  })
+
+  it('leaves punctuation following a bare Bluesky CDN image outside the URL', () => {
+    const url =
+      'https://cdn.bsky.app/img/feed_fullsize/plain/did:plc:vggsjzvhakoa7l2m2mguqv4w/bafkreiedlmvzozvjcagvznzu5g3co2lhdxa2uftn42ku7odpo52tlfwmge'
+
+    const rendered = renderContent(`${url}.`)
+
+    expect(rendered).toContain(`<img src="${url}"`)
+    expect(rendered).not.toContain(`src="${url}."`)
+    expect(rendered).toContain('>.</p>')
+  })
+
+  it('leaves punctuation following Bluesky CDN query parameters outside the URL', () => {
+    const url =
+      'https://cdn.bsky.app/img/feed_fullsize/plain/did:plc:vggsjzvhakoa7l2m2mguqv4w/bafkreiedlmvzozvjcagvznzu5g3co2lhdxa2uftn42ku7odpo52tlfwmge?cache=1'
+
+    const rendered = renderContent(`${url}.`)
+
+    expect(rendered).toContain(`<img src="${url}"`)
+    expect(rendered).not.toContain(`src="${url}."`)
+    expect(rendered).toContain('>.</p>')
+  })
+
+  it('renders conventional image URLs containing parentheses', () => {
+    const url = 'https://upload.wikimedia.org/Foo_(bar).jpg'
+
+    const rendered = renderContent(url)
+
+    expect(rendered).toContain(`<img src="${url}"`)
+  })
+
+  it('preserves delimiters in conventional image URL query strings', () => {
+    const url = 'https://example.com/cat.jpg?crop=(1,2)'
+
+    const rendered = renderContent(url)
+
+    expect(rendered).toContain(`<img src="${url}"`)
+  })
+
+  it('preserves extensionless Bluesky image URLs in every Markdown code form', () => {
+    const url =
+      'https://cdn.bsky.app/img/feed_fullsize/plain/did:plc:vggsjzvhakoa7l2m2mguqv4w/bafkreiedlmvzozvjcagvznzu5g3co2lhdxa2uftfwmge'
+
+    const inline = renderContent(`\`${url}\``)
+    const fenced = renderContent(['```', url, '```'].join('\n'))
+    const indented = renderContent(`Prose\n\n    ${url}`)
+    const quotedFence = renderContent(['> ```', `> ${url}`, '> ```'].join('\n'))
+
+    expect(inline).toContain(`<code>${url}</code>`)
+    expect(fenced).toContain(`${url}\n</code></pre>`)
+    expect(indented).toContain(`${url}\n</code></pre>`)
+    expect(quotedFence).toContain(`${url}\n</code></pre>`)
+    for (const rendered of [inline, fenced, indented, quotedFence]) {
+      expect(rendered).not.toContain('<img')
+      expect(rendered).not.toContain('![](')
+    }
   })
 })
