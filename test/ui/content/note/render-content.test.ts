@@ -86,6 +86,17 @@ describe('renderContent resized images', () => {
     expect(rendered).toContain('>.</p>')
   })
 
+  it('leaves punctuation following Bluesky CDN query parameters outside the URL', () => {
+    const url =
+      'https://cdn.bsky.app/img/feed_fullsize/plain/did:plc:vggsjzvhakoa7l2m2mguqv4w/bafkreiedlmvzozvjcagvznzu5g3co2lhdxa2uftn42ku7odpo52tlfwmge?cache=1'
+
+    const rendered = renderContent(`${url}.`)
+
+    expect(rendered).toContain(`<img src="${url}"`)
+    expect(rendered).not.toContain(`src="${url}."`)
+    expect(rendered).toContain('>.</p>')
+  })
+
   it('renders conventional image URLs containing parentheses', () => {
     const url = 'https://upload.wikimedia.org/Foo_(bar).jpg'
 
