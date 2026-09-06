@@ -793,13 +793,16 @@ watch(unreadCount, (count) => {
  * preferred width — meaning a `flex: 1` textarea has nothing "left over"
  * to grow into when the note widens.
  *
- * We don't cap the wrapper's width here because the surrounding note
- * content (`.mustard-note-content` with `max-width: var(...)`) already
- * bounds the body-inner, which is what we'd inherit anyway. The inner's
- * `overflow: hidden` keeps any wide comment image / URL clipped to that
- * bound so the thread can never blow out the note's width. */
+ * Inline-size containment keeps comment contents out of the fit-content
+ * note's intrinsic width calculation. The wrapper still fills the width
+ * established by the note's primary content, and the inner overflow clips
+ * any wide comment image / URL to that inherited bound. */
 .mustard-note-thread-wrapper {
   display: grid;
+  /* The note is width: fit-content. Exclude comments from that intrinsic
+   * width calculation so opening a thread fills, but never widens, the note
+   * width established by its primary content. Block sizing remains unchanged. */
+  contain: inline-size;
   grid-template-rows: 0fr;
   grid-template-columns: minmax(0, 1fr);
   min-width: min(var(--mustard-note-content-width), var(--mustard-note-content-max-width));

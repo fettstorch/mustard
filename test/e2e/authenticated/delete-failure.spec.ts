@@ -5,7 +5,7 @@ import { deleteNote, seedComment, seedNote } from './local-supabase'
 const { viewer, author } = TEST_USERS
 const fixtureUrl = 'http://127.0.0.1:4173/page.html'
 const noteContent = 'Remote note whose delete will fail'
-const commentContent = 'Keep this comment visible after failure'
+const commentContent = `Keep${'unbroken'.repeat(20)}`
 
 test.describe('failed remote-note deletion', () => {
   let noteId: string
@@ -28,9 +28,13 @@ test.describe('failed remote-note deletion', () => {
     const mustard = page.locator('#mustard-host')
     const note = mustard.locator('.mustard-note-wrapper').filter({ hasText: noteContent })
     await expect(note).toBeVisible({ timeout: 8_000 })
+    const closedWidth = await note.evaluate((element) => element.getBoundingClientRect().width)
 
     await note.getByTitle('1 comment').click()
     await expect(note.getByText(commentContent)).toBeVisible()
+    await expect
+      .poll(() => note.evaluate((element) => element.getBoundingClientRect().width))
+      .toBe(closedWidth)
 
     let serviceWorker = context.serviceWorkers()[0]
     if (!serviceWorker) {
