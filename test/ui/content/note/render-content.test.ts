@@ -78,4 +78,12 @@ describe('renderContent resized images', () => {
     expect(rendered).not.toContain(`src="${url}."`)
     expect(rendered).toContain('>.</p>')
   })
+
+  it('renders conventional image URLs containing parentheses', () => {
+    const url = 'https://upload.wikimedia.org/Foo_(bar).jpg'
+
+    const rendered = renderContent(url)
+
+    expect(rendered).toContain(`<img src="${url}"`)
+  })
 })
