@@ -7,6 +7,7 @@ import {
   providerProfileUrl,
 } from '@/shared/providers'
 import { parseImageWidth } from '../note-editor/resizable-image'
+import { IMAGE_URL_PATTERN } from '@/shared/image-url'
 
 const md = new MarkdownIt({
   html: false, // XSS prevention: don't render raw HTML
@@ -50,11 +51,10 @@ md.renderer.rules.image = (tokens, idx, options, env, self) => {
 }
 
 /**
- * Bare image URL regex (not already wrapped in markdown `![](...)` syntax).
+ * Supported bare image URL regex (not already wrapped in markdown `![](...)` syntax).
  * Negative lookbehind ensures we don't re-wrap existing markdown images.
  */
-const BARE_IMAGE_URL_REGEX =
-  /(?<!\]\()https?:\/\/[^\s?#]+\.(?:png|jpe?g|gif|webp)(?::(?:large|medium|small|orig|thumb))?(?:\?[^\s]*)?(?:#[^\s]*)?/gi
+const BARE_IMAGE_URL_REGEX = new RegExp(String.raw`(?<!\]\()${IMAGE_URL_PATTERN}`, 'gi')
 
 /** Escapes markdown link-text special chars in a resolved handle/label. */
 function escapeLinkText(text: string): string {

@@ -1,17 +1,15 @@
 import { Extension, nodePasteRule, nodeInputRule } from '@tiptap/core'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { TextSelection } from '@tiptap/pm/state'
+import { IMAGE_URL_PATTERN } from '@/shared/image-url'
 
 /**
- * Matches bare image URLs by file extension.
- * Supports: .png, .jpg, .jpeg, .gif, .webp
- * Optionally followed by Twitter/X size suffix, query params, or fragments.
+ * Matches bare image URLs supported by the shared note renderer, including
+ * extensionless Bluesky CDN image routes.
  */
-const IMAGE_URL_PASTE_REGEX =
-  /https?:\/\/[^\s?#]+\.(?:png|jpe?g|gif|webp)(?::(?:large|medium|small|orig|thumb))?(?:\?[^\s]*)?(?:#[^\s]*)?/gi
+const IMAGE_URL_PASTE_REGEX = new RegExp(IMAGE_URL_PATTERN, 'gi')
 
-const IMAGE_URL_INPUT_REGEX =
-  /https?:\/\/[^\s?#]+\.(?:png|jpe?g|gif|webp)(?::(?:large|medium|small|orig|thumb))?(?:\?[^\s]*)?(?:#[^\s]*)?\s$/
+const IMAGE_URL_INPUT_REGEX = new RegExp(String.raw`${IMAGE_URL_PATTERN}\s$`, 'i')
 
 /**
  * Auto-converts bare image URLs to Image nodes.

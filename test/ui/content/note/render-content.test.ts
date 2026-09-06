@@ -57,4 +57,14 @@ describe('renderContent resized images', () => {
 
     expect(rendered).not.toContain('width=')
   })
+
+  it('renders extensionless Bluesky CDN links as images', () => {
+    const url =
+      'https://cdn.bsky.app/img/feed_fullsize/plain/did:plc:vggsjzvhakoa7l2m2mguqv4w/bafkreiedlmvzozvjcagvznzu5g3co2lhdxa2uftn42ku7odpo52tlfwmge'
+
+    const rendered = renderContent(`[${url}](${url})`)
+
+    expect(rendered).toContain(`<img src="${url}"`)
+    expect(rendered).toContain('class="mustard-note-image"')
+  })
 })
