@@ -120,13 +120,12 @@ test('a published hidden note keeps its preview, comments and un-hide control in
   await expect(card).toHaveCount(1, { timeout: 20_000 })
   await expect(card.getByText('Hidden published note')).toBeVisible()
 
-  // 1. Un-hiding is the point of this section, so the control must not need
-  //    discovering by hover here (unlike on a page). Asserted on the wrapper and
-  //    its computed style: the button inside keeps a clipped 8px box from its own
-  //    padding, so `toBeVisible()` on it passes even while it's collapsed.
-  const unhideToggle = card.locator('.mustard-hide-toggle')
-  await expect(unhideToggle).toHaveCSS('opacity', '1')
-  expect(await unhideToggle.evaluate((el) => el.getBoundingClientRect().width)).toBeGreaterThan(0)
+  // 1. Gallery notes use the same unified hover reveal as page notes.
+  const noteActions = card.locator('.mustard-note-actions')
+  await page.mouse.move(5, 5)
+  await expect(noteActions).toHaveCSS('opacity', '0')
+  await card.locator('.mustard-note').hover()
+  await expect(noteActions).toHaveCSS('opacity', '1')
   await expect(card.locator('[title="Un-hide this note"]')).toBeVisible()
 
   // 2. Same link preview, thumbnail included — fetched via GET_LINK_PREVIEW_IMAGE

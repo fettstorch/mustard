@@ -57,6 +57,7 @@ test.describe('failed remote-note deletion', () => {
     })
 
     const deleteButton = note.getByTitle('Delete this note')
+    await note.hover()
     await deleteButton.click()
 
     // The failed request must undo only this note's pending lock; the note and

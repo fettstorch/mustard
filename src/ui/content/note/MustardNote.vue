@@ -354,55 +354,18 @@ watch(unreadCount, (count) => {
         />
         <AuthorAvatar v-else-if="isRemoteNote" :profile="authorProfile" />
         <MustardNoteHeader class="mustard-note-actions" style="translate: 5px; flex: 1">
-          <template v-if="isMyOwnNote">
-            <IconButton
-              v-if="showPublishButton"
-              icon="publish"
-              :title="
-                mustardState.clientOutdated
-                  ? updateRequiredTitle
-                  : 'Publish this note (do not publish sensitive data)'
-              "
-              :disabled="isPublishDisabled"
-              @click="emit('pressed-publish', note)"
-              @mousedown.stop
-            />
-            <IconButton
-              icon="trash"
-              :title="
-                isRemoteNote && mustardState.clientOutdated
-                  ? updateRequiredTitle
-                  : 'Delete this note'
-              "
-              :disabled="isDeleteDisabled"
-              @click="emit('pressed-delete', note)"
-              @mousedown.stop
-            />
-          </template>
-          <span
-            v-if="showHideButton"
-            class="mustard-hide-toggle"
-            :class="{ 'is-visible': isHovered }"
-          >
-            <IconButton
-              icon="eye-closed"
-              title="Hide this note — un-hide it later in Mustard options"
-              @click="emit('pressed-hide', note)"
-              @mousedown.stop
-            />
-          </span>
-          <span
-            v-if="showUnhideButton"
-            class="mustard-hide-toggle"
-            :class="{ 'is-visible': isHovered }"
-          >
-            <IconButton
-              icon="eye-open"
-              title="Un-hide this note"
-              @click="emit('pressed-unhide', note)"
-              @mousedown.stop
-            />
-          </span>
+          <IconButton
+            v-if="isMyOwnNote && showPublishButton"
+            icon="publish"
+            :title="
+              mustardState.clientOutdated
+                ? updateRequiredTitle
+                : 'Publish this note (do not publish sensitive data)'
+            "
+            :disabled="isPublishDisabled"
+            @click="emit('pressed-publish', note)"
+            @mousedown.stop
+          />
           <span
             v-if="showRepostButton"
             class="mustard-repost-toggle"
@@ -423,6 +386,32 @@ watch(unreadCount, (count) => {
               @mousedown.stop
             />
           </span>
+          <span v-if="showHideButton" class="mustard-hide-toggle">
+            <IconButton
+              icon="eye-closed"
+              title="Hide this note — un-hide it later in Mustard options"
+              @click="emit('pressed-hide', note)"
+              @mousedown.stop
+            />
+          </span>
+          <span v-if="showUnhideButton" class="mustard-hide-toggle">
+            <IconButton
+              icon="eye-open"
+              title="Un-hide this note"
+              @click="emit('pressed-unhide', note)"
+              @mousedown.stop
+            />
+          </span>
+          <IconButton
+            v-if="isMyOwnNote"
+            icon="trash"
+            :title="
+              isRemoteNote && mustardState.clientOutdated ? updateRequiredTitle : 'Delete this note'
+            "
+            :disabled="isDeleteDisabled"
+            @click="emit('pressed-delete', note)"
+            @mousedown.stop
+          />
         </MustardNoteHeader>
       </div>
       <!-- Collapsible body (content + footer + date) -->
@@ -537,31 +526,8 @@ watch(unreadCount, (count) => {
   cursor: grabbing;
 }
 
-/* --- Hide toggle ---
- * Hover-gated so the resting note stays clean. Collapsed to zero width rather
- * than just transparent, so it leaves no dead gap in the header when hidden —
- * same technique as CommentToggle's "+ Add comment" affordance.
- */
 .mustard-hide-toggle {
-  display: inline-grid;
-  /* minmax(0, …) rather than a bare `0fr`: a bare flex track keeps an automatic
-   * content-based minimum, and IconButton's 8px of horizontal padding holds that
-   * open (to exactly 8px) even once the icon itself has shrunk to nothing. */
-  grid-template-columns: minmax(0, 0fr);
-  overflow: hidden;
-  opacity: 0;
-  transition:
-    grid-template-columns 0.2s ease,
-    opacity 0.2s ease;
-}
-
-.mustard-hide-toggle.is-visible {
-  grid-template-columns: minmax(0, 1fr);
-  opacity: 1;
-}
-
-.mustard-hide-toggle > * {
-  min-width: 0;
+  display: inline-flex;
 }
 
 /* --- Hidden state ---
@@ -626,26 +592,16 @@ watch(unreadCount, (count) => {
   margin-bottom: 8px;
 }
 
-/* Repost toggle: hidden by default, fades in only while the note is hovered so
- * resting notes stay clean. The rotation (set per-press via the --repost-rotation
- * custom property) animates as a 360° ease-out spin on the icon image only — the
+/* The rotation animates as a 360° ease-out spin on the icon image only — the
  * wrapper carries the press-indicator background, so rotating it would spin that
  * darkened hover/active frame too. */
 .mustard-repost-toggle {
   display: inline-flex;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.15s ease;
 }
 
 .mustard-repost-toggle :deep(img) {
   transform: rotate(var(--repost-rotation, 0deg));
   transition: transform 0.5s ease-out;
-}
-
-.mustard-note:hover .mustard-repost-toggle {
-  opacity: 1;
-  pointer-events: auto;
 }
 
 /* Subtle highlight ring once the user has reposted (visible on hover). */
@@ -654,7 +610,18 @@ watch(unreadCount, (count) => {
   background: var(--mustard-glass-strong);
 }
 
-/* Header actions: hidden when minimized, fade in on hover */
+/* All header actions share one hover reveal, so none remain visible at rest. */
+
+.mustard-note-actions {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+
+.mustard-note:hover .mustard-note-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
 
 .mustard-note.is-minimized .mustard-note-actions {
   opacity: 0;
