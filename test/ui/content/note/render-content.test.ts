@@ -44,7 +44,7 @@ describe('renderContent code blocks', () => {
   })
 })
 
-describe('renderContent resized images', () => {
+describe('renderContent images', () => {
   it('renders persisted width metadata without exposing it as a tooltip', () => {
     const rendered = renderContent('![](https://example.com/cat.gif "mustard:image-width=248")')
 

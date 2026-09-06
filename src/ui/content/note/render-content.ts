@@ -123,14 +123,6 @@ function rewriteMentions(content: string, resolveProfile?: MentionProfileResolve
   )
 }
 
-/**
- * Converts bare image URLs to markdown image syntax for backward compat
- * with old notes that stored plain-text image URLs.
- */
-function preprocessContent(content: string, resolveProfile?: MentionProfileResolver): string {
-  return rewriteMentions(content, resolveProfile)
-}
-
 // Matches <p> elements containing only whitespace and/or <br> tags.
 const EMPTY_P_REGEX = /<p>(\s|<br\s*\/?>)*<\/p>/gi
 
@@ -142,5 +134,5 @@ const EMPTY_P_REGEX = /<p>(\s|<br\s*\/?>)*<\/p>/gi
  *   link is generated. Supports both legacy atproto and new multi-provider formats.
  */
 export function renderContent(content: string, resolveProfile?: MentionProfileResolver): string {
-  return md.render(preprocessContent(content.trim(), resolveProfile)).replace(EMPTY_P_REGEX, '')
+  return md.render(rewriteMentions(content.trim(), resolveProfile)).replace(EMPTY_P_REGEX, '')
 }
