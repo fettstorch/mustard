@@ -43,3 +43,18 @@ describe('renderContent code blocks', () => {
     expect(rendered).not.toContain('hljs-')
   })
 })
+
+describe('renderContent resized images', () => {
+  it('renders persisted width metadata without exposing it as a tooltip', () => {
+    const rendered = renderContent('![](https://example.com/cat.gif "mustard:image-width=248")')
+
+    expect(rendered).toContain('width="248"')
+    expect(rendered).not.toContain('mustard:image-width')
+  })
+
+  it('keeps legacy images full-width by omitting a width attribute', () => {
+    const rendered = renderContent('![](https://example.com/cat.gif)')
+
+    expect(rendered).not.toContain('width=')
+  })
+})

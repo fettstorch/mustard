@@ -35,8 +35,8 @@
   );
 
   /* Note content sizing */
-  --mustard-note-content-width: 180px;
-  --mustard-note-content-max-width: 25vw;
+  --mustard-note-content-width: 8ch;
+  --mustard-note-content-max-width: 2000px;
 
   /* Plastic tube box-shadow */
   --mustard-plastic-shadow:

@@ -501,12 +501,11 @@ function onNoteUnhide(note: MustardNoteType) {
 
 .mustard-note-enter-active,
 .mustard-note-leave-active {
-  transition: all 0.3s cubic-bezier(0.38, -0.9, 0.5, 1.95);
+  transition: opacity 0.2s ease;
 }
 
 .mustard-note-enter-from,
 .mustard-note-leave-to {
   opacity: 0;
-  transform: scale(0.95);
 }
 </style>

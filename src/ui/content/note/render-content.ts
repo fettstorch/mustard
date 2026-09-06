@@ -6,6 +6,7 @@ import {
   GITHUB_PROFILE_URL_PREFIX,
   providerProfileUrl,
 } from '@/shared/providers'
+import { parseImageWidth } from '../note-editor/resizable-image'
 
 const md = new MarkdownIt({
   html: false, // XSS prevention: don't render raw HTML
@@ -37,9 +38,14 @@ md.renderer.rules.link_open = (tokens, idx, options, env, self) => {
 const defaultImage = md.renderer.rules.image!
 
 md.renderer.rules.image = (tokens, idx, options, env, self) => {
+  const width = parseImageWidth(tokens[idx]!.attrGet('title'))
   tokens[idx]!.attrSet('class', 'mustard-note-image')
   tokens[idx]!.attrSet('draggable', 'false')
   tokens[idx]!.attrSet('referrerpolicy', 'no-referrer')
+  if (width !== undefined) {
+    tokens[idx]!.attrSet('width', String(width))
+    tokens[idx]!.attrSet('title', '')
+  }
   return defaultImage(tokens, idx, options, env, self)
 }
 

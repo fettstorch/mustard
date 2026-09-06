@@ -53,6 +53,18 @@ test.describe('Content script smoke', () => {
     await saveButton.click()
 
     await expect(saveButton).not.toBeVisible({ timeout: 5_000 })
+    const savedNote = page.locator('.mustard-note').filter({ hasText: 'E2E smoke note' })
+    const noteActions = savedNote.locator('.mustard-note-actions')
+    const noteDate = savedNote.locator('.mustard-note-date')
+    await page.mouse.move(5, 5)
+    await expect(noteActions).toHaveCSS('opacity', '0')
+    await expect(noteDate).toHaveCSS('width', '0px')
+    await expect(noteDate).toHaveCSS('opacity', '0')
+    await savedNote.hover()
+    await expect(noteActions).toHaveCSS('opacity', '1')
+    await expect(noteActions.locator('[title]').last()).toHaveAttribute('title', 'Delete this note')
+    await expect(noteDate).not.toHaveCSS('width', '0px')
+    await expect(noteDate).toHaveCSS('opacity', '0.5')
 
     await page.reload()
     await expect(page.locator('#mustard-host')).toBeAttached({ timeout: 8_000 })
@@ -307,5 +319,163 @@ test.describe('Content script smoke', () => {
     expect(widths.preWidth).toBeLessThanOrEqual(widths.contentWidth)
     expect(widths.preRight).toBeLessThanOrEqual(widths.contentRight)
     expect(widths.preRight).toBeLessThanOrEqual(widths.noteContentRight)
+  })
+
+  test('lets an editor image grow beyond the former viewport-relative note width', async ({
+    context,
+  }) => {
+    const png = await readFile(path.resolve('src/assets/icons/mustard_bottle_smile_48.png'))
+    await context.route('https://images.example/**', (route) =>
+      route.fulfill({ contentType: 'image/png', body: png }),
+    )
+
+    const page = await context.newPage()
+    await page.setViewportSize({ width: 2_600, height: 800 })
+    await page.goto(fixtureUrl)
+    const mustard = page.locator('#mustard-host')
+    await expect(mustard).toBeAttached({ timeout: 8_000 })
+    const hostResizeHandle = page.locator('#host-resize-handle')
+    await page.locator('body').evaluate((body) => {
+      body.insertAdjacentHTML(
+        'beforeend',
+        '<div class="ProseMirror"><div id="host-resize-handle" data-resize-handle="bottom-right" style="width: 7px"></div></div>',
+      )
+    })
+    await expect(hostResizeHandle).toHaveCSS('width', '7px')
+    await page.locator('#content').dispatchEvent('contextmenu', {
+      button: 2,
+      clientX: 100,
+      clientY: 100,
+    })
+
+    let serviceWorker = context.serviceWorkers()[0]
+    if (!serviceWorker) serviceWorker = await context.waitForEvent('serviceworker')
+    await serviceWorker.evaluate(async (url: string) => {
+      const [tab] = await chrome.tabs.query({ url: `${url}*` })
+      if (tab?.id === undefined) throw new Error(`No tab found for ${url}`)
+      await chrome.tabs.sendMessage(tab.id, { type: 'OPEN_NOTE_EDITOR' })
+    }, fixtureUrl)
+
+    const editor = mustard.locator('.tiptap[contenteditable="true"]')
+    await expect(editor).toBeVisible({ timeout: 8_000 })
+    await editor.click()
+    await page.keyboard.type('https://images.example/cat.png')
+    await page.keyboard.press('Space')
+
+    const image = editor.locator('[data-resize-wrapper] > img')
+    const handle = editor.locator('[data-resize-handle="bottom-right"]')
+    await expect(image).toBeVisible()
+    await expect(image).toHaveClass(/mustard-note-image/)
+    await expect(image).toHaveCSS('max-width', '100%')
+    await expect(handle).toBeAttached()
+
+    const initialHandleBox = await handle.boundingBox()
+    if (!initialHandleBox) throw new Error('Resize handle has no bounding box')
+    await page.mouse.move(
+      initialHandleBox.x + initialHandleBox.width / 2,
+      initialHandleBox.y + initialHandleBox.height / 2,
+    )
+    await page.mouse.down()
+    await page.mouse.move(initialHandleBox.x - 150, initialHandleBox.y - 75)
+    await page.mouse.up()
+    await expect(image).toHaveCSS('max-width', 'none')
+    const reducedImageWidth = await image.evaluate(
+      (element) => element.getBoundingClientRect().width,
+    )
+
+    const handleBox = await handle.boundingBox()
+    if (!handleBox) throw new Error('Resize handle has no bounding box after reducing the image')
+    await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(handleBox.x + 3_000, handleBox.y + 1_500)
+    await page.mouse.up()
+
+    const geometry = await image.evaluate((element) => {
+      const editor = element.closest('.ProseMirror')
+      const wrapper = element.closest('[data-resize-wrapper]')
+      if (!editor || !wrapper) throw new Error('Image is missing its resize containers')
+      const imageRect = element.getBoundingClientRect()
+      const editorRect = editor.getBoundingClientRect()
+      const wrapperRect = wrapper.getBoundingClientRect()
+      return {
+        imageWidth: imageRect.width,
+        imageHeight: imageRect.height,
+        imageRight: imageRect.right,
+        editorWidth: editorRect.width,
+        editorRight: editorRect.right,
+        wrapperWidth: wrapperRect.width,
+        wrapperRight: wrapperRect.right,
+      }
+    })
+
+    expect(geometry.imageWidth).toBeLessThanOrEqual(geometry.editorWidth)
+    expect(geometry.imageWidth).toBeLessThanOrEqual(2_000)
+    expect(geometry.imageWidth).toBeGreaterThan(1_900)
+    expect(geometry.imageWidth).toBeGreaterThan(reducedImageWidth)
+    expect(geometry.imageWidth).toBeGreaterThan(300)
+    expect(geometry.imageHeight).toBeCloseTo(geometry.imageWidth, 0)
+    expect(geometry.wrapperWidth).toBeLessThanOrEqual(geometry.editorWidth)
+    expect(geometry.imageRight).toBeLessThanOrEqual(geometry.editorRight)
+    expect(geometry.wrapperRight).toBeLessThanOrEqual(geometry.editorRight)
+
+    const grownImageWidth = geometry.imageWidth
+    await mustard.getByTitle('Save this note locally').click()
+    const savedNote = mustard.locator('.mustard-note')
+    const savedImage = savedNote.locator('.mustard-note-image')
+    await expect(savedImage).toBeVisible()
+    const savedGeometry = await savedImage.evaluate((element) => {
+      const content = element.closest('.mustard-note-content')
+      if (!content) throw new Error('Saved image is missing its note content')
+      return {
+        imageWidth: element.getBoundingClientRect().width,
+        imageHeight: element.getBoundingClientRect().height,
+        contentWidth: content.getBoundingClientRect().width,
+      }
+    })
+
+    expect(savedGeometry.imageWidth).toBeCloseTo(geometry.imageWidth, 0)
+    expect(savedGeometry.imageHeight).toBeCloseTo(geometry.imageHeight, 0)
+    expect(savedGeometry.contentWidth).toBeCloseTo(geometry.editorWidth, 0)
+
+    await page.setViewportSize({ width: 800, height: 800 })
+    await expect
+      .poll(() => savedImage.evaluate((element) => element.getBoundingClientRect().width))
+      .toBeCloseTo(grownImageWidth, 0)
+    await expect
+      .poll(() => savedImage.evaluate((element) => element.getBoundingClientRect().height))
+      .toBeCloseTo(grownImageWidth, 0)
+  })
+
+  test('keeps a failed editor image visible and interactive', async ({ context }) => {
+    await context.route('https://images.example/**', (route) => route.abort())
+
+    const page = await context.newPage()
+    await page.goto(fixtureUrl)
+    const mustard = page.locator('#mustard-host')
+    await expect(mustard).toBeAttached({ timeout: 8_000 })
+    await page.locator('#content').dispatchEvent('contextmenu', {
+      button: 2,
+      clientX: 100,
+      clientY: 100,
+    })
+
+    let serviceWorker = context.serviceWorkers()[0]
+    if (!serviceWorker) serviceWorker = await context.waitForEvent('serviceworker')
+    await serviceWorker.evaluate(async (url: string) => {
+      const [tab] = await chrome.tabs.query({ url: `${url}*` })
+      if (tab?.id === undefined) throw new Error(`No tab found for ${url}`)
+      await chrome.tabs.sendMessage(tab.id, { type: 'OPEN_NOTE_EDITOR' })
+    }, fixtureUrl)
+
+    const editor = mustard.locator('.tiptap[contenteditable="true"]')
+    await expect(editor).toBeVisible({ timeout: 8_000 })
+    await editor.click()
+    await page.keyboard.type('https://images.example/missing.png')
+    await page.keyboard.press('Space')
+
+    const nodeView = editor.locator('[data-resize-container]')
+    await expect(nodeView).toBeAttached()
+    await expect(nodeView).toHaveCSS('visibility', 'visible')
+    await expect(nodeView).toHaveCSS('pointer-events', 'auto')
   })
 })

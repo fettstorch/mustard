@@ -1,10 +1,10 @@
 import StarterKit from '@tiptap/starter-kit'
-import { Image } from '@tiptap/extension-image'
 import { Placeholder } from '@tiptap/extensions'
 import { Markdown } from '@tiptap/markdown'
 import type { Extensions } from '@tiptap/core'
 import { CodeBlockLowlightWithHardBreakFence } from './code-block-extension'
 import { ImageUrlAutoConvert } from './image-url-auto-convert'
+import { ResizableImage } from './resizable-image'
 import { GiphySlash } from './giphy-slash'
 import { createMentionExtension } from './mention-node'
 import { lowlight } from '../note/code-highlighting'
@@ -31,8 +31,15 @@ export function createEditorExtensions(opts: {
       lowlight,
       enableTabIndentation: true,
     }),
-    Image.configure({
+    ResizableImage.configure({
       inline: false,
+      resize: {
+        enabled: true,
+        directions: ['bottom-right'],
+        minWidth: 48,
+        minHeight: 32,
+        alwaysPreserveAspectRatio: true,
+      },
       HTMLAttributes: {
         class: 'mustard-note-image',
         draggable: 'false',

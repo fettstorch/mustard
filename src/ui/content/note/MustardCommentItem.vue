@@ -163,7 +163,6 @@ function onContentMousedown(e: MouseEvent) {
   min-width: 0;
   max-width: 200px;
   max-height: 200px;
-  width: auto;
   height: auto;
   object-fit: contain;
 }

@@ -62,17 +62,14 @@ test.describe('Hiding individual notes', () => {
     const note = mustard.locator('.mustard-note').filter({ hasText: 'Note to hide' })
     await expect(note).toBeVisible()
 
-    // The control is hover-gated: collapsed to zero width and transparent on a
-    // resting note. Saving left the cursor parked over the note, so step off it
-    // first. Asserted on the wrapper, since the button inside keeps a (clipped)
-    // box from its own padding.
-    const hideToggle = note.locator('.mustard-hide-toggle')
+    // All top-right actions are hover-gated as one group. Saving left the
+    // cursor parked over the note, so step off it first.
+    const noteActions = note.locator('.mustard-note-actions')
     await page.mouse.move(5, 5)
-    await expect(hideToggle).toHaveCSS('opacity', '0')
-    await expect(hideToggle).toHaveCSS('width', '0px')
+    await expect(noteActions).toHaveCSS('opacity', '0')
 
     await note.hover()
-    await expect(hideToggle).toHaveCSS('opacity', '1')
+    await expect(noteActions).toHaveCSS('opacity', '1')
     await note.locator('[title^="Hide this note"]').click()
 
     await expect(note).toHaveCount(0, { timeout: 5_000 })
@@ -240,12 +237,17 @@ test.describe('Hiding individual notes', () => {
     // The tile renders the real MustardNote, not a lookalike, and adds the page.
     await expect(card.locator('.mustard-note')).toHaveCount(1)
     await expect(card.locator('.hidden-note-page')).toContainText('127.0.0.1:4173/page.html')
-    // Deleting your own note stays available wherever you can see it...
+    // Deleting your own note stays available wherever you can see it, but is
+    // revealed with the other top-right actions only on hover.
+    const noteActions = card.locator('.mustard-note-actions')
+    await page.mouse.move(5, 5)
+    await expect(noteActions).toHaveCSS('opacity', '0')
     await expect(card.locator('[title="Delete this note"]')).toBeVisible()
     // ...but affordances that only mean something on the note's own page don't.
     await expect(card.locator('[title^="Publish this note"]')).toHaveCount(0)
 
     await card.locator('.mustard-note').hover()
+    await expect(noteActions).toHaveCSS('opacity', '1')
     await card.locator('[title="Un-hide this note"]').click()
     await expect(options.locator('.hidden-note-card')).toHaveCount(0)
 
@@ -377,6 +379,7 @@ test.describe('Hiding individual notes', () => {
     const card = options.locator('.hidden-note-card')
     await expect(card).toHaveCount(1, { timeout: 8_000 })
 
+    await card.locator('.mustard-note').hover()
     await card.locator('[title="Delete this note"]').click()
     await expect(options.locator('.hidden-note-card')).toHaveCount(0, { timeout: 8_000 })
 
