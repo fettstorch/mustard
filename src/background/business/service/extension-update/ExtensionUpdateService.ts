@@ -1,4 +1,5 @@
 import type { ExtensionUpdateState } from '@/shared/extension-update'
+import { isMinorOrMajorUpdate } from '@/shared/version'
 import { cached, Observable } from '@fettstorch/jule'
 import { ChromeExtensionUpdateProvider } from './ChromeExtensionUpdateProvider'
 import type { ExtensionUpdateProvider } from './ExtensionUpdateProvider'
@@ -42,10 +43,13 @@ export class ExtensionUpdateService {
 
   constructor(private readonly provider: ExtensionUpdateProvider = createProvider()) {
     provider.subscribe((latestVersion) => {
+      const installedVersion = currentVersion()
+      if (!isMinorOrMajorUpdate(installedVersion, latestVersion)) return
+
       void this.transitionTo(
         {
           status: 'ready',
-          currentVersion: currentVersion(),
+          currentVersion: installedVersion,
           latestVersion,
           action: { type: 'apply', label: 'Restart and update' },
         },
@@ -150,6 +154,13 @@ export class ExtensionUpdateService {
     state: ExtensionUpdateState,
     options: TransitionOptions = {},
   ): Promise<ExtensionUpdateState> {
+    if (
+      'latestVersion' in state &&
+      !isMinorOrMajorUpdate(state.currentVersion, state.latestVersion)
+    ) {
+      state = { status: 'current', currentVersion: state.currentVersion }
+    }
+
     // Ready is terminal for the installed version: neither an older provider
     // result nor a stale storage snapshot may replace its restart action.
     if (this.state.status === 'ready' && state.status !== 'ready') return this.state

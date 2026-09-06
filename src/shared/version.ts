@@ -22,3 +22,15 @@ function compareVersions(a: string, b: string): number {
 export function isOutdated(current: string, min: string): boolean {
   return compareVersions(current, min) < 0
 }
+
+/** True when `latest` is newer than `current` by at least a minor version. */
+export function isMinorOrMajorUpdate(current: string, latest: string): boolean {
+  const [currentMajor = 0, currentMinor = 0] = current
+    .split('.')
+    .map((part) => parseInt(part, 10) || 0)
+  const [latestMajor = 0, latestMinor = 0] = latest
+    .split('.')
+    .map((part) => parseInt(part, 10) || 0)
+
+  return latestMajor > currentMajor || (latestMajor === currentMajor && latestMinor > currentMinor)
+}

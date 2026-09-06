@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isOutdated } from '../../src/shared/version'
+import { isMinorOrMajorUpdate, isOutdated } from '../../src/shared/version'
 
 describe('isOutdated', () => {
   it('returns false when versions are equal', () => {
@@ -37,5 +37,22 @@ describe('isOutdated', () => {
 
   it('treats non-numeric tail as 0', () => {
     expect(isOutdated('2.3.0-beta', '2.3.0')).toBe(false)
+  })
+})
+
+describe('isMinorOrMajorUpdate', () => {
+  it('ignores patch-only changes', () => {
+    expect(isMinorOrMajorUpdate('2.14.0', '2.14.1')).toBe(false)
+    expect(isMinorOrMajorUpdate('2.14.9', '2.14.10')).toBe(false)
+  })
+
+  it('accepts newer minor and major versions', () => {
+    expect(isMinorOrMajorUpdate('2.14.9', '2.15.0')).toBe(true)
+    expect(isMinorOrMajorUpdate('2.14.9', '3.0.0')).toBe(true)
+  })
+
+  it('rejects older versions', () => {
+    expect(isMinorOrMajorUpdate('2.14.0', '2.13.9')).toBe(false)
+    expect(isMinorOrMajorUpdate('2.14.0', '1.99.0')).toBe(false)
   })
 })
