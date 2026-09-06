@@ -366,6 +366,7 @@ test.describe('Content script smoke', () => {
     const handle = editor.locator('[data-resize-handle="bottom-right"]')
     await expect(image).toBeVisible()
     await expect(image).toHaveClass(/mustard-note-image/)
+    await expect(image).toHaveCSS('max-width', '100%')
     await expect(handle).toBeAttached()
 
     const initialHandleBox = await handle.boundingBox()
@@ -377,6 +378,7 @@ test.describe('Content script smoke', () => {
     await page.mouse.down()
     await page.mouse.move(initialHandleBox.x - 150, initialHandleBox.y - 75)
     await page.mouse.up()
+    await expect(image).toHaveCSS('max-width', 'none')
     const reducedImageWidth = await image.evaluate(
       (element) => element.getBoundingClientRect().width,
     )

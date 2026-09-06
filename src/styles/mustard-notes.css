@@ -131,6 +131,7 @@
 
 .mustard-note-image:not([width]):not([style*='width']) {
   min-width: 100%;
+  max-width: 100%;
 }
 
 :is(#mustard-host, .mustard-surface) .ProseMirror [data-resize-handle='bottom-right'] {
