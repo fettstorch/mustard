@@ -334,6 +334,14 @@ test.describe('Content script smoke', () => {
     await page.goto(fixtureUrl)
     const mustard = page.locator('#mustard-host')
     await expect(mustard).toBeAttached({ timeout: 8_000 })
+    const hostResizeHandle = page.locator('#host-resize-handle')
+    await page.locator('body').evaluate((body) => {
+      body.insertAdjacentHTML(
+        'beforeend',
+        '<div class="ProseMirror"><div id="host-resize-handle" data-resize-handle="bottom-right" style="width: 7px"></div></div>',
+      )
+    })
+    await expect(hostResizeHandle).toHaveCSS('width', '7px')
     await page.locator('#content').dispatchEvent('contextmenu', {
       button: 2,
       clientX: 100,
