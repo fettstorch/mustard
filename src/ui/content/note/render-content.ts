@@ -8,7 +8,6 @@ import {
 } from '@/shared/providers'
 import { parseImageWidth } from '../note-editor/resizable-image'
 import { IMAGE_URL_PATTERN } from '@/shared/image-url'
-import { maskMarkdownCode } from '@/shared/link-preview'
 
 const md = new MarkdownIt({
   html: false, // XSS prevention: don't render raw HTML
@@ -26,6 +25,41 @@ const defaultLinkOpen =
   ((tokens, idx, options, _env, self) => self.renderToken(tokens, idx, options))
 
 const KNOWN_PROFILE_PREFIXES = [BSKY_PROFILE_URL_PREFIX, GITHUB_PROFILE_URL_PREFIX]
+const IMAGE_URL_REGEX = new RegExp(`^(?:${IMAGE_URL_PATTERN})$`, 'i')
+
+// Convert linkified image URLs after Markdown parsing. Code tokens are never
+// linkified, so every Markdown code form stays untouched automatically.
+md.core.ruler.after('inline', 'mustard_image_links', (state) => {
+  for (const token of state.tokens) {
+    const children = token.children
+    if (!children) continue
+
+    for (let index = 1; index < children.length - 1; index++) {
+      const text = children[index]!
+      const linkOpen = children[index - 1]!
+      const linkClose = children[index + 1]!
+      const href = linkOpen.attrGet('href')
+      if (
+        text.type !== 'text' ||
+        linkOpen.type !== 'link_open' ||
+        linkClose.type !== 'link_close' ||
+        !href ||
+        text.content !== href ||
+        !IMAGE_URL_REGEX.test(href)
+      ) {
+        continue
+      }
+
+      const image = new state.Token('image', 'img', 0)
+      image.attrs = [
+        ['src', href],
+        ['alt', ''],
+      ]
+      image.children = []
+      children[index] = image
+    }
+  }
+})
 
 md.renderer.rules.link_open = (tokens, idx, options, env, self) => {
   const href = tokens[idx]!.attrGet('href') ?? ''
@@ -50,12 +84,6 @@ md.renderer.rules.image = (tokens, idx, options, env, self) => {
   }
   return defaultImage(tokens, idx, options, env, self)
 }
-
-/**
- * Supported bare image URL regex (not already wrapped in markdown `![](...)` syntax).
- * Negative lookbehind ensures we don't re-wrap existing markdown images.
- */
-const BARE_IMAGE_URL_REGEX = new RegExp(String.raw`(?<!\]\()${IMAGE_URL_PATTERN}`, 'gi')
 
 /** Escapes markdown link-text special chars in a resolved handle/label. */
 function escapeLinkText(text: string): string {
@@ -95,13 +123,7 @@ function rewriteMentions(content: string, resolveProfile?: MentionProfileResolve
  * with old notes that stored plain-text image URLs.
  */
 function preprocessContent(content: string, resolveProfile?: MentionProfileResolver): string {
-  const withMentions = rewriteMentions(content, resolveProfile)
-  const matches = [...maskMarkdownCode(withMentions).matchAll(BARE_IMAGE_URL_REGEX)]
-  return matches.reduceRight((result, match) => {
-    const start = match.index!
-    const end = start + match[0].length
-    return `${result.slice(0, start)}![](${withMentions.slice(start, end)})${result.slice(end)}`
-  }, withMentions)
+  return rewriteMentions(content, resolveProfile)
 }
 
 // Matches <p> elements containing only whitespace and/or <br> tags.

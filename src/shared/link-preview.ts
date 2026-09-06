@@ -37,7 +37,7 @@ export function extractFirstLinkUrl(content: string): string | undefined {
  * Code often contains dotted identifiers such as `client.invoke`, which look
  * like bare domains to the link matcher but must never control a note preview.
  */
-export function maskMarkdownCode(content: string): string {
+function maskMarkdownCode(content: string): string {
   const characters = content.split('')
   let openFence: { marker: '`' | '~'; length: number } | undefined
 
