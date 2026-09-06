@@ -330,7 +330,7 @@ test.describe('Content script smoke', () => {
     )
 
     const page = await context.newPage()
-    await page.setViewportSize({ width: 1_200, height: 800 })
+    await page.setViewportSize({ width: 2_600, height: 800 })
     await page.goto(fixtureUrl)
     const mustard = page.locator('#mustard-host')
     await expect(mustard).toBeAttached({ timeout: 8_000 })
@@ -387,7 +387,7 @@ test.describe('Content script smoke', () => {
     if (!handleBox) throw new Error('Resize handle has no bounding box after reducing the image')
     await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2)
     await page.mouse.down()
-    await page.mouse.move(handleBox.x + 800, handleBox.y + 400)
+    await page.mouse.move(handleBox.x + 3_000, handleBox.y + 1_500)
     await page.mouse.up()
 
     const geometry = await image.evaluate((element) => {
@@ -409,6 +409,8 @@ test.describe('Content script smoke', () => {
     })
 
     expect(geometry.imageWidth).toBeLessThanOrEqual(geometry.editorWidth)
+    expect(geometry.imageWidth).toBeLessThanOrEqual(2_000)
+    expect(geometry.imageWidth).toBeGreaterThan(1_900)
     expect(geometry.imageWidth).toBeGreaterThan(reducedImageWidth)
     expect(geometry.imageWidth).toBeGreaterThan(300)
     expect(geometry.imageHeight).toBeCloseTo(geometry.imageWidth, 0)

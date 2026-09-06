@@ -109,6 +109,7 @@ export const ResizableImage = Image.extend({
         options: {
           directions,
           min: { width: minWidth, height: minHeight },
+          max: { width: MAX_IMAGE_WIDTH },
           preserveAspectRatio: alwaysPreserveAspectRatio === true,
         },
       })
