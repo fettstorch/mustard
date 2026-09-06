@@ -76,6 +76,39 @@ describe('ExtensionUpdateService contract', () => {
     })
   })
 
+  it('ignores a downloaded patch update', async () => {
+    vi.spyOn(browser.runtime, 'getManifest').mockReturnValue({ version: '2.14.0' } as never)
+    const provider = new StubProvider()
+    provider.state = { status: 'current', currentVersion: '2.14.0' }
+    const service = new ExtensionUpdateService(provider)
+    const listener = vi.fn()
+    service.subscribe(listener)
+
+    provider.listener?.('2.14.1')
+
+    expect(listener).not.toHaveBeenCalled()
+    await expect(service.check()).resolves.toEqual({
+      status: 'current',
+      currentVersion: '2.14.0',
+    })
+  })
+
+  it('treats a provider-reported patch update as current', async () => {
+    vi.spyOn(browser.runtime, 'getManifest').mockReturnValue({ version: '2.14.0' } as never)
+    const provider = new StubProvider()
+    provider.state = {
+      status: 'action-required',
+      currentVersion: '2.14.0',
+      latestVersion: '2.14.1',
+      action: { type: 'manual', instructions: ['Check Firefox.'] },
+    }
+
+    await expect(new ExtensionUpdateService(provider).check()).resolves.toEqual({
+      status: 'current',
+      currentVersion: '2.14.0',
+    })
+  })
+
   it('does not overwrite readiness when the update event wins the check race', async () => {
     const provider = new StubProvider()
     let finishCheck!: (state: ExtensionUpdateState) => void
