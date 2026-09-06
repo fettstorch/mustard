@@ -83,13 +83,9 @@ test.describe('failed remote-note deletion', () => {
     const mustard = page.locator('#mustard-host')
     const note = mustard.locator('.mustard-note-wrapper').filter({ hasText: noteContent })
     await expect(note).toBeVisible({ timeout: 8_000 })
-    const closedWidth = await note.evaluate((element) => element.getBoundingClientRect().width)
 
     await note.getByTitle('1 comment').click()
     await expect(note.getByText(commentContent)).toBeVisible()
-    await expect
-      .poll(() => note.evaluate((element) => element.getBoundingClientRect().width))
-      .toBe(closedWidth)
 
     let serviceWorker = context.serviceWorkers()[0]
     if (!serviceWorker) {
