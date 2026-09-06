@@ -87,6 +87,14 @@ describe('renderContent resized images', () => {
     expect(rendered).toContain(`<img src="${url}"`)
   })
 
+  it('preserves delimiters in conventional image URL query strings', () => {
+    const url = 'https://example.com/cat.jpg?crop=(1,2)'
+
+    const rendered = renderContent(url)
+
+    expect(rendered).toContain(`<img src="${url}"`)
+  })
+
   it('preserves extensionless Bluesky image URLs in Markdown code', () => {
     const url =
       'https://cdn.bsky.app/img/feed_fullsize/plain/did:plc:vggsjzvhakoa7l2m2mguqv4w/bafkreiedlmvzozvjcagvznzu5g3co2lhdxa2uftfwmge'
