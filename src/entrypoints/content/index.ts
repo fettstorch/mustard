@@ -972,7 +972,7 @@ export default defineContentScript({
       removeHighlight()
       lastContextMenuTarget = target
       return {
-        pageUrl: embeddedPost?.pageKey ?? getCurrentPageUrl(),
+        pageUrl: embeddedPost?.pageKey ?? siteStrategy.getPageKey(),
         elementSelector:
           embeddedPost?.selector ?? siteStrategy.createSelector(target) ?? generateSelector(target),
         relativePosition: {
