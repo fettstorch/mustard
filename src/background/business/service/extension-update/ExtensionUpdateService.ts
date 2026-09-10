@@ -1,7 +1,4 @@
-import {
-  INCLUDE_PATCH_UPDATES_KEY,
-  type ExtensionUpdateState,
-} from '@/shared/extension-update'
+import { INCLUDE_PATCH_UPDATES_KEY, type ExtensionUpdateState } from '@/shared/extension-update'
 import { isOptionalUpdate } from '@/shared/version'
 import { cached, Observable } from '@fettstorch/jule'
 import { ChromeExtensionUpdateProvider } from './ChromeExtensionUpdateProvider'
