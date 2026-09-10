@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isMinorOrMajorUpdate, isOutdated } from '../../src/shared/version'
+import { isMinorOrMajorUpdate, isOptionalUpdate, isOutdated } from '../../src/shared/version'
 
 describe('isOutdated', () => {
   it('returns false when versions are equal', () => {
@@ -54,5 +54,27 @@ describe('isMinorOrMajorUpdate', () => {
   it('rejects older versions', () => {
     expect(isMinorOrMajorUpdate('2.14.0', '2.13.9')).toBe(false)
     expect(isMinorOrMajorUpdate('2.14.0', '1.99.0')).toBe(false)
+  })
+})
+
+describe('isOptionalUpdate', () => {
+  it('accepts patch updates when they are enabled', () => {
+    expect(isOptionalUpdate('2.14.0', '2.14.1', true)).toBe(true)
+  })
+
+  it('ignores patch updates when they are disabled', () => {
+    expect(isOptionalUpdate('2.14.0', '2.14.1', false)).toBe(false)
+  })
+
+  it('accepts minor and major updates in either mode', () => {
+    expect(isOptionalUpdate('2.14.9', '2.15.0', true)).toBe(true)
+    expect(isOptionalUpdate('2.14.9', '2.15.0', false)).toBe(true)
+    expect(isOptionalUpdate('2.14.9', '3.0.0', true)).toBe(true)
+    expect(isOptionalUpdate('2.14.9', '3.0.0', false)).toBe(true)
+  })
+
+  it('rejects equal and older versions', () => {
+    expect(isOptionalUpdate('2.14.0', '2.14.0', true)).toBe(false)
+    expect(isOptionalUpdate('2.14.0', '2.13.9', true)).toBe(false)
   })
 })

@@ -1,5 +1,8 @@
-import type { ExtensionUpdateState } from '@/shared/extension-update'
-import { isMinorOrMajorUpdate } from '@/shared/version'
+import {
+  INCLUDE_PATCH_UPDATES_KEY,
+  type ExtensionUpdateState,
+} from '@/shared/extension-update'
+import { isOptionalUpdate } from '@/shared/version'
 import { cached, Observable } from '@fettstorch/jule'
 import { ChromeExtensionUpdateProvider } from './ChromeExtensionUpdateProvider'
 import type { ExtensionUpdateProvider } from './ExtensionUpdateProvider'
@@ -44,8 +47,6 @@ export class ExtensionUpdateService {
   constructor(private readonly provider: ExtensionUpdateProvider = createProvider()) {
     provider.subscribe((latestVersion) => {
       const installedVersion = currentVersion()
-      if (!isMinorOrMajorUpdate(installedVersion, latestVersion)) return
-
       void this.transitionTo(
         {
           status: 'ready',
@@ -60,6 +61,7 @@ export class ExtensionUpdateService {
 
   async check(): Promise<ExtensionUpdateState> {
     await this.restore()
+    await this.reconcileUpdatePreference()
     // A downloaded update remains actionable until the extension reloads into
     // the new version. Its readiness event may be one-shot, so never expire it
     // into another store check for this installed version.
@@ -72,6 +74,7 @@ export class ExtensionUpdateService {
 
   async performAction(): Promise<void> {
     await this.restore()
+    await this.reconcileUpdatePreference()
     if (this.state.status !== 'ready') return
     await this.provider.perform(this.state.action)
   }
@@ -154,10 +157,7 @@ export class ExtensionUpdateService {
     state: ExtensionUpdateState,
     options: TransitionOptions = {},
   ): Promise<ExtensionUpdateState> {
-    if (
-      'latestVersion' in state &&
-      !isMinorOrMajorUpdate(state.currentVersion, state.latestVersion)
-    ) {
+    if ('latestVersion' in state && !(await this.isEnabledUpdate(state))) {
       state = { status: 'current', currentVersion: state.currentVersion }
     }
 
@@ -174,5 +174,18 @@ export class ExtensionUpdateService {
     }
     if (notify) this.stateChanges.emit(state)
     return state
+  }
+
+  private async reconcileUpdatePreference(): Promise<void> {
+    if (!('latestVersion' in this.state) || (await this.isEnabledUpdate(this.state))) return
+    await this.transitionTo({ status: 'current', currentVersion: this.state.currentVersion })
+  }
+
+  private async isEnabledUpdate(
+    state: Extract<ExtensionUpdateState, { latestVersion: string }>,
+  ): Promise<boolean> {
+    const stored = await browser.storage.local.get(INCLUDE_PATCH_UPDATES_KEY)
+    const includePatches = stored[INCLUDE_PATCH_UPDATES_KEY] !== false
+    return isOptionalUpdate(state.currentVersion, state.latestVersion, includePatches)
   }
 }

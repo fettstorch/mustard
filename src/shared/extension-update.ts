@@ -10,6 +10,8 @@ export type ApplyExtensionUpdateAction = {
 
 export type ExtensionUpdateAction = ManualExtensionUpdateAction | ApplyExtensionUpdateAction
 
+export const INCLUDE_PATCH_UPDATES_KEY = 'mustard-include-patch-updates'
+
 /** Browser-neutral state exposed by the background update coordinator. */
 export type ExtensionUpdateState =
   | { status: 'checking' }

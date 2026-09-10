@@ -3,6 +3,7 @@ import { fakeBrowser } from 'wxt/testing/fake-browser'
 import { ExtensionUpdateService } from '@/background/business/service/extension-update/ExtensionUpdateService'
 import type { ExtensionUpdateProvider } from '@/background/business/service/extension-update/ExtensionUpdateProvider'
 import type { ExtensionUpdateAction, ExtensionUpdateState } from '@/shared/extension-update'
+import { INCLUDE_PATCH_UPDATES_KEY } from '@/shared/extension-update'
 
 class StubProvider implements ExtensionUpdateProvider {
   state: ExtensionUpdateState = { status: 'current', currentVersion: '2.11.0' }
@@ -76,7 +77,7 @@ describe('ExtensionUpdateService contract', () => {
     })
   })
 
-  it('ignores a downloaded patch update', async () => {
+  it('accepts a downloaded patch update by default', async () => {
     vi.spyOn(browser.runtime, 'getManifest').mockReturnValue({ version: '2.14.0' } as never)
     const provider = new StubProvider()
     provider.state = { status: 'current', currentVersion: '2.14.0' }
@@ -86,6 +87,25 @@ describe('ExtensionUpdateService contract', () => {
 
     provider.listener?.('2.14.1')
 
+    await vi.waitFor(() => expect(listener).toHaveBeenCalled())
+    await expect(service.check()).resolves.toMatchObject({
+      status: 'ready',
+      latestVersion: '2.14.1',
+    })
+  })
+
+  it('ignores a downloaded patch update when patch updates are disabled', async () => {
+    await fakeBrowser.storage.local.set({ [INCLUDE_PATCH_UPDATES_KEY]: false })
+    vi.spyOn(browser.runtime, 'getManifest').mockReturnValue({ version: '2.14.0' } as never)
+    const provider = new StubProvider()
+    provider.state = { status: 'current', currentVersion: '2.14.0' }
+    const service = new ExtensionUpdateService(provider)
+    const listener = vi.fn()
+    service.subscribe(listener)
+
+    provider.listener?.('2.14.1')
+
+    await new Promise((resolve) => setTimeout(resolve, 0))
     expect(listener).not.toHaveBeenCalled()
     await expect(service.check()).resolves.toEqual({
       status: 'current',
@@ -93,7 +113,8 @@ describe('ExtensionUpdateService contract', () => {
     })
   })
 
-  it('treats a provider-reported patch update as current', async () => {
+  it('treats a provider-reported patch update as current when disabled', async () => {
+    await fakeBrowser.storage.local.set({ [INCLUDE_PATCH_UPDATES_KEY]: false })
     vi.spyOn(browser.runtime, 'getManifest').mockReturnValue({ version: '2.14.0' } as never)
     const provider = new StubProvider()
     provider.state = {
