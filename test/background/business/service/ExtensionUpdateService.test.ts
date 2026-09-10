@@ -310,7 +310,8 @@ describe('ExtensionUpdateService contract', () => {
     const storageReadBlocked = new Promise<void>((resolve) => {
       releaseStorageRead = resolve
     })
-    const getStorage = vi.spyOn(browser.storage.local, 'get').mockImplementation(async () => {
+    const getStorage = vi.spyOn(browser.storage.local, 'get').mockImplementation(async (key) => {
+      if (key !== 'mustard-extension-update-state') return {}
       await storageReadBlocked
       return {
         'mustard-extension-update-state': {

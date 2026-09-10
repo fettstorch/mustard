@@ -154,7 +154,9 @@ export class ExtensionUpdateService {
     state: ExtensionUpdateState,
     options: TransitionOptions = {},
   ): Promise<ExtensionUpdateState> {
+    let filteredUpdate = false
     if ('latestVersion' in state && !(await this.isEnabledUpdate(state))) {
+      filteredUpdate = true
       state = { status: 'current', currentVersion: state.currentVersion }
     }
 
@@ -162,6 +164,7 @@ export class ExtensionUpdateService {
     // result nor a stale storage snapshot may replace its restart action.
     if (this.state.status === 'ready' && state.status !== 'ready') return this.state
 
+    const suppressFilteredNotification = filteredUpdate && this.state.status === 'current'
     const { checkedAt = this.checkedAt, persist = true, notify = true } = options
     this.state = state
     this.checkedAt = checkedAt
@@ -169,7 +172,7 @@ export class ExtensionUpdateService {
       const stored: StoredUpdateState = { state, checkedAt: this.checkedAt }
       await browser.storage.local.set({ [STORAGE_KEY]: stored })
     }
-    if (notify) this.stateChanges.emit(state)
+    if (notify && !suppressFilteredNotification) this.stateChanges.emit(state)
     return state
   }
 
