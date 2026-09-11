@@ -53,10 +53,7 @@ export class ExtensionUpdateService {
   }
 
   async check(): Promise<ExtensionUpdateState> {
-    await this.refreshMinimumVersion()
-    await this.restore()
-    await this.reconcileRequirement()
-    await this.reconcileUpdatePreference()
+    await this.prepareState()
     // A downloaded update remains actionable until the extension reloads into
     // the new version. Its readiness event may be one-shot, so never expire it
     // into another store check for this installed version.
@@ -68,10 +65,7 @@ export class ExtensionUpdateService {
   }
 
   async performAction(): Promise<void> {
-    await this.refreshMinimumVersion()
-    await this.restore()
-    await this.reconcileRequirement()
-    await this.reconcileUpdatePreference()
+    await this.prepareState()
     if (this.state.status !== 'ready') return
     await this.provider.perform(this.state.action)
   }
@@ -165,7 +159,11 @@ export class ExtensionUpdateService {
       ? { ...baseState, required: true, minimumVersion: this.minimumVersion }
       : (baseState as ExtensionUpdateState)
     let filteredUpdate = false
-    if ('latestVersion' in state && !state.required && !(await this.isEnabledUpdate(state))) {
+    if (
+      'latestVersion' in state &&
+      !state.required &&
+      !(await this.isOptionalUpdateEnabled(state))
+    ) {
       filteredUpdate = true
       state = { status: 'current', currentVersion: state.currentVersion }
     }
@@ -190,7 +188,7 @@ export class ExtensionUpdateService {
     if (
       this.state.required ||
       !('latestVersion' in this.state) ||
-      (await this.isEnabledUpdate(this.state))
+      (await this.isOptionalUpdateEnabled(this.state))
     )
       return
     await this.transitionTo({ status: 'current', currentVersion: this.state.currentVersion })
@@ -198,7 +196,8 @@ export class ExtensionUpdateService {
 
   private async reconcileRequirement(): Promise<void> {
     const required = this.isRequired()
-    if ((this.state.required === true) === required) return
+    const wasRequired = this.state.required === true
+    if (wasRequired === required) return
 
     // A newly mandatory update must not wait behind a recent optional store
     // check. Re-evaluate the provider immediately once, then cache that result.
@@ -206,7 +205,7 @@ export class ExtensionUpdateService {
     await this.transitionTo(this.state, { checkedAt })
   }
 
-  private async isEnabledUpdate(
+  private async isOptionalUpdateEnabled(
     state: Extract<ExtensionUpdateState, { latestVersion: string }>,
   ): Promise<boolean> {
     const stored = await browser.storage.local.get(INCLUDE_PATCH_UPDATES_KEY)
@@ -230,6 +229,13 @@ export class ExtensionUpdateService {
 
   private async refreshMinimumVersion(): Promise<void> {
     this.minimumVersion = await this.minimumVersionCriterion.getMinimumVersion()
+  }
+
+  private async prepareState(): Promise<void> {
+    await this.refreshMinimumVersion()
+    await this.restore()
+    await this.reconcileRequirement()
+    await this.reconcileUpdatePreference()
   }
 
   private isRequired(): boolean {

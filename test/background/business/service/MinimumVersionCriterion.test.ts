@@ -43,4 +43,21 @@ describe('MinimumVersionCriterion', () => {
     await expect(criterion.getMinimumVersion()).resolves.toBe('2.15.0')
     expect(maybeSingle).toHaveBeenCalledTimes(2)
   })
+
+  it('reuses the last known version on failure and retries immediately', async () => {
+    const criterion = new MinimumVersionCriterion()
+
+    await expect(criterion.getMinimumVersion()).resolves.toBe('2.14.0')
+    vi.advanceTimersByTime(5 * 60 * 1000 + 1)
+    maybeSingle.mockResolvedValueOnce({ data: null, error: new Error('offline') })
+
+    await expect(criterion.getMinimumVersion()).resolves.toBe('2.14.0')
+
+    maybeSingle.mockResolvedValueOnce({
+      data: { min_client_version: '2.15.0' },
+      error: null,
+    })
+    await expect(criterion.getMinimumVersion()).resolves.toBe('2.15.0')
+    expect(maybeSingle).toHaveBeenCalledTimes(3)
+  })
 })

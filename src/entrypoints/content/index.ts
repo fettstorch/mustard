@@ -1086,7 +1086,7 @@ export default defineContentScript({
         return
       }
       if (message.type === 'EXTENSION_UPDATE_STATE_CHANGED') {
-        showOptionalUpdateBanner(message.state)
+        showExtensionUpdateBanner(message.state)
         return
       }
       if (message.type === 'SESSION_CHANGED') {
@@ -1121,15 +1121,15 @@ export default defineContentScript({
 
     // The unified update check evaluates both backend compatibility and the
     // browser store, then drives the single assisted update presentation.
-    function checkOptionalExtensionUpdate() {
+    function checkExtensionUpdate() {
       sendMessage(createCheckExtensionUpdateMessage())
-        .then(showOptionalUpdateBanner)
+        .then(showExtensionUpdateBanner)
         .catch(() => {})
     }
 
-    checkOptionalExtensionUpdate()
+    checkExtensionUpdate()
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') checkOptionalExtensionUpdate()
+      if (document.visibilityState === 'visible') checkExtensionUpdate()
     })
 
     // Fetch current session
@@ -1224,7 +1224,7 @@ export default defineContentScript({
       })
     }
 
-    async function showOptionalUpdateBanner(state: ExtensionUpdateState) {
+    async function showExtensionUpdateBanner(state: ExtensionUpdateState) {
       const toastId = 'mustard-extension-update-banner'
       mustardState.clientOutdated = state.required === true
       if (document.visibilityState !== 'visible') return
@@ -1367,7 +1367,7 @@ export default defineContentScript({
       // the UI set before emitting, and (re)show the update banner.
       if (mustardState.clientOutdated && isRemoteMutationMessage(message)) {
         clearPendingNoteIds()
-        checkOptionalExtensionUpdate()
+        checkExtensionUpdate()
         return
       }
 
