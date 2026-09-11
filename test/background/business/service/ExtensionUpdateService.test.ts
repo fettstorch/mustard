@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fakeBrowser } from 'wxt/testing/fake-browser'
 import { ExtensionUpdateService } from '@/background/business/service/extension-update/ExtensionUpdateService'
 import type { ExtensionUpdateProvider } from '@/background/business/service/extension-update/ExtensionUpdateProvider'
+import { MinimumVersionCriterion } from '@/background/business/service/extension-update/MinimumVersionCriterion'
 import type { ExtensionUpdateAction, ExtensionUpdateState } from '@/shared/extension-update'
 import { INCLUDE_PATCH_UPDATES_KEY } from '@/shared/extension-update'
 
@@ -29,6 +30,7 @@ describe('ExtensionUpdateService contract', () => {
     fakeBrowser.reset()
     vi.restoreAllMocks()
     vi.spyOn(browser.runtime, 'getManifest').mockReturnValue({ version: '2.11.0' } as never)
+    vi.spyOn(MinimumVersionCriterion.prototype, 'getMinimumVersion').mockResolvedValue('0.0.0')
   })
 
   it('exposes the provider result through the browser-neutral state', async () => {
@@ -128,6 +130,34 @@ describe('ExtensionUpdateService contract', () => {
       status: 'current',
       currentVersion: '2.14.0',
     })
+  })
+
+  it('requires a backend-mandated patch update even when patch updates are disabled', async () => {
+    await fakeBrowser.storage.local.set({ [INCLUDE_PATCH_UPDATES_KEY]: false })
+    vi.spyOn(browser.runtime, 'getManifest').mockReturnValue({ version: '2.14.0' } as never)
+    vi.spyOn(MinimumVersionCriterion.prototype, 'getMinimumVersion').mockResolvedValue('2.14.1')
+    const provider = new StubProvider()
+    provider.state = {
+      status: 'action-required',
+      currentVersion: '2.14.0',
+      latestVersion: '2.14.1',
+      action: { type: 'manual', instructions: ['Check Firefox.'] },
+    }
+
+    await expect(new ExtensionUpdateService(provider).check()).resolves.toMatchObject({
+      status: 'action-required',
+      latestVersion: '2.14.1',
+      required: true,
+      minimumVersion: '2.14.1',
+    })
+  })
+
+  it('uses the unified minimum-version criterion for remote-write gating', async () => {
+    vi.spyOn(MinimumVersionCriterion.prototype, 'getMinimumVersion').mockResolvedValue('2.12.0')
+
+    await expect(new ExtensionUpdateService(new StubProvider()).isClientOutdated()).resolves.toBe(
+      true,
+    )
   })
 
   it('does not overwrite readiness when the update event wins the check race', async () => {

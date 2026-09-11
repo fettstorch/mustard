@@ -158,11 +158,10 @@ export class ExtensionUpdateService {
     options: TransitionOptions = {},
   ): Promise<ExtensionUpdateState> {
     const required = this.isRequired()
-    state = {
-      ...state,
-      required,
-      ...(required ? { minimumVersion: this.minimumVersion } : {}),
-    }
+    const { required: _required, minimumVersion: _minimumVersion, ...baseState } = state
+    state = required
+      ? { ...baseState, required: true, minimumVersion: this.minimumVersion }
+      : (baseState as ExtensionUpdateState)
     let filteredUpdate = false
     if ('latestVersion' in state && !state.required && !(await this.isEnabledUpdate(state))) {
       filteredUpdate = true
