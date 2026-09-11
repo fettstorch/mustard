@@ -152,6 +152,25 @@ describe('ExtensionUpdateService contract', () => {
     })
   })
 
+  it('does not offer a required update that remains below the minimum version', async () => {
+    vi.spyOn(browser.runtime, 'getManifest').mockReturnValue({ version: '2.14.0' } as never)
+    vi.spyOn(MinimumVersionCriterion.prototype, 'getMinimumVersion').mockResolvedValue('2.15.0')
+    const provider = new StubProvider()
+    provider.state = {
+      status: 'action-required',
+      currentVersion: '2.14.0',
+      latestVersion: '2.14.1',
+      action: { type: 'manual', instructions: ['Check Firefox.'] },
+    }
+
+    await expect(new ExtensionUpdateService(provider).check()).resolves.toEqual({
+      status: 'current',
+      currentVersion: '2.14.0',
+      required: true,
+      minimumVersion: '2.15.0',
+    })
+  })
+
   it('uses the unified minimum-version criterion for remote-write gating', async () => {
     vi.spyOn(MinimumVersionCriterion.prototype, 'getMinimumVersion').mockResolvedValue('2.12.0')
 

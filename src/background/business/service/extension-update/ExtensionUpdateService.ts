@@ -155,9 +155,19 @@ export class ExtensionUpdateService {
   ): Promise<ExtensionUpdateState> {
     const required = this.isRequired()
     const { required: _required, minimumVersion: _minimumVersion, ...baseState } = state
-    state = required
-      ? { ...baseState, required: true, minimumVersion: this.minimumVersion }
-      : (baseState as ExtensionUpdateState)
+    const offeredUpdateIsCompatible =
+      !('latestVersion' in baseState) || !isOutdated(baseState.latestVersion, this.minimumVersion)
+    state =
+      required && !offeredUpdateIsCompatible
+        ? {
+            status: 'current',
+            currentVersion: baseState.currentVersion,
+            required: true,
+            minimumVersion: this.minimumVersion,
+          }
+        : required
+          ? { ...baseState, required: true, minimumVersion: this.minimumVersion }
+          : (baseState as ExtensionUpdateState)
     let filteredUpdate = false
     if (
       'latestVersion' in state &&
@@ -170,7 +180,13 @@ export class ExtensionUpdateService {
 
     // Ready is terminal for the installed version: neither an older provider
     // result nor a stale storage snapshot may replace its restart action.
-    if (this.state.status === 'ready' && state.status !== 'ready') return this.state
+    const readyUpdateIsCompatible =
+      this.state.status !== 'ready' ||
+      !required ||
+      !isOutdated(this.state.latestVersion, this.minimumVersion)
+    if (readyUpdateIsCompatible && this.state.status === 'ready' && state.status !== 'ready') {
+      return this.state
+    }
 
     const suppressFilteredNotification = filteredUpdate && this.state.status === 'current'
     const { checkedAt = this.checkedAt, persist = true, notify = true } = options
