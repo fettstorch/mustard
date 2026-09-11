@@ -160,6 +160,23 @@ describe('ExtensionUpdateService contract', () => {
     )
   })
 
+  it('forces a fresh store check when a recent optional result becomes mandatory', async () => {
+    const minimumVersion = vi
+      .spyOn(MinimumVersionCriterion.prototype, 'getMinimumVersion')
+      .mockResolvedValueOnce('0.0.0')
+      .mockResolvedValue('2.12.0')
+    const provider = new StubProvider()
+    const service = new ExtensionUpdateService(provider)
+
+    await service.check()
+    expect(provider.checkCalls).toBe(1)
+
+    await service.check()
+
+    expect(minimumVersion).toHaveBeenCalledTimes(2)
+    expect(provider.checkCalls).toBe(2)
+  })
+
   it('does not overwrite readiness when the update event wins the check race', async () => {
     const provider = new StubProvider()
     let finishCheck!: (state: ExtensionUpdateState) => void

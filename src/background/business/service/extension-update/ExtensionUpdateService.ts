@@ -55,6 +55,7 @@ export class ExtensionUpdateService {
   async check(): Promise<ExtensionUpdateState> {
     await this.refreshMinimumVersion()
     await this.restore()
+    await this.reconcileRequirement()
     await this.reconcileUpdatePreference()
     // A downloaded update remains actionable until the extension reloads into
     // the new version. Its readiness event may be one-shot, so never expire it
@@ -69,6 +70,7 @@ export class ExtensionUpdateService {
   async performAction(): Promise<void> {
     await this.refreshMinimumVersion()
     await this.restore()
+    await this.reconcileRequirement()
     await this.reconcileUpdatePreference()
     if (this.state.status !== 'ready') return
     await this.provider.perform(this.state.action)
@@ -192,6 +194,16 @@ export class ExtensionUpdateService {
     )
       return
     await this.transitionTo({ status: 'current', currentVersion: this.state.currentVersion })
+  }
+
+  private async reconcileRequirement(): Promise<void> {
+    const required = this.isRequired()
+    if ((this.state.required === true) === required) return
+
+    // A newly mandatory update must not wait behind a recent optional store
+    // check. Re-evaluate the provider immediately once, then cache that result.
+    const checkedAt = required && this.state.status !== 'ready' ? 0 : this.checkedAt
+    await this.transitionTo(this.state, { checkedAt })
   }
 
   private async isEnabledUpdate(
