@@ -56,7 +56,7 @@ describe('isRemoteMutationMessage', () => {
   it('returns false for read-only messages', () => {
     const readOnly: Message[] = [
       { type: 'QUERY_NOTES', pageUrl: 'https://example.com' },
-      { type: 'GET_APP_STATUS' },
+      { type: 'CHECK_EXTENSION_UPDATE' },
       { type: 'GET_ATPROTO_SESSION' },
     ]
     for (const msg of readOnly) {
