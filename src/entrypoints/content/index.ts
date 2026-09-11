@@ -1247,7 +1247,8 @@ export default defineContentScript({
       }
 
       if (state.status === 'ready') {
-        if (!state.required &&
+        if (
+          !state.required &&
           !(await sendMessage(
             createClaimExtensionUpdateToastMessage(state.latestVersion, state.status),
           ))
@@ -1273,7 +1274,8 @@ export default defineContentScript({
 
       if (state.status === 'action-required') {
         if (document.getElementById(toastId)?.dataset.updateStatus === 'ready') return
-        if (!state.required &&
+        if (
+          !state.required &&
           !(await sendMessage(
             createClaimExtensionUpdateToastMessage(state.latestVersion, state.status),
           ))

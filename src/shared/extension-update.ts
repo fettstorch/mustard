@@ -17,22 +17,21 @@ export type ExtensionUpdateState = {
   /** Required updates override the optional patch preference and keep remote writes read-only. */
   required?: boolean
   minimumVersion?: string
-} &
-  (
-    | { status: 'checking' }
-    | { status: 'current'; currentVersion: string }
-    | { status: 'downloading'; currentVersion: string; latestVersion: string }
-    | {
-        status: 'action-required'
-        currentVersion: string
-        latestVersion: string
-        action: ManualExtensionUpdateAction
-      }
-    | {
-        status: 'ready'
-        currentVersion: string
-        latestVersion: string
-        action: ApplyExtensionUpdateAction
-      }
-    | { status: 'failed'; message: string; retryable: boolean }
-  )
+} & (
+  | { status: 'checking' }
+  | { status: 'current'; currentVersion: string }
+  | { status: 'downloading'; currentVersion: string; latestVersion: string }
+  | {
+      status: 'action-required'
+      currentVersion: string
+      latestVersion: string
+      action: ManualExtensionUpdateAction
+    }
+  | {
+      status: 'ready'
+      currentVersion: string
+      latestVersion: string
+      action: ApplyExtensionUpdateAction
+    }
+  | { status: 'failed'; message: string; retryable: boolean }
+)

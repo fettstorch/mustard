@@ -508,8 +508,6 @@ export type Message =
   | SessionExpiredMessage
   | OpenPopupMessage
   | OpenOptionsPageMessage
-  | GetAppStatusMessage
-  | RequestUpdateMessage
   | CheckExtensionUpdateMessage
   | ClaimExtensionUpdateToastMessage
   | PerformExtensionUpdateActionMessage

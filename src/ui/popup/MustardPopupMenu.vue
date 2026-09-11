@@ -194,7 +194,9 @@ const logoUrl = browser.runtime.getURL('/mustard_bottle_smile_512.png')
       v-else-if="extensionUpdateState?.status === 'ready'"
       class="update-banner optional-update-banner"
     >
-      <strong>{{ extensionUpdateState.required ? 'Required update ready' : 'Update ready' }}</strong>
+      <strong>{{
+        extensionUpdateState.required ? 'Required update ready' : 'Update ready'
+      }}</strong>
       <span>Restart Mustard to use version {{ extensionUpdateState.latestVersion }}.</span>
       <button class="update-button" @click="performExtensionUpdateAction">
         {{ extensionUpdateState.action.label }}
@@ -205,7 +207,9 @@ const logoUrl = browser.runtime.getURL('/mustard_bottle_smile_512.png')
       v-else-if="extensionUpdateState?.status === 'failed' && extensionUpdateState.retryable"
       class="update-banner optional-update-banner"
     >
-      <strong>{{ extensionUpdateState.required ? 'Required update check failed' : 'Update check failed' }}</strong>
+      <strong>{{
+        extensionUpdateState.required ? 'Required update check failed' : 'Update check failed'
+      }}</strong>
       <span>{{ extensionUpdateState.message }}</span>
       <button class="update-button" @click="checkExtensionUpdate">Try again</button>
     </div>
