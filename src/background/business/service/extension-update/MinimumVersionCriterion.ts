@@ -1,6 +1,6 @@
 import { supabase } from '@/background/supabase-client'
 
-const CACHE_TTL_MS = 30 * 60 * 1000
+const CACHE_TTL_MS = 5 * 60 * 1000
 
 export class MinimumVersionCriterion {
   private cached: { version: string; at: number } | null = null
