@@ -2,7 +2,7 @@ import { computed, onMounted, onUnmounted, ref, watchEffect, type ComputedRef, t
 import { Observable, synchronize } from '@fettstorch/jule'
 import {
   createDeleteNoteMessage,
-  createGetAppStatusMessage,
+  createCheckExtensionUpdateMessage,
   createGetProfilesMessage,
   createQueryCommentsMessage,
   createQueryNotesByIdsMessage,
@@ -123,13 +123,11 @@ export function useHiddenNotes(currentUserId: () => string | null): HiddenNotesG
   }
   onMounted(() => {
     browser.storage.onChanged.addListener(onStorageChanged)
-    // The option page's hidden notes gallery reuses the real note/comment controls, so it needs the same
-    // background-owned version guard as the content script. Fail open: a status
-    // lookup error leaves controls usable, while the background remains the
-    // authoritative write guard.
-    sendMessage(createGetAppStatusMessage())
-      .then((status) => {
-        state.clientOutdated = !!status?.outdated
+    // The gallery reuses the real note/comment controls, so consume the same
+    // unified update state as every other extension surface.
+    sendMessage(createCheckExtensionUpdateMessage())
+      .then((updateState) => {
+        state.clientOutdated = updateState.required === true
       })
       .catch(() => {})
   })

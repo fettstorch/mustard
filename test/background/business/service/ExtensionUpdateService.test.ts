@@ -2,7 +2,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fakeBrowser } from 'wxt/testing/fake-browser'
 import { ExtensionUpdateService } from '@/background/business/service/extension-update/ExtensionUpdateService'
 import type { ExtensionUpdateProvider } from '@/background/business/service/extension-update/ExtensionUpdateProvider'
+import { MinimumVersionCriterion } from '@/background/business/service/extension-update/MinimumVersionCriterion'
 import type { ExtensionUpdateAction, ExtensionUpdateState } from '@/shared/extension-update'
+import { INCLUDE_PATCH_UPDATES_KEY } from '@/shared/extension-update'
 
 class StubProvider implements ExtensionUpdateProvider {
   state: ExtensionUpdateState = { status: 'current', currentVersion: '2.11.0' }
@@ -28,6 +30,7 @@ describe('ExtensionUpdateService contract', () => {
     fakeBrowser.reset()
     vi.restoreAllMocks()
     vi.spyOn(browser.runtime, 'getManifest').mockReturnValue({ version: '2.11.0' } as never)
+    vi.spyOn(MinimumVersionCriterion.prototype, 'getMinimumVersion').mockResolvedValue('0.0.0')
   })
 
   it('exposes the provider result through the browser-neutral state', async () => {
@@ -76,7 +79,7 @@ describe('ExtensionUpdateService contract', () => {
     })
   })
 
-  it('ignores a downloaded patch update', async () => {
+  it('accepts a downloaded patch update by default', async () => {
     vi.spyOn(browser.runtime, 'getManifest').mockReturnValue({ version: '2.14.0' } as never)
     const provider = new StubProvider()
     provider.state = { status: 'current', currentVersion: '2.14.0' }
@@ -86,6 +89,25 @@ describe('ExtensionUpdateService contract', () => {
 
     provider.listener?.('2.14.1')
 
+    await vi.waitFor(() => expect(listener).toHaveBeenCalled())
+    await expect(service.check()).resolves.toMatchObject({
+      status: 'ready',
+      latestVersion: '2.14.1',
+    })
+  })
+
+  it('ignores a downloaded patch update when patch updates are disabled', async () => {
+    await fakeBrowser.storage.local.set({ [INCLUDE_PATCH_UPDATES_KEY]: false })
+    vi.spyOn(browser.runtime, 'getManifest').mockReturnValue({ version: '2.14.0' } as never)
+    const provider = new StubProvider()
+    provider.state = { status: 'current', currentVersion: '2.14.0' }
+    const service = new ExtensionUpdateService(provider)
+    const listener = vi.fn()
+    service.subscribe(listener)
+
+    provider.listener?.('2.14.1')
+
+    await new Promise((resolve) => setTimeout(resolve, 0))
     expect(listener).not.toHaveBeenCalled()
     await expect(service.check()).resolves.toEqual({
       status: 'current',
@@ -93,7 +115,8 @@ describe('ExtensionUpdateService contract', () => {
     })
   })
 
-  it('treats a provider-reported patch update as current', async () => {
+  it('treats a provider-reported patch update as current when disabled', async () => {
+    await fakeBrowser.storage.local.set({ [INCLUDE_PATCH_UPDATES_KEY]: false })
     vi.spyOn(browser.runtime, 'getManifest').mockReturnValue({ version: '2.14.0' } as never)
     const provider = new StubProvider()
     provider.state = {
@@ -107,6 +130,104 @@ describe('ExtensionUpdateService contract', () => {
       status: 'current',
       currentVersion: '2.14.0',
     })
+  })
+
+  it('requires a backend-mandated patch update even when patch updates are disabled', async () => {
+    await fakeBrowser.storage.local.set({ [INCLUDE_PATCH_UPDATES_KEY]: false })
+    vi.spyOn(browser.runtime, 'getManifest').mockReturnValue({ version: '2.14.0' } as never)
+    vi.spyOn(MinimumVersionCriterion.prototype, 'getMinimumVersion').mockResolvedValue('2.14.1')
+    const provider = new StubProvider()
+    provider.state = {
+      status: 'action-required',
+      currentVersion: '2.14.0',
+      latestVersion: '2.14.1',
+      action: { type: 'manual', instructions: ['Check Firefox.'] },
+    }
+
+    await expect(new ExtensionUpdateService(provider).check()).resolves.toMatchObject({
+      status: 'action-required',
+      latestVersion: '2.14.1',
+      required: true,
+      minimumVersion: '2.14.1',
+    })
+  })
+
+  it('does not offer a required update that remains below the minimum version', async () => {
+    vi.spyOn(browser.runtime, 'getManifest').mockReturnValue({ version: '2.14.0' } as never)
+    vi.spyOn(MinimumVersionCriterion.prototype, 'getMinimumVersion').mockResolvedValue('2.15.0')
+    const provider = new StubProvider()
+    provider.state = {
+      status: 'action-required',
+      currentVersion: '2.14.0',
+      latestVersion: '2.14.1',
+      action: { type: 'manual', instructions: ['Check Firefox.'] },
+    }
+
+    await expect(new ExtensionUpdateService(provider).check()).resolves.toEqual({
+      status: 'current',
+      currentVersion: '2.14.0',
+      required: true,
+      minimumVersion: '2.15.0',
+    })
+  })
+
+  it('uses the unified minimum-version criterion for remote-write gating', async () => {
+    vi.spyOn(MinimumVersionCriterion.prototype, 'getMinimumVersion').mockResolvedValue('2.12.0')
+
+    await expect(new ExtensionUpdateService(new StubProvider()).isClientOutdated()).resolves.toBe(
+      true,
+    )
+  })
+
+  it('forces a fresh store check when a recent optional result becomes mandatory', async () => {
+    const minimumVersion = vi
+      .spyOn(MinimumVersionCriterion.prototype, 'getMinimumVersion')
+      .mockResolvedValueOnce('0.0.0')
+      .mockResolvedValue('2.12.0')
+    const provider = new StubProvider()
+    const service = new ExtensionUpdateService(provider)
+
+    await service.check()
+    expect(provider.checkCalls).toBe(1)
+
+    await service.check()
+
+    expect(minimumVersion).toHaveBeenCalledTimes(2)
+    expect(provider.checkCalls).toBe(2)
+  })
+
+  it('rechecks when a higher minimum invalidates a ready update', async () => {
+    vi.spyOn(browser.runtime, 'getManifest').mockReturnValue({ version: '2.14.0' } as never)
+    vi.spyOn(MinimumVersionCriterion.prototype, 'getMinimumVersion')
+      .mockResolvedValueOnce('0.0.0')
+      .mockResolvedValueOnce('0.0.0')
+      .mockResolvedValue('2.15.0')
+    const provider = new StubProvider()
+    provider.state = { status: 'current', currentVersion: '2.14.0' }
+    const service = new ExtensionUpdateService(provider)
+    const listener = vi.fn()
+    service.subscribe(listener)
+
+    await service.check()
+    provider.listener?.('2.14.1')
+    await vi.waitFor(() =>
+      expect(listener).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'ready', latestVersion: '2.14.1' }),
+      ),
+    )
+    provider.state = {
+      status: 'action-required',
+      currentVersion: '2.14.0',
+      latestVersion: '2.15.0',
+      action: { type: 'manual', instructions: ['Check Firefox.'] },
+    }
+
+    await expect(service.check()).resolves.toMatchObject({
+      status: 'action-required',
+      latestVersion: '2.15.0',
+      required: true,
+    })
+    expect(provider.checkCalls).toBe(2)
   })
 
   it('does not overwrite readiness when the update event wins the check race', async () => {
@@ -190,6 +311,29 @@ describe('ExtensionUpdateService contract', () => {
       currentVersion: '2.11.0',
     })
     expect(provider.checkCalls).toBe(0)
+  })
+
+  it('refreshes a recent restored store check when the client becomes outdated', async () => {
+    vi.spyOn(MinimumVersionCriterion.prototype, 'getMinimumVersion').mockResolvedValue('2.12.0')
+    await fakeBrowser.storage.local.set({
+      'mustard-extension-update-state': {
+        state: { status: 'current', currentVersion: '2.11.0' },
+        checkedAt: Date.now(),
+      },
+    })
+    const provider = new StubProvider()
+    provider.state = {
+      status: 'action-required',
+      currentVersion: '2.11.0',
+      latestVersion: '2.12.0',
+      action: { type: 'manual', instructions: ['Check Firefox.'] },
+    }
+
+    await expect(new ExtensionUpdateService(provider).check()).resolves.toMatchObject({
+      status: 'action-required',
+      required: true,
+    })
+    expect(provider.checkCalls).toBe(1)
   })
 
   it('refreshes a persisted store check after thirty minutes', async () => {
@@ -289,7 +433,8 @@ describe('ExtensionUpdateService contract', () => {
     const storageReadBlocked = new Promise<void>((resolve) => {
       releaseStorageRead = resolve
     })
-    const getStorage = vi.spyOn(browser.storage.local, 'get').mockImplementation(async () => {
+    const getStorage = vi.spyOn(browser.storage.local, 'get').mockImplementation(async (key) => {
+      if (key !== 'mustard-extension-update-state') return {}
       await storageReadBlocked
       return {
         'mustard-extension-update-state': {

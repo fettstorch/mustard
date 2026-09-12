@@ -247,14 +247,14 @@ test.describe('outdated client gallery guard', () => {
 
       const options = await context.newPage()
       await options.goto(`chrome-extension://${extensionId}/options.html`)
-      const appStatus = await options.evaluate(
+      const updateState = await options.evaluate(
         () =>
-          chrome.runtime.sendMessage({ type: 'GET_APP_STATUS' }) as Promise<{
-            minVersion: string
-            outdated: boolean
+          chrome.runtime.sendMessage({ type: 'CHECK_EXTENSION_UPDATE' }) as Promise<{
+            minimumVersion: string
+            required: boolean
           }>,
       )
-      expect(appStatus).toMatchObject({ minVersion: '999.0.0', outdated: true })
+      expect(updateState).toMatchObject({ minimumVersion: '999.0.0', required: true })
       await expect(options.getByText('Connected', { exact: true })).toBeVisible()
       await options.getByRole('button', { name: /Hidden notes \(1\)/ }).click()
 

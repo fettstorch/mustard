@@ -34,3 +34,12 @@ export function isMinorOrMajorUpdate(current: string, latest: string): boolean {
 
   return latestMajor > currentMajor || (latestMajor === currentMajor && latestMinor > currentMinor)
 }
+
+/** True when `latest` should trigger the optional update flow for this preference. */
+export function isOptionalUpdate(
+  current: string,
+  latest: string,
+  includePatches: boolean,
+): boolean {
+  return includePatches ? isOutdated(current, latest) : isMinorOrMajorUpdate(current, latest)
+}

@@ -45,6 +45,7 @@ import { PROVIDER_LABELS } from '@/shared/providers'
 import { displayUrl } from '@/shared/display-url'
 import { DEV_INDEX_CACHE_ENABLED_KEY } from '@/background/business/service/MustardNotesServiceRemote'
 import { pageKeyToHref } from '@/shared/site-strategies'
+import { INCLUDE_PATCH_UPDATES_KEY } from '@/shared/extension-update'
 import HiddenNoteCard from './HiddenNoteCard.vue'
 import { useHiddenNotes } from './use-hidden-notes'
 
@@ -64,6 +65,8 @@ const showAnchorInEditor = ref(false)
 const altClickEnabled = ref(false)
 // Default ON — users discover native notifications and can switch them off here.
 const browserNotificationsEnabled = ref(true)
+// Missing == enabled so existing users receive important patch updates by default.
+const includePatchUpdates = ref(true)
 // Dev builds only: the remote index cache is bypassed by default there so
 // fresh data can't be confused with cache staleness; this opts back in.
 const isDevBuild = import.meta.env.DEV
@@ -138,6 +141,7 @@ onMounted(async () => {
     SHOW_ANCHOR_IN_EDITOR_KEY,
     ALT_CLICK_ENABLED_KEY,
     BROWSER_NOTIFICATIONS_ENABLED_KEY,
+    INCLUDE_PATCH_UPDATES_KEY,
     DEV_INDEX_CACHE_ENABLED_KEY,
     MUSTARD_FONT_KEY,
     MUSTARD_THEME_KEY,
@@ -148,6 +152,7 @@ onMounted(async () => {
   altClickEnabled.value = !!result[ALT_CLICK_ENABLED_KEY]
   // Missing == enabled (default on).
   browserNotificationsEnabled.value = result[BROWSER_NOTIFICATIONS_ENABLED_KEY] !== false
+  includePatchUpdates.value = result[INCLUDE_PATCH_UPDATES_KEY] !== false
   devIndexCacheEnabled.value = !!result[DEV_INDEX_CACHE_ENABLED_KEY]
   selectedFontId.value = getFontById(result[MUSTARD_FONT_KEY] as string | undefined).id
   selectedThemeId.value = getThemeById(result[MUSTARD_THEME_KEY] as string | undefined).id
@@ -217,6 +222,10 @@ function onBrowserNotificationsChange() {
   browser.storage.local.set({
     [BROWSER_NOTIFICATIONS_ENABLED_KEY]: browserNotificationsEnabled.value,
   })
+}
+
+function onIncludePatchUpdatesChange() {
+  browser.storage.local.set({ [INCLUDE_PATCH_UPDATES_KEY]: includePatchUpdates.value })
 }
 
 function onFontChange() {
@@ -493,6 +502,21 @@ async function disconnect(provider: string, label: string) {
             Get a native browser notification when someone mentions you or adds a comment to a
             thread you joined — on top of the in-app badge. Picked up as you browse, so there may be
             a short delay.
+          </span>
+        </div>
+        <div class="pref-row pref-row-stack">
+          <label class="pref-row">
+            <input
+              v-model="includePatchUpdates"
+              type="checkbox"
+              class="pref-checkbox"
+              @change="onIncludePatchUpdatesChange"
+            />
+            <span class="pref-label">Include patch updates</span>
+          </label>
+          <span class="pref-hint">
+            When on, Mustard also offers updates with fixes in the patch version. Turn it off to
+            trigger the update flow only for minor and major releases.
           </span>
         </div>
         <div v-if="isDevBuild" class="pref-row pref-row-stack">

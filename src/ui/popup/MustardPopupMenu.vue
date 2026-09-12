@@ -13,8 +13,6 @@ import {
   createGetNotesVisibleMessage,
   createSetNotesVisibleMessage,
   createLoadAllNotesMessage,
-  createGetAppStatusMessage,
-  createRequestUpdateMessage,
   createCheckExtensionUpdateMessage,
   createPerformExtensionUpdateActionMessage,
   sendMessage,
@@ -32,7 +30,6 @@ const NOTES_MINIMIZED_KEY = 'mustard-notes-minimized'
 
 const session = ref<AtprotoSessionResponse>(null)
 const profile = ref<UserProfile | null>(null)
-const isOutdated = ref(false)
 const extensionUpdateState = ref<ExtensionUpdateState | null>(null)
 const areNotesVisible = ref(true)
 const areNotesMinimized = ref(false)
@@ -44,14 +41,6 @@ const isLoadingAllNotes = ref(false)
 const allNotesFound = ref<number | null>(null)
 
 onMounted(async () => {
-  // Client-version guard: surface an update notice when the backend has moved
-  // past this build. Fail-open — any error leaves the popup fully usable.
-  sendMessage(createGetAppStatusMessage())
-    .then((status) => {
-      isOutdated.value = !!status?.outdated
-    })
-    .catch(() => {})
-
   browser.runtime.onMessage.addListener(onExtensionUpdateMessage)
   checkExtensionUpdate()
 
@@ -102,12 +91,6 @@ function checkExtensionUpdate() {
 
 function performExtensionUpdateAction() {
   sendMessage(createPerformExtensionUpdateActionMessage()).catch(() => {})
-}
-
-function onUpdateClick() {
-  // Background decides what's possible: Chrome triggers a store update check +
-  // reload; elsewhere it opens the store listing (or no-ops if not configured).
-  sendMessage(createRequestUpdateMessage()).catch(() => {})
 }
 
 async function toggleNotesVisibility() {
@@ -186,24 +169,11 @@ const logoUrl = browser.runtime.getURL('/mustard_bottle_smile_512.png')
       </button>
     </div>
 
-    <!-- Update-required guard: shown when this build is below the backend's
-         minimum supported version. -->
-    <div v-if="isOutdated" class="update-banner">
-      <strong>Update required</strong>
-      <span>
-        This version of Mustard is no longer supported. Update it to keep using it. You might also
-        need to re-login here afterwards.
-      </span>
-      <button class="update-button" @click="onUpdateClick">Update now</button>
-    </div>
-
-    <!-- Optional store update. This is independent from the mandatory backend
-         compatibility guard above, which takes precedence when both apply. -->
     <div
-      v-else-if="extensionUpdateState?.status === 'downloading'"
+      v-if="extensionUpdateState?.status === 'downloading'"
       class="update-banner optional-update-banner"
     >
-      <strong>Update available</strong>
+      <strong>{{ extensionUpdateState.required ? 'Update required' : 'Update available' }}</strong>
       <span>Mustard {{ extensionUpdateState.latestVersion }} is downloading.</span>
     </div>
 
@@ -211,7 +181,7 @@ const logoUrl = browser.runtime.getURL('/mustard_bottle_smile_512.png')
       v-else-if="extensionUpdateState?.status === 'action-required'"
       class="update-banner optional-update-banner"
     >
-      <strong>Update available</strong>
+      <strong>{{ extensionUpdateState.required ? 'Update required' : 'Update available' }}</strong>
       <span>Mustard {{ extensionUpdateState.latestVersion }} is available.</span>
       <ol class="update-instructions">
         <li v-for="instruction in extensionUpdateState.action.instructions" :key="instruction">
@@ -224,7 +194,9 @@ const logoUrl = browser.runtime.getURL('/mustard_bottle_smile_512.png')
       v-else-if="extensionUpdateState?.status === 'ready'"
       class="update-banner optional-update-banner"
     >
-      <strong>Update ready</strong>
+      <strong>{{
+        extensionUpdateState.required ? 'Required update ready' : 'Update ready'
+      }}</strong>
       <span>Restart Mustard to use version {{ extensionUpdateState.latestVersion }}.</span>
       <button class="update-button" @click="performExtensionUpdateAction">
         {{ extensionUpdateState.action.label }}
@@ -235,9 +207,22 @@ const logoUrl = browser.runtime.getURL('/mustard_bottle_smile_512.png')
       v-else-if="extensionUpdateState?.status === 'failed' && extensionUpdateState.retryable"
       class="update-banner optional-update-banner"
     >
-      <strong>Update check failed</strong>
+      <strong>{{
+        extensionUpdateState.required ? 'Required update check failed' : 'Update check failed'
+      }}</strong>
       <span>{{ extensionUpdateState.message }}</span>
       <button class="update-button" @click="checkExtensionUpdate">Try again</button>
+    </div>
+
+    <div
+      v-else-if="extensionUpdateState?.status === 'current' && extensionUpdateState.required"
+      class="update-banner"
+    >
+      <strong>Update required</strong>
+      <span>
+        This version is no longer supported, but a compatible update is not available from your
+        browser yet. Please check your browser's extensions page again shortly.
+      </span>
     </div>
 
     <!-- Notes visibility toggle -->
@@ -282,7 +267,7 @@ const logoUrl = browser.runtime.getURL('/mustard_bottle_smile_512.png')
 
     <!-- Logged in -->
     <div v-if="session" class="session-container">
-      <MentionsSection :is-outdated="isOutdated" />
+      <MentionsSection :is-outdated="extensionUpdateState?.required === true" />
       <MyPagesSection />
       <div class="profile-row">
         <img

@@ -8,8 +8,6 @@ import {
   createQueryCommentsMessage,
   createQueryNotificationsForNotesMessage,
   createMarkNotificationsSeenForNoteMessage,
-  createGetAppStatusMessage,
-  createRequestUpdateMessage,
   createCheckExtensionUpdateMessage,
   createClaimExtensionUpdateToastMessage,
   createPerformExtensionUpdateActionMessage,
@@ -1088,7 +1086,7 @@ export default defineContentScript({
         return
       }
       if (message.type === 'EXTENSION_UPDATE_STATE_CHANGED') {
-        showOptionalUpdateBanner(message.state)
+        showExtensionUpdateBanner(message.state)
         return
       }
       if (message.type === 'SESSION_CHANGED') {
@@ -1121,30 +1119,17 @@ export default defineContentScript({
       }
     })
 
-    // Client-version guard: if the backend has moved past this build, flag the
-    // client as outdated and surface the update banner. Fail-open: any error
-    // leaves the client usable.
-    sendMessage(createGetAppStatusMessage())
-      .then((status) => {
-        if (status?.outdated) {
-          mustardState.clientOutdated = true
-          showUpdateRequiredBanner()
-        }
-      })
-      .catch(() => {})
-
-    // Store-driven optional updates are discovered without requiring the popup.
-    // The background caches checks for 30 minutes, so each page can safely ask
-    // for the current state without repeatedly contacting the browser store.
-    function checkOptionalExtensionUpdate() {
+    // The unified update check evaluates both backend compatibility and the
+    // browser store, then drives the single assisted update presentation.
+    function checkExtensionUpdate() {
       sendMessage(createCheckExtensionUpdateMessage())
-        .then(showOptionalUpdateBanner)
+        .then(showExtensionUpdateBanner)
         .catch(() => {})
     }
 
-    checkOptionalExtensionUpdate()
+    checkExtensionUpdate()
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') checkOptionalExtensionUpdate()
+      if (document.visibilityState === 'visible') checkExtensionUpdate()
     })
 
     // Fetch current session
@@ -1239,27 +1224,31 @@ export default defineContentScript({
       })
     }
 
-    function showUpdateRequiredBanner() {
-      document.getElementById('mustard-extension-update-banner')?.remove()
-      showMustardToast({
-        id: 'mustard-update-required-banner',
-        text: 'Big changes! Mustard needs an update to keep working — click here to update, or do it from your browser’s extensions page. You might also need to re-login from the Mustard menu afterwards.',
-        onClick: () => {
-          sendMessage(createRequestUpdateMessage()).catch(() => {})
-        },
-      })
-    }
-
-    async function showOptionalUpdateBanner(state: ExtensionUpdateState) {
+    async function showExtensionUpdateBanner(state: ExtensionUpdateState) {
       const toastId = 'mustard-extension-update-banner'
-      if (mustardState.clientOutdated) {
-        document.getElementById(toastId)?.remove()
+      mustardState.clientOutdated = state.required === true
+      if (document.visibilityState !== 'visible') return
+
+      if (state.status === 'current' && state.required) {
+        showMustardToast({
+          id: toastId,
+          text: 'Mustard needs an update to keep working, but a compatible update is not available from your browser yet. Please check your extensions page again shortly.',
+        })
         return
       }
-      if (document.visibilityState !== 'visible') return
+
+      if (state.status === 'downloading') {
+        showMustardToast({
+          id: toastId,
+          text: `${state.required ? 'A required' : 'A'} Mustard update is downloading`,
+          ...(!state.required ? { autoDismissMs: 60_000 } : {}),
+        })
+        return
+      }
 
       if (state.status === 'ready') {
         if (
+          !state.required &&
           !(await sendMessage(
             createClaimExtensionUpdateToastMessage(state.latestVersion, state.status),
           ))
@@ -1268,17 +1257,16 @@ export default defineContentScript({
           if (existingToast?.dataset.updateStatus === 'action-required') existingToast.remove()
           return
         }
-        if (mustardState.clientOutdated) return
         showMustardToast({
           id: toastId,
-          text: `Mustard ${state.latestVersion} is ready — click to restart and update`,
+          text: `${state.required ? 'Required update' : `Mustard ${state.latestVersion}`} is ready — click to restart and update`,
           // Remove the injected DOM before runtime.reload() invalidates this
           // content script; otherwise the old page keeps an orphaned toast.
           onClick: (dismiss) => {
             dismiss()
             sendMessage(createPerformExtensionUpdateActionMessage()).catch(() => {})
           },
-          autoDismissMs: 60_000,
+          ...(!state.required ? { autoDismissMs: 60_000 } : {}),
         })
         document.getElementById(toastId)!.dataset.updateStatus = state.status
         return
@@ -1287,19 +1275,27 @@ export default defineContentScript({
       if (state.status === 'action-required') {
         if (document.getElementById(toastId)?.dataset.updateStatus === 'ready') return
         if (
+          !state.required &&
           !(await sendMessage(
             createClaimExtensionUpdateToastMessage(state.latestVersion, state.status),
           ))
         )
           return
-        if (mustardState.clientOutdated) return
         showMustardToast({
           id: toastId,
-          text: `Mustard ${state.latestVersion} is available — open about:addons, then use the gear menu to check for updates`,
+          text: `${state.required ? 'A required Mustard update' : `Mustard ${state.latestVersion}`} is available — open about:addons, then use the gear menu to check for updates`,
           onClick: (dismiss) => dismiss(),
-          autoDismissMs: 60_000,
+          ...(!state.required ? { autoDismissMs: 60_000 } : {}),
         })
         document.getElementById(toastId)!.dataset.updateStatus = state.status
+        return
+      }
+
+      if (state.status === 'failed' && state.required) {
+        showMustardToast({
+          id: toastId,
+          text: 'Mustard needs an update to keep working, but the update check failed. Please check your browser extensions page.',
+        })
         return
       }
 
@@ -1371,7 +1367,7 @@ export default defineContentScript({
       // the UI set before emitting, and (re)show the update banner.
       if (mustardState.clientOutdated && isRemoteMutationMessage(message)) {
         clearPendingNoteIds()
-        showUpdateRequiredBanner()
+        checkExtensionUpdate()
         return
       }
 

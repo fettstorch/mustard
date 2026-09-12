@@ -330,31 +330,8 @@ export type OpenOptionsPageMessage = Satisfies<
   }
 >
 
-// Any surface → service worker: is this client still supported by the backend?
-// Drives the "please update" guard (read-only mode below the server's minimum).
-export type GetAppStatusMessage = Satisfies<
-  BaseMessage,
-  {
-    type: 'GET_APP_STATUS'
-  }
->
-
-type AppStatusResponse = {
-  currentVersion: string
-  minVersion: string
-  outdated: boolean
-}
-
-// Any surface → service worker: best-effort "update now". On Chrome this triggers
-// a store update check + reload-on-download; elsewhere it opens the store listing.
-export type RequestUpdateMessage = Satisfies<
-  BaseMessage,
-  {
-    type: 'REQUEST_UPDATE'
-  }
->
-
-// Any extension surface → background: check the installed browser's store for an optional update.
+// Any extension surface → background: evaluate backend compatibility and the
+// installed browser's store through the single assisted update flow.
 export type CheckExtensionUpdateMessage = Satisfies<
   BaseMessage,
   {
@@ -531,8 +508,6 @@ export type Message =
   | SessionExpiredMessage
   | OpenPopupMessage
   | OpenOptionsPageMessage
-  | GetAppStatusMessage
-  | RequestUpdateMessage
   | CheckExtensionUpdateMessage
   | ClaimExtensionUpdateToastMessage
   | PerformExtensionUpdateActionMessage
@@ -589,8 +564,6 @@ type MessageResponses = {
   SESSION_EXPIRED: void
   OPEN_POPUP: void
   OPEN_OPTIONS_PAGE: void
-  GET_APP_STATUS: AppStatusResponse
-  REQUEST_UPDATE: void
   CHECK_EXTENSION_UPDATE: ExtensionUpdateState
   CLAIM_EXTENSION_UPDATE_TOAST: boolean
   PERFORM_EXTENSION_UPDATE_ACTION: void
@@ -830,18 +803,6 @@ export function createLoadAllNotesMessage(withToast?: boolean): LoadAllNotesMess
   return {
     type: 'LOAD_ALL_NOTES',
     ...(withToast ? { withToast } : {}),
-  }
-}
-
-export function createGetAppStatusMessage(): GetAppStatusMessage {
-  return {
-    type: 'GET_APP_STATUS',
-  }
-}
-
-export function createRequestUpdateMessage(): RequestUpdateMessage {
-  return {
-    type: 'REQUEST_UPDATE',
   }
 }
 

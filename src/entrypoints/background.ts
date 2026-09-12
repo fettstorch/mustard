@@ -51,11 +51,6 @@ import { MustardActorSearchServiceBsky } from '@/background/business/service/Mus
 import { invalidateRemoteIndexCache } from '@/background/business/service/MustardNotesServiceRemote'
 import { resolveLinkPreviewForNote } from '@/background/business/service/LinkPreviewUnfurlServiceRemote'
 import { loadLinkPreviewThumbnail } from '@/background/business/service/LinkPreviewThumbnailServiceRemote'
-import {
-  getAppStatus,
-  isClientOutdated,
-  requestClientUpdate,
-} from '@/background/business/service/AppStatusService'
 import { CLIENT_OUTDATED_ERROR, isRemoteMutationMessage } from '@/shared/remote-mutation'
 import { githubAvatarUrl } from '@/shared/providers'
 import { PENDING_FOCUS_KEY, type PendingFocus } from '@/shared/pending-focus'
@@ -236,7 +231,7 @@ export default defineBackground(() => {
       // Native toast clicks bypass the message dispatcher's version gate, so an
       // outdated (read-only) client would still delete the row. Mirror the popup:
       // skip mark-seen while outdated; the click still routes to the page.
-      if (await isClientOutdated()) return
+      if (await extensionUpdateService.isClientOutdated()) return
       await acknowledgeNotification(notificationId)
     },
     openDeepLink,
@@ -675,10 +670,6 @@ export default defineBackground(() => {
       })
     },
 
-    GET_APP_STATUS: () => getAppStatus(),
-
-    REQUEST_UPDATE: () => requestClientUpdate(),
-
     CHECK_EXTENSION_UPDATE: () => extensionUpdateService.check(),
 
     CLAIM_EXTENSION_UPDATE_TOAST: (message) =>
@@ -895,7 +886,7 @@ export default defineBackground(() => {
     )
     if (!handler) return
     return (async () => {
-      if (isRemoteMutationMessage(message) && (await isClientOutdated())) {
+      if (isRemoteMutationMessage(message) && (await extensionUpdateService.isClientOutdated())) {
         throw new Error(CLIENT_OUTDATED_ERROR)
       }
       // The map guarantees handler matches message.type at runtime; TS can't

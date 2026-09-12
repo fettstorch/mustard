@@ -1,9 +1,10 @@
-import type { ExtensionUpdateState } from '@/shared/extension-update'
-import { isMinorOrMajorUpdate } from '@/shared/version'
+import { INCLUDE_PATCH_UPDATES_KEY, type ExtensionUpdateState } from '@/shared/extension-update'
+import { isOptionalUpdate, isOutdated } from '@/shared/version'
 import { cached, Observable } from '@fettstorch/jule'
 import { ChromeExtensionUpdateProvider } from './ChromeExtensionUpdateProvider'
 import type { ExtensionUpdateProvider } from './ExtensionUpdateProvider'
 import { FirefoxExtensionUpdateProvider } from './FirefoxExtensionUpdateProvider'
+import { MinimumVersionCriterion } from './MinimumVersionCriterion'
 
 const STORAGE_KEY = 'mustard-extension-update-state'
 const SEEN_TOAST_VERSION_KEY = 'mustard-extension-update-toast-version'
@@ -40,26 +41,19 @@ export class ExtensionUpdateService {
   private checkedAt = 0
   private readonly stateChanges = new Observable<ExtensionUpdateState>()
   private toastClaimQueue = Promise.resolve()
+  private minimumVersion = '0.0.0'
 
-  constructor(private readonly provider: ExtensionUpdateProvider = createProvider()) {
+  constructor(
+    private readonly provider: ExtensionUpdateProvider = createProvider(),
+    private readonly minimumVersionCriterion = new MinimumVersionCriterion(),
+  ) {
     provider.subscribe((latestVersion) => {
-      const installedVersion = currentVersion()
-      if (!isMinorOrMajorUpdate(installedVersion, latestVersion)) return
-
-      void this.transitionTo(
-        {
-          status: 'ready',
-          currentVersion: installedVersion,
-          latestVersion,
-          action: { type: 'apply', label: 'Restart and update' },
-        },
-        { checkedAt: Date.now() },
-      )
+      void this.handleAvailableUpdate(latestVersion)
     })
   }
 
   async check(): Promise<ExtensionUpdateState> {
-    await this.restore()
+    await this.prepareState()
     // A downloaded update remains actionable until the extension reloads into
     // the new version. Its readiness event may be one-shot, so never expire it
     // into another store check for this installed version.
@@ -71,13 +65,18 @@ export class ExtensionUpdateService {
   }
 
   async performAction(): Promise<void> {
-    await this.restore()
+    await this.prepareState()
     if (this.state.status !== 'ready') return
     await this.provider.perform(this.state.action)
   }
 
   subscribe(listener: (state: ExtensionUpdateState) => void): () => void {
     return this.stateChanges.subscribe(listener)
+  }
+
+  async isClientOutdated(): Promise<boolean> {
+    await this.refreshMinimumVersion()
+    return this.isRequired()
   }
 
   claimToast(version: string, status: UpdateToastStatus): Promise<boolean> {
@@ -126,6 +125,7 @@ export class ExtensionUpdateService {
       let state = storedValue && 'state' in storedValue ? storedValue.state : storedValue
       let checkedAt = storedValue && 'state' in storedValue ? storedValue.checkedAt : 0
       let replaceStoredState = false
+      const wasRequired = state?.required === true
 
       if (state && 'currentVersion' in state && state.currentVersion !== currentVersion()) {
         state = undefined
@@ -137,6 +137,7 @@ export class ExtensionUpdateService {
         !state || state.status === 'checking' || state.status === 'downloading'
           ? ({ status: 'current', currentVersion: currentVersion() } as const)
           : state
+      if (!wasRequired && this.isRequired()) checkedAt = 0
       await this.transitionTo(restorableState, {
         checkedAt,
         persist: replaceStoredState,
@@ -154,17 +155,42 @@ export class ExtensionUpdateService {
     state: ExtensionUpdateState,
     options: TransitionOptions = {},
   ): Promise<ExtensionUpdateState> {
+    const required = this.isRequired()
+    const { required: _required, minimumVersion: _minimumVersion, ...baseState } = state
+    const offeredUpdateIsCompatible =
+      !('latestVersion' in baseState) || !isOutdated(baseState.latestVersion, this.minimumVersion)
+    state =
+      required && !offeredUpdateIsCompatible
+        ? {
+            status: 'current',
+            currentVersion: baseState.currentVersion,
+            required: true,
+            minimumVersion: this.minimumVersion,
+          }
+        : required
+          ? { ...baseState, required: true, minimumVersion: this.minimumVersion }
+          : (baseState as ExtensionUpdateState)
+    let filteredUpdate = false
     if (
       'latestVersion' in state &&
-      !isMinorOrMajorUpdate(state.currentVersion, state.latestVersion)
+      !state.required &&
+      !(await this.isOptionalUpdateEnabled(state))
     ) {
+      filteredUpdate = true
       state = { status: 'current', currentVersion: state.currentVersion }
     }
 
     // Ready is terminal for the installed version: neither an older provider
     // result nor a stale storage snapshot may replace its restart action.
-    if (this.state.status === 'ready' && state.status !== 'ready') return this.state
+    const readyUpdateIsCompatible =
+      this.state.status !== 'ready' ||
+      !required ||
+      !isOutdated(this.state.latestVersion, this.minimumVersion)
+    if (readyUpdateIsCompatible && this.state.status === 'ready' && state.status !== 'ready') {
+      return this.state
+    }
 
+    const suppressFilteredNotification = filteredUpdate && this.state.status === 'current'
     const { checkedAt = this.checkedAt, persist = true, notify = true } = options
     this.state = state
     this.checkedAt = checkedAt
@@ -172,7 +198,67 @@ export class ExtensionUpdateService {
       const stored: StoredUpdateState = { state, checkedAt: this.checkedAt }
       await browser.storage.local.set({ [STORAGE_KEY]: stored })
     }
-    if (notify) this.stateChanges.emit(state)
+    if (notify && !suppressFilteredNotification) this.stateChanges.emit(state)
     return state
+  }
+
+  private async reconcileUpdatePreference(): Promise<void> {
+    if (
+      this.state.required ||
+      !('latestVersion' in this.state) ||
+      (await this.isOptionalUpdateEnabled(this.state))
+    )
+      return
+    await this.transitionTo({ status: 'current', currentVersion: this.state.currentVersion })
+  }
+
+  private async reconcileRequirement(): Promise<void> {
+    const required = this.isRequired()
+    const wasRequired = this.state.required === true
+    if (wasRequired === required) return
+
+    // A newly mandatory update must not wait behind a recent optional store
+    // check. Re-evaluate the provider immediately once, then cache that result.
+    const readyUpdateMeetsMinimum =
+      this.state.status === 'ready' && !isOutdated(this.state.latestVersion, this.minimumVersion)
+    const checkedAt = required && !readyUpdateMeetsMinimum ? 0 : this.checkedAt
+    await this.transitionTo(this.state, { checkedAt })
+  }
+
+  private async isOptionalUpdateEnabled(
+    state: Extract<ExtensionUpdateState, { latestVersion: string }>,
+  ): Promise<boolean> {
+    const stored = await browser.storage.local.get(INCLUDE_PATCH_UPDATES_KEY)
+    const includePatches = stored[INCLUDE_PATCH_UPDATES_KEY] !== false
+    return isOptionalUpdate(state.currentVersion, state.latestVersion, includePatches)
+  }
+
+  private async handleAvailableUpdate(latestVersion: string): Promise<void> {
+    await this.refreshMinimumVersion()
+    const installedVersion = currentVersion()
+    await this.transitionTo(
+      {
+        status: 'ready',
+        currentVersion: installedVersion,
+        latestVersion,
+        action: { type: 'apply', label: 'Restart and update' },
+      },
+      { checkedAt: Date.now() },
+    )
+  }
+
+  private async refreshMinimumVersion(): Promise<void> {
+    this.minimumVersion = await this.minimumVersionCriterion.getMinimumVersion()
+  }
+
+  private async prepareState(): Promise<void> {
+    await this.refreshMinimumVersion()
+    await this.restore()
+    await this.reconcileRequirement()
+    await this.reconcileUpdatePreference()
+  }
+
+  private isRequired(): boolean {
+    return isOutdated(currentVersion(), this.minimumVersion)
   }
 }
