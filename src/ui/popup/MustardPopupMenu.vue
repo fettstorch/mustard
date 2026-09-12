@@ -225,10 +225,13 @@ const logoUrl = browser.runtime.getURL('/mustard_bottle_smile_512.png')
       </span>
     </div>
 
-    <div v-else-if="extensionUpdateState?.status === 'unavailable'" class="update-banner">
-      <strong>{{ extensionUpdateState.required ? 'Update required' : 'Safari preview' }}</strong>
-      <span>{{ extensionUpdateState.message }}</span>
-      <ol v-if="extensionUpdateState.required" class="update-instructions">
+    <div
+      v-else-if="extensionUpdateState?.status === 'unavailable' && extensionUpdateState.required"
+      class="update-banner"
+    >
+      <strong>Update required</strong>
+      <span>Update Mustard to continue using online features.</span>
+      <ol class="update-instructions">
         <li v-for="instruction in extensionUpdateState.action.instructions" :key="instruction">
           {{ instruction }}
         </li>
