@@ -219,7 +219,9 @@ export class ExtensionUpdateService {
 
     // A newly mandatory update must not wait behind a recent optional store
     // check. Re-evaluate the provider immediately once, then cache that result.
-    const checkedAt = required && this.state.status !== 'ready' ? 0 : this.checkedAt
+    const readyUpdateMeetsMinimum =
+      this.state.status === 'ready' && !isOutdated(this.state.latestVersion, this.minimumVersion)
+    const checkedAt = required && !readyUpdateMeetsMinimum ? 0 : this.checkedAt
     await this.transitionTo(this.state, { checkedAt })
   }
 

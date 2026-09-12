@@ -196,6 +196,40 @@ describe('ExtensionUpdateService contract', () => {
     expect(provider.checkCalls).toBe(2)
   })
 
+  it('rechecks when a higher minimum invalidates a ready update', async () => {
+    vi.spyOn(browser.runtime, 'getManifest').mockReturnValue({ version: '2.14.0' } as never)
+    vi.spyOn(MinimumVersionCriterion.prototype, 'getMinimumVersion')
+      .mockResolvedValueOnce('0.0.0')
+      .mockResolvedValueOnce('0.0.0')
+      .mockResolvedValue('2.15.0')
+    const provider = new StubProvider()
+    provider.state = { status: 'current', currentVersion: '2.14.0' }
+    const service = new ExtensionUpdateService(provider)
+    const listener = vi.fn()
+    service.subscribe(listener)
+
+    await service.check()
+    provider.listener?.('2.14.1')
+    await vi.waitFor(() =>
+      expect(listener).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'ready', latestVersion: '2.14.1' }),
+      ),
+    )
+    provider.state = {
+      status: 'action-required',
+      currentVersion: '2.14.0',
+      latestVersion: '2.15.0',
+      action: { type: 'manual', instructions: ['Check Firefox.'] },
+    }
+
+    await expect(service.check()).resolves.toMatchObject({
+      status: 'action-required',
+      latestVersion: '2.15.0',
+      required: true,
+    })
+    expect(provider.checkCalls).toBe(2)
+  })
+
   it('does not overwrite readiness when the update event wins the check race', async () => {
     const provider = new StubProvider()
     let finishCheck!: (state: ExtensionUpdateState) => void
