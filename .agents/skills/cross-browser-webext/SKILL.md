@@ -15,6 +15,83 @@ Hard-won quirks for building Mustard as a single codebase targeting Chrome (MV3)
 and Firefox (MV2/MV3) with WXT. Read this before touching `wxt.config.ts`,
 `src/entrypoints/**`, background messaging, or content-script injection.
 
+## Desktop Safari planning findings (2026-09-12)
+
+- [specs/safari-support.md](../../../specs/safari-support.md) covers **macOS Safari
+  only**. Preserving existing Chrome/Firefox behavior and installed-client backend
+  compatibility is its highest priority. Preserve the existing automated Chromium suites, including real Bluesky login.
+  Firefox runtime/login coverage is manual by explicit user decision (2026-09-12);
+  do not add a Firefox automation harness or unproven browser workarounds. Record
+  manual Firefox checks at shared-code checkpoints and before release. New GitHub
+  login E2E is not required for this prerequisite.
+- WXT 0.20.27 Safari MV3 compilation and macOS Xcode project generation passed;
+  runtime and signing remain unverified. Use explicit `--mv3` because WXT defaults
+  Safari to MV2. Keep Chrome MV3 and Firefox's existing MV2 manifest unchanged.
+- Safari lacks `identity`, `notifications`, `runtime.requestUpdateCheck`, and
+  `runtime.onUpdateAvailable`. Isolate auth, native-notification delivery, updates,
+  and settings help behind interfaces; retain the existing Chrome/Firefox
+  implementations and shared policy. Reuse `ExtensionUpdateProvider` and the
+  toolbar-action helper. Non-Firefox must not imply Chrome. Desktop context menus,
+  mouse/hover interactions, storage, and messaging do not need replacement.
+- Safari 18.4+ on macOS supports temporary extension-folder installation before
+  creating an Xcode project. Native build, signing, and upgrade checks are separate.
+  A packager manifest-read failure may be a sandbox access failure; the audit
+  succeeded after a narrow escalation.
+- GitHub OAuth apps now support multiple callback URIs. A separate Safari app is
+  an isolation choice, not a one-callback restriction. Preserve existing app/token
+  settings and backend contracts. Recheck the dated sources in the plan before
+  implementation.
+
+## Browser boundaries (first extraction, 2026-09-12)
+
+- `src/background/platform/createBrowserPlatform.ts` composes the current login,
+  native-notification, and update implementations. Importing it and constructing
+  its implementations must not read unsupported browser APIs. Safari explicitly
+  selects a normal-tab login transport, unsupported native toasts,
+  and a manual-update provider. This is not proof of Safari runtime support.
+- `IdentityOAuthLoginFlow` owns the existing initiate/identity/callback transport;
+  it resolves the identity redirect only when login starts. Provider wrappers keep
+  session persistence for completed identity results. Safari may return a pending result;
+  it reuses existing auth payloads and token exchange without a database migration.
+- `WebExtensionNotificationDelivery` owns native API calls and the inlined icon.
+  Its `createSpacingMs` preserves Firefox's 500 ms delay between attempts in each
+  batch (including failed attempts), with no Chrome delay. The shared dispatcher
+  retains preferences, first-run seeding, throttling, retry bookkeeping, and clicks.
+- `src/shared/browser-settings.ts` selects shortcut help from WXT's `BROWSER`:
+  Chrome's link, the existing Firefox guide, or Safari shortcut guidance. Unknown
+  targets get no help rather than Chrome instructions. UI code does not import the background factory.
+
+## Safari preview build and acceptance
+
+- Safari rejects a missing or empty manifest `description` when loading the
+  extension, even though WXT compilation succeeds. Keep the explicit Safari
+  description in `wxt.config.ts`; a passing build is not manifest acceptance.
+
+- `npm run build:safari` produces `dist/safari` using explicit MV3, Safari 18.4
+  minimum, and matching JS/CSS compilation targets. The CI quality job and local
+  `npm run check` build it. Safari excludes identity/notifications permissions;
+  it adds `tabs` for login URL observation. Chrome/Firefox manifest contracts remain unchanged.
+- Safari tab sign-in is implemented, with hosted metadata/backend rollout and
+  manual real-provider acceptance still pending. `browser-capabilities.ts` hides
+  native-toast controls; in-app notifications remain part of the shared system.
+- `TabOAuthLoginFlow` registers basic tab listeners synchronously (no event filters),
+  persists pending state in session storage, and only accepts its own tab's exact
+  HTTPS callback. Website permission requests originate directly in the UI click.
+  The callback never relays messages or receives extension credentials.
+- `npm run test:e2e:tab-login` uses WXT mode `e2e` with `VITE_E2E_TAB_LOGIN=true`
+  to run the same transport in standard Playwright Chromium. Production builds
+  ignore this test override. Tests use controlled provider/backend HTTP responses;
+  the existing live Bluesky E2E separately verifies the identity transport.
+- `SafariExtensionUpdateProvider` returns `unavailable` with manual preview-install
+  instructions, never a fabricated store check or reload/download. Required-version
+  protection remains in `ExtensionUpdateService`; preserve existing serialized states.
+- `SafariBackground.test.ts` runs the actual entrypoint with Safari-absent APIs
+  removed from WXT's fake browser and verifies local saves/queries and status replies.
+  This is mocked integration coverage, not a Safari E2E result.
+- The user explicitly deferred Safari runtime testing to manual review. Continue
+  using established Chromium E2E; do not automate Safari UI or wait for manual
+  acceptance before doing independent implementation work.
+
 ## WXT build framework
 
 - **Output dir** defaults to `dist/{browser}-mv{manifestVersion}/`. For clean
@@ -155,6 +232,37 @@ in several ways:
   publishing that draft later preserves the user's choice.
 
 ### Authenticated extension E2E isolation
+
+- Coverage audit (2026-09-12): `test/live-e2e/bluesky-auth.spec.ts` enters real
+  Bluesky credentials, completes OAuth against local auth-bridge, checks stored
+  sessions and logs out. Its fixture launches bundled Chromium with `dist/chrome`.
+  The deterministic authenticated fixture instead injects a locally minted
+  Mustard session; its seeded GitHub identity does not test GitHub OAuth. No
+  Firefox runner or live GitHub login test exists yet. `test:e2e:all` currently
+  means the Chromium suites; `check` does not run E2E. Recheck coverage when the
+  phase-zero prerequisites in `specs/safari-support.md` change. Missing Firefox
+  automation is deliberate: the user accepts manual Firefox testing. Missing
+  GitHub live-login automation is recorded coverage, not a requirement to add it.
+- Keep the existing Chromium harness and production login flows intact. Do not
+  resume the abandoned Selenium/geckodriver experiment: the user explicitly chose
+  manual Firefox validation rather than a custom automation harness.
+
+- Compare actual CI jobs and local database contents before calling a local E2E
+  failure a regression. On 2026-09-12, CI passed 18 smoke, 49 authenticated, and
+  one live Bluesky test, while a reused local `app_config.min_client_version =
+999.0.0` disabled writes. Temporarily restoring the migration default `0.0.0`
+  made all 49 authenticated tests pass. The outdated-client test restores its
+  previous singleton value; account cleanup does not normalize it. A clean Git
+  tree, fresh browser profile, and matching migrations do not prove clean DB
+  configuration. The local E2E runner now scopes the minimum to `0.0.0` for
+  smoke/auth/all runs and restores the original value in `finally`; run suites
+  sharing the stack sequentially. Preserve the production version safeguard.
+- When reopening a Vue-transitioned editor in E2E, wait for the old editor to be
+  removed first. The 200 ms `mustard-note` leave animation can overlap a new
+  editor, producing two save buttons and strict-locator failures on a faster
+  local run even when the same test passes on CI. A trace confirmed simultaneous
+  leave-active and enter-active editors; selecting `.first()` hides this race.
+  The preview smoke test now waits for the first editor's removal before reopening.
 
 - A fresh Playwright browser context does not isolate the local Supabase
   database. Tests using the deterministic authenticated accounts must import

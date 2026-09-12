@@ -145,6 +145,8 @@ test.describe('Content script smoke', () => {
     // A dismissal is an authoring choice, not just a temporary visual hide.
     // Reopen the editor, dismiss an otherwise valid preview, and verify the
     // background does not regenerate it while saving the local note.
+    // Wait for the closing transition so the old and new editors cannot overlap.
+    await expect(mustard.locator('.mustard-note-editor')).toHaveCount(0)
     await page.locator('#content').dispatchEvent('contextmenu', {
       button: 2,
       clientX: 120,

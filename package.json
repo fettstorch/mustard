@@ -9,9 +9,13 @@
     "dev:local": "wxt -b chrome",
     "dev:firefox": "wxt -b firefox --mode production",
     "dev:firefox:local": "wxt -b firefox",
+    "dev:safari": "wxt -b safari --mv3 --mode production",
+    "dev:safari:local": "wxt -b safari --mv3",
     "setup:local": "open \"http://127.0.0.1:54323/project/default/editor/17746?schema=public\" && stmux -w always -- [ \"supabase start && supabase functions serve\" .. \"npm run dev:local\" ]",
     "build": "wxt build -b chrome",
     "build:firefox": "wxt build -b firefox",
+    "build:safari": "wxt build -b safari --mv3",
+    "zip:safari": "wxt zip -b safari --mv3",
     "build:e2e": "wxt build -b chrome",
     "build:e2e:auth": "wxt build -b chrome --mode e2e",
     "zip": "wxt zip -b chrome",
@@ -31,7 +35,8 @@
     "test:e2e:auth": "node scripts/run-local-e2e.mjs auth",
     "test:e2e:auth:bluesky": "node scripts/run-local-e2e.mjs bluesky",
     "test:e2e:all": "node scripts/run-local-e2e.mjs all",
-    "check": "npm run type-check && npm run lint && npm run format:check && npm run knip && npm run test && npm run build && npm run build:firefox && npm run lint:firefox"
+    "check": "npm run type-check && npm run lint && npm run format:check && npm run knip && npm run test && npm run build && npm run build:firefox && npm run lint:firefox && npm run build:safari",
+    "test:e2e:tab-login": "VITE_E2E_TAB_LOGIN=true npm run build:e2e:auth && playwright test --config playwright.tab-login.config.ts"
   },
   "dependencies": {
     "@atproto/api": "^0.18.14",

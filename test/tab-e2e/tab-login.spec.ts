@@ -1,0 +1,221 @@
+import { test, expect } from '../e2e/extension.fixture'
+import type { BrowserContext, Page } from '@playwright/test'
+
+// Real extension UI, tabs, messaging and storage; deterministic provider/backend
+// HTTP responses. This tests the transport, not live provider authentication.
+const callback = 'https://fettstorch.github.io/mustard/callback.html'
+const userId = '00000000-0000-4000-8000-000000000001'
+const state = 'test-oauth-state'
+const callbackUrl = `${callback}?code=test-code&state=${state}&iss=https%3A%2F%2Fprovider.example`
+
+async function mockAuth(
+  context: BrowserContext,
+  options: { reject?: boolean; completionGate?: Promise<void> } = {},
+) {
+  const requests: Record<string, unknown>[] = []
+  await context.route('https://provider.example/**', (route) =>
+    route.fulfill({
+      contentType: 'text/html',
+      body: '<h1>Test provider</h1>',
+    }),
+  )
+  await context.route(`${callback}**`, (route) =>
+    route.fulfill({
+      contentType: 'text/html',
+      body: '<p>Return to Mustard</p>',
+    }),
+  )
+  await context.route('**/functions/v1/auth-bridge', async (route) => {
+    const body = route.request().postDataJSON() as Record<string, unknown>
+    requests.push(body)
+    if (body.action === 'callback') await options.completionGate
+    const json =
+      body.action === 'initiate'
+        ? {
+            authUrl: 'https://provider.example/authorize',
+            state,
+          }
+        : body.action === 'callback'
+          ? {
+              userId,
+              did: 'did:plc:test',
+              jwt: 'test-jwt',
+              expiresAt: Math.floor(Date.now() / 1000) + 86400,
+              refreshToken: 'test-refresh',
+            }
+          : body.action === 'list-identities'
+            ? {
+                identities: [
+                  {
+                    provider: 'atproto',
+                    provider_account_id: 'did:plc:test',
+                    handle: 'test.example',
+                  },
+                ],
+              }
+            : {}
+    await route.fulfill({
+      status: body.action === 'callback' && options.reject ? 400 : 200,
+      json: body.action === 'callback' && options.reject ? { error: 'Rejected callback' } : json,
+    })
+  })
+  await context.route('**/rest/v1/**', (route) => route.fulfill({ json: [] }))
+  return requests
+}
+
+async function openLogin(context: BrowserContext, popupUrl: string, provider = 'atproto') {
+  const popup = await context.newPage()
+  await popup.goto(popupUrl)
+  if (provider === 'github') await popup.getByRole('tab', { name: 'GitHub' }).click()
+  else await popup.getByLabel('Login with Bluesky').fill('test.example')
+  return popup
+}
+
+async function start(context: BrowserContext, popup: Page, provider = 'atproto') {
+  const opened = context.waitForEvent('page')
+  await popup
+    .getByRole('button', {
+      name: provider === 'github' ? 'Continue with GitHub' : 'Login',
+      exact: true,
+    })
+    .click()
+  const auth = await opened
+  await auth.waitForURL('https://provider.example/authorize')
+  return auth
+}
+
+async function stored(context: BrowserContext) {
+  return context.serviceWorkers()[0]!.evaluate(async () => {
+    const ext = globalThis as typeof globalThis & {
+      chrome: {
+        storage: {
+          local: { get(keys: string[]): Promise<Record<string, unknown>> }
+          session: { get(key: string): Promise<Record<string, unknown>> }
+        }
+      }
+    }
+    return {
+      local: await ext.chrome.storage.local.get(['mustard_session', 'supabase_jwt']),
+      transient: await ext.chrome.storage.session.get('mustard_tab_login'),
+    }
+  })
+}
+
+for (const provider of ['atproto', 'github']) {
+  test(`${provider}: completes after the popup closes, keeps credentials out of the callback page, and logs out`, async ({
+    context,
+    popupUrl,
+  }) => {
+    const requests = await mockAuth(context)
+    const popup = await openLogin(context, popupUrl, provider)
+    const auth = await start(context, popup, provider)
+    await popup.close()
+    const closed = auth.waitForEvent('close')
+    await auth.goto(callbackUrl).catch(() => {}) // Extension may close the tab during navigation.
+    await closed
+    await expect
+      .poll(async () => (await stored(context)).local.mustard_session)
+      .toMatchObject({ userId })
+    const initiate = requests.find((r) => r.action === 'initiate')!
+    const complete = requests.filter((r) => r.action === 'callback')
+    expect(complete).toHaveLength(1)
+    expect(initiate).toEqual({
+      action: 'initiate',
+      provider,
+      ...(provider === 'atproto' ? { handle: 'test.example' } : {}),
+      redirect_uri: callback,
+    })
+    expect(complete[0]).toEqual({
+      action: 'callback',
+      provider,
+      code: 'test-code',
+      state,
+      ...(provider === 'atproto' ? { iss: 'https://provider.example' } : {}),
+      clientVersion: expect.any(String),
+    })
+    expect((await stored(context)).transient).toEqual({
+      mustard_tab_login: { status: { status: 'idle' } },
+    })
+    const reopened = await context.newPage()
+    await reopened.goto(popupUrl)
+    await expect(reopened.getByRole('button', { name: 'Logout', exact: true })).toBeVisible()
+    await reopened.getByRole('button', { name: 'Logout', exact: true }).click()
+    await expect.poll(async () => (await stored(context)).local.supabase_jwt).toBeUndefined()
+    expect(requests.some((r) => r.action === 'logout')).toBe(true)
+  })
+}
+
+test('ignores another tab and wrong callback path, then accepts only its own callback', async ({
+  context,
+  popupUrl,
+}) => {
+  const requests = await mockAuth(context)
+  const popup = await openLogin(context, popupUrl)
+  const auth = await start(context, popup)
+  const other = await context.newPage()
+  await other.goto(callbackUrl)
+  await auth.goto(`${callback}/wrong?code=test-code&state=${state}`)
+  await expect(popup.getByRole('button', { name: 'Cancel sign-in' })).toBeVisible()
+  expect(requests.filter((r) => r.action === 'callback')).toHaveLength(0)
+  const closed = auth.waitForEvent('close')
+  await auth.goto(callbackUrl).catch(() => {})
+  await closed
+  expect(other.isClosed()).toBe(false)
+  expect(requests.filter((r) => r.action === 'callback')).toHaveLength(1)
+})
+
+for (const ending of ['close', 'cancel', 'wrong-state', 'provider-error', 'backend-error']) {
+  test(`${ending}: clears pending login without creating a session`, async ({
+    context,
+    popupUrl,
+  }) => {
+    const requests = await mockAuth(context, { reject: ending === 'backend-error' })
+    const popup = await openLogin(context, popupUrl)
+    const auth = await start(context, popup)
+    if (ending === 'close') await auth.close()
+    else if (ending === 'cancel')
+      await popup.getByRole('button', { name: 'Cancel sign-in' }).click()
+    else
+      await auth.goto(
+        ending === 'wrong-state'
+          ? callbackUrl.replace(state, 'wrong-state')
+          : ending === 'provider-error'
+            ? `${callback}?error=access_denied&state=${state}`
+            : callbackUrl,
+      )
+    await expect
+      .poll(async () => (await stored(context)).transient)
+      .toMatchObject({
+        mustard_tab_login: { status: { status: ending === 'cancel' ? 'idle' : 'failed' } },
+      })
+    expect((await stored(context)).local.supabase_jwt).toBeUndefined()
+    expect(requests.filter((r) => r.action === 'callback')).toHaveLength(
+      ending === 'backend-error' ? 1 : 0,
+    )
+  })
+}
+
+test('cancelling during exchange revokes the returned session without installing it', async ({
+  context,
+  popupUrl,
+}) => {
+  let release!: () => void
+  const completionGate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const requests = await mockAuth(context, { completionGate })
+  const popup = await openLogin(context, popupUrl)
+  const auth = await start(context, popup)
+  await expect(popup.getByRole('button', { name: 'Cancel sign-in' })).toBeVisible()
+  await auth.goto(callbackUrl)
+  await expect.poll(() => requests.some((r) => r.action === 'callback')).toBe(true)
+  await popup.getByRole('button', { name: 'Cancel sign-in' }).click()
+  release()
+  await expect
+    .poll(async () => (await stored(context)).transient)
+    .toEqual({ mustard_tab_login: { status: { status: 'idle' } } })
+  expect((await stored(context)).local.supabase_jwt).toBeUndefined()
+  expect(requests.some((r) => r.action === 'logout' && r.refreshToken === 'test-refresh')).toBe(
+    true,
+  )
+})

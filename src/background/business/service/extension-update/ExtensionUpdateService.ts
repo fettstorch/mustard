@@ -1,9 +1,8 @@
 import { INCLUDE_PATCH_UPDATES_KEY, type ExtensionUpdateState } from '@/shared/extension-update'
 import { isOptionalUpdate, isOutdated } from '@/shared/version'
 import { cached, Observable } from '@fettstorch/jule'
-import { ChromeExtensionUpdateProvider } from './ChromeExtensionUpdateProvider'
+import { createExtensionUpdateProvider } from '@/background/platform/createBrowserPlatform'
 import type { ExtensionUpdateProvider } from './ExtensionUpdateProvider'
-import { FirefoxExtensionUpdateProvider } from './FirefoxExtensionUpdateProvider'
 import { MinimumVersionCriterion } from './MinimumVersionCriterion'
 
 const STORAGE_KEY = 'mustard-extension-update-state'
@@ -27,12 +26,6 @@ function currentVersion(): string {
   return browser.runtime.getManifest().version
 }
 
-function createProvider(): ExtensionUpdateProvider {
-  return import.meta.env.FIREFOX
-    ? new FirefoxExtensionUpdateProvider()
-    : new ChromeExtensionUpdateProvider()
-}
-
 export class ExtensionUpdateService {
   private state: ExtensionUpdateState = {
     status: 'current',
@@ -44,7 +37,7 @@ export class ExtensionUpdateService {
   private minimumVersion = '0.0.0'
 
   constructor(
-    private readonly provider: ExtensionUpdateProvider = createProvider(),
+    private readonly provider: ExtensionUpdateProvider = createExtensionUpdateProvider(),
     private readonly minimumVersionCriterion = new MinimumVersionCriterion(),
   ) {
     provider.subscribe((latestVersion) => {

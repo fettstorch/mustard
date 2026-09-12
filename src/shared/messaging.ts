@@ -1,3 +1,4 @@
+import type { OAuthLoginStatus, PendingLogin } from './oauth-login'
 import type { DtoMustardNote } from './dto/DtoMustardNote'
 import type { DtoMustardComment } from './dto/DtoMustardComment'
 import type { DtoMyPagesOverview } from './dto/DtoMyPagesOverview'
@@ -492,6 +493,8 @@ export type Message =
   | DeleteNoteMessage
   | NoteDeletedMessage
   | SetRepostMessage
+  | { type: 'GET_OAUTH_LOGIN_STATUS' }
+  | { type: 'CANCEL_OAUTH_LOGIN' }
   | AtprotoLoginMessage
   | GithubLoginMessage
   | GetAtprotoSessionMessage
@@ -548,8 +551,10 @@ type MessageResponses = {
   DELETE_NOTE: DtoMustardNote[]
   NOTE_DELETED: void
   SET_REPOST: DtoMustardNote[]
-  ATPROTO_LOGIN: { userId: string; did?: string } | null
-  GITHUB_LOGIN: { userId: string } | null
+  GET_OAUTH_LOGIN_STATUS: OAuthLoginStatus
+  CANCEL_OAUTH_LOGIN: null
+  ATPROTO_LOGIN: { userId: string; did?: string } | PendingLogin | null
+  GITHUB_LOGIN: { userId: string } | PendingLogin | null
   GET_ATPROTO_SESSION: AtprotoSessionResponse
   ATPROTO_LOGOUT: null
   DISCONNECT_PROVIDER: { accountDeleted: boolean } | null

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { requestLoginPermission } from './requestLoginPermission'
 /**
  * BlueskyLogin Component
  *
@@ -120,7 +121,9 @@ async function submit() {
 
   try {
     // Send to service worker - it handles OAuth and persists across popup close
+    await requestLoginPermission()
     const session = await sendMessage(createAtprotoLoginMessage(handle))
+    if (session && 'pending' in session) return
     if (session) {
       emit('success', session)
     } else {

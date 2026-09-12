@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { requestLoginPermission } from './requestLoginPermission'
 /**
  * GithubLogin Component
  *
@@ -23,7 +24,9 @@ async function login() {
   errorMessage.value = null
 
   try {
+    await requestLoginPermission()
     const session = await sendMessage(createGithubLoginMessage())
+    if (session && 'pending' in session) return
     if (session) {
       emit('success', session)
     } else {

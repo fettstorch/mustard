@@ -9,6 +9,10 @@ import { ref } from 'vue'
 import BlueskyLogin from './BlueskyLogin.vue'
 import GithubLogin from './GithubLogin.vue'
 import type { AtprotoSessionResponse } from '@/shared/messaging'
+import { usesTabLogin } from '@/shared/browser-capabilities'
+import TabLoginStatus from './TabLoginStatus.vue'
+
+const tabLogin = usesTabLogin()
 
 type Provider = 'bluesky' | 'github'
 
@@ -25,6 +29,7 @@ function onSuccess(session: NonNullable<AtprotoSessionResponse>) {
 
 <template>
   <div class="provider-login">
+    <TabLoginStatus v-if="tabLogin" @success="onSuccess" />
     <!-- Provider tabs -->
     <div class="provider-tabs" role="tablist">
       <button

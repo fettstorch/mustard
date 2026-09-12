@@ -20,6 +20,37 @@ multiple provider identities. Read this before touching `auth-bridge`,
 `SupabaseAuth`, `AtprotoAuth`, `GithubAuth`, or anything that handles
 sessions/JWTs/account linking.
 
+## Browser login boundary
+
+`src/background/platform/IdentityOAuthLoginFlow.ts` contains the existing
+Chrome/Firefox initiate → identity → callback transport, selected through
+`createBrowserPlatform.ts`. Resolve `identity.getRedirectURL('callback')` inside
+`start()`, never at module load. Keep state validation, ATProto issuer validation,
+client-version forwarding, and callback-only `currentJwt` forwarding intact.
+`AtprotoAuth.login()` still stores its minimal fallback identity before the
+caller syncs the authoritative set; `GithubAuth.loginWithGithub()` leaves session
+persistence to its existing message handler. Safari selects `TabOAuthLoginFlow`;
+`start()` may return `{ pending: true }` and the background owns its completion.
+
+Safari opens a normal tab and observes its exact HTTPS callback with synchronous
+`tabs.onUpdated` / `tabs.onRemoved` listeners. The callback page is static and
+receives no Mustard credentials. Pending tab ID/state/request/local account
+and expiry live in `storage.session`. Startup and UI status reads reconcile the
+saved tab; there is no background polling. An uncertain interrupted exchange
+requires a fresh login rather than retrying a possibly consumed code.
+
+Safari uses the existing initiate/callback payloads and backend token exchange.
+There is no Safari database migration, completion-secret protocol, or server-side
+account-binding layer. The only backend delta is explicit Safari GitHub credential
+selection. Preserve Chrome/Firefox payloads, registrations, storage formats, and
+session lifecycle; do not expand browser compatibility work into auth redesign.
+
+The Safari callback URI must be published in both ATProto metadata files before
+live testing; local file edits are insufficient. GitHub uses explicit `_SAFARI`
+credentials without Chrome fallback. Neither production rollout nor real Safari
+login is proven by Chromium transport tests. Deployment/manual acceptance status
+is recorded in `specs/safari-support.md`.
+
 ## Account model (UUID-always)
 
 - A Mustard user is a `users.id` **UUID** that never encodes a provider id.

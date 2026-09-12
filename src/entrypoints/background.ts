@@ -23,6 +23,7 @@ import {
   createNativeNotifications,
   clearNativeNotificationState,
 } from '@/background/native-notifications'
+import { createOAuthLoginFlow } from '@/background/platform/createBrowserPlatform'
 import { login, atprotoDid } from '@/background/auth/AtprotoAuth'
 import {
   getSession,
@@ -73,6 +74,22 @@ export default defineBackground(() => {
   const mutualsService = new MustardMutualsServiceBsky()
   const actorSearchService = new MustardActorSearchServiceBsky()
   const extensionUpdateService = new ExtensionUpdateService()
+  const oauthLogin = createOAuthLoginFlow()
+  oauthLogin.initialize?.(async (result) => {
+    await storeSupabaseJwt(result.jwt, result.expiresAt, result.userId, result.refreshToken)
+    try {
+      if (!(await syncSessionIdentities(result.jwt, result.userId))) {
+        throw new Error('Login returned no linked identities')
+      }
+    } catch (error) {
+      await revokeSupabaseSession()
+      await logout(result.userId)
+      throw error
+    }
+    await invalidateRemoteIndexCache()
+    void broadcastSessionChanged(result.userId)
+    void updateActionBadge()
+  })
 
   extensionUpdateService.subscribe((state) => {
     const message = createExtensionUpdateStateChangedMessage(state)
@@ -531,7 +548,8 @@ export default defineBackground(() => {
         // If a currentJwt is not provided explicitly, try to get the active one
         // so the user's existing Mustard account is linked to GitHub.
         const jwt = message.currentJwt ?? (await getSupabaseJwt()) ?? undefined
-        const result = await loginWithGithub(jwt)
+        const result = await loginWithGithub(jwt, oauthLogin)
+        if ('pending' in result) return result
         await storeSupabaseJwt(result.jwt, result.expiresAt, result.userId, result.refreshToken)
         // Enrich the session with the full identity set (github login may have
         // linked into an existing multi-provider account). If that follow-up
@@ -557,7 +575,8 @@ export default defineBackground(() => {
 
     ATPROTO_LOGIN: async (message) => {
       try {
-        const result = await login(message.handle, message.currentJwt)
+        const result = await login(message.handle, message.currentJwt, oauthLogin)
+        if ('pending' in result) return result
         await storeSupabaseJwt(result.jwt, result.expiresAt, result.userId, result.refreshToken)
         // Enrich the minimal session persisted by the ATProto flow. If that
         // follow-up request fails, roll back the just-created credentials so a
@@ -578,6 +597,12 @@ export default defineBackground(() => {
         console.error('ATPROTO_LOGIN failed:', err)
         return null
       }
+    },
+
+    GET_OAUTH_LOGIN_STATUS: async () => (await oauthLogin.getStatus?.()) ?? { status: 'idle' },
+    CANCEL_OAUTH_LOGIN: async () => {
+      await oauthLogin.cancel?.()
+      return null
     },
 
     GET_ATPROTO_SESSION: async () => {
@@ -614,6 +639,7 @@ export default defineBackground(() => {
 
     ATPROTO_LOGOUT: async (message) => {
       try {
+        await oauthLogin.cancel?.()
         await revokeSupabaseSession()
         await logout(message.userId)
         await clearNativeNotificationState()
@@ -630,6 +656,7 @@ export default defineBackground(() => {
 
     DISCONNECT_PROVIDER: async (message) => {
       try {
+        await oauthLogin.cancel?.()
         const jwt = await getSupabaseJwt()
         if (!jwt) return null
         const session = await getSession()

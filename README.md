@@ -310,6 +310,36 @@ nr build        # Chrome (MV3)
 nr build:firefox
 ```
 
+### Safari preview (Safari 18.4+ on macOS)
+
+```sh
+nr dev:safari        # Development server, production backend
+nr dev:safari:local  # Development server, local backend
+nr build:safari     # Standalone build
+```
+
+The dev server does not launch Safari automatically. Keep it running while using
+the development extension; load/reload the extension in Safari manually. Safari
+hot-reload behavior still needs manual verification.
+
+The build is in `dist/safari`. In Safari 18.4 or later on macOS, open
+Safari Settings → Developer → Add Temporary Extension and select that directory.
+If Developer is hidden, enable web developer features in Safari Settings → Advanced.
+Enable Mustard and allow it on the page you want to annotate, then reload that page.
+
+This is a **development preview**. Test right-click → Add Mustard, save locally,
+edit/delete, reload/revisit, the popup, and options. Safari tab sign-in is implemented,
+but live Bluesky login needs the callback metadata published as described in the
+Safari plan. GitHub additionally needs its Safari registration and backend credential
+selection deployed. No database migration is needed. Allow callback/backend website access when prompted;
+finish signing in in the new tab, then reopen Mustard. Native OS notifications are unavailable. Temporary
+extensions expire when Safari quits or after 24 hours; signed installation and
+upgrade persistence are separate acceptance checks. Existing Chrome/Firefox
+versions retain sign-in and their existing features.
+
+Build validation runs in CI. Automated runtime E2E runs in Chromium; Safari and
+Firefox runtime acceptance is manual. See [the Safari plan](specs/safari-support.md).
+
 ## Supabase Deployment
 
 ### Deploy Edge Functions
@@ -339,12 +369,18 @@ supabase functions deploy link-preview-thumbnail
 ```
 
 `auth-bridge` also needs the GitHub OAuth secrets set in the cloud (one app per
-browser, due to the single redirect URI per OAuth app):
+browser, preserving the existing isolated registrations):
 
 ```sh
 supabase secrets set GITHUB_CLIENT_ID=... GITHUB_CLIENT_SECRET=... \
   GITHUB_CLIENT_ID_FIREFOX=... GITHUB_CLIENT_SECRET_FIREFOX=...
 ```
+
+For Safari GitHub sign-in, register the exact callback
+`https://fettstorch.github.io/mustard/callback.html` in an isolated OAuth app and
+configure `GITHUB_CLIENT_ID_SAFARI` and `GITHUB_CLIENT_SECRET_SAFARI`. Use a
+non-expiring provider-token policy for now; GitHub provider-token refresh is not
+implemented. Existing Chrome/Firefox registrations and secrets stay unchanged.
 
 ### Set Edge Function Secrets
 
