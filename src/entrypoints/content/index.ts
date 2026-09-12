@@ -1229,6 +1229,14 @@ export default defineContentScript({
       mustardState.clientOutdated = state.required === true
       if (document.visibilityState !== 'visible') return
 
+      if (state.status === 'unavailable' && state.required) {
+        showMustardToast({
+          id: toastId,
+          text: 'You must update Mustard to keep using it.',
+        })
+        return
+      }
+
       if (state.status === 'current' && state.required) {
         showMustardToast({
           id: toastId,

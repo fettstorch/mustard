@@ -230,12 +230,7 @@ const logoUrl = browser.runtime.getURL('/mustard_bottle_smile_512.png')
       class="update-banner"
     >
       <strong>Update required</strong>
-      <span>Update Mustard to continue using online features.</span>
-      <ol class="update-instructions">
-        <li v-for="instruction in extensionUpdateState.action.instructions" :key="instruction">
-          {{ instruction }}
-        </li>
-      </ol>
+      <span>You must update Mustard to keep using it.</span>
     </div>
 
     <!-- Notes visibility toggle -->
