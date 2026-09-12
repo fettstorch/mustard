@@ -125,6 +125,7 @@ export class ExtensionUpdateService {
       let state = storedValue && 'state' in storedValue ? storedValue.state : storedValue
       let checkedAt = storedValue && 'state' in storedValue ? storedValue.checkedAt : 0
       let replaceStoredState = false
+      const wasRequired = state?.required === true
 
       if (state && 'currentVersion' in state && state.currentVersion !== currentVersion()) {
         state = undefined
@@ -136,6 +137,7 @@ export class ExtensionUpdateService {
         !state || state.status === 'checking' || state.status === 'downloading'
           ? ({ status: 'current', currentVersion: currentVersion() } as const)
           : state
+      if (!wasRequired && this.isRequired()) checkedAt = 0
       await this.transitionTo(restorableState, {
         checkedAt,
         persist: replaceStoredState,

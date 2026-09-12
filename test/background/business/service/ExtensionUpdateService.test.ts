@@ -279,6 +279,29 @@ describe('ExtensionUpdateService contract', () => {
     expect(provider.checkCalls).toBe(0)
   })
 
+  it('refreshes a recent restored store check when the client becomes outdated', async () => {
+    vi.spyOn(MinimumVersionCriterion.prototype, 'getMinimumVersion').mockResolvedValue('2.12.0')
+    await fakeBrowser.storage.local.set({
+      'mustard-extension-update-state': {
+        state: { status: 'current', currentVersion: '2.11.0' },
+        checkedAt: Date.now(),
+      },
+    })
+    const provider = new StubProvider()
+    provider.state = {
+      status: 'action-required',
+      currentVersion: '2.11.0',
+      latestVersion: '2.12.0',
+      action: { type: 'manual', instructions: ['Check Firefox.'] },
+    }
+
+    await expect(new ExtensionUpdateService(provider).check()).resolves.toMatchObject({
+      status: 'action-required',
+      required: true,
+    })
+    expect(provider.checkCalls).toBe(1)
+  })
+
   it('refreshes a persisted store check after thirty minutes', async () => {
     await fakeBrowser.storage.local.set({
       'mustard-extension-update-state': {
