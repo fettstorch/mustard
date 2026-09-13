@@ -24,7 +24,7 @@ the old 180-day JWT to approach expiry.
 - Tests: the legacy-shape fixture option in
   `test/e2e/authenticated/authenticated.fixture.ts` and the
   "silently exchanges a legacy jwt-only storage state…" case in
-  `session-refresh.spec.ts`, plus the valid-long-lived legacy-cache regression
+  `session-refresh.test.ts`, plus the valid-long-lived legacy-cache regression
   in `test/background/auth/SupabaseAuth.test.ts`.
 - Docs: transitional note in the `atproto-supabase-auth` skill.
 

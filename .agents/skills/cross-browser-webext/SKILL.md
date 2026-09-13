@@ -238,7 +238,11 @@ in several ways:
 
 ### Authenticated extension E2E isolation
 
-- Coverage audit (2026-09-12): `test/live-e2e/bluesky-auth.spec.ts` enters real
+- Use `.test.ts` for all test files. Vitest excludes the three browser-test
+  directories (`test/e2e`, `test/live-e2e`, `test/tab-e2e`); Playwright discovers
+  their `.test.ts` files through its existing suite configurations.
+
+- Coverage audit (2026-09-12): `test/live-e2e/bluesky-auth.test.ts` enters real
   Bluesky credentials, completes OAuth against local auth-bridge, checks stored
   sessions and logs out. Its fixture launches bundled Chromium with `dist/chrome`.
   The deterministic authenticated fixture instead injects a locally minted

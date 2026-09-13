@@ -6,7 +6,7 @@ if (existsSync('.env.e2e.local')) process.loadEnvFile('.env.e2e.local')
 
 export default defineConfig(baseConfig, {
   testDir: './test/live-e2e',
-  testMatch: 'bluesky-auth.spec.ts',
+  testMatch: 'bluesky-auth.test.ts',
   // Live provider discovery, PAR, login, and token exchange can be slower on
   // shared GitHub runners than on a developer machine.
   timeout: 120_000,
