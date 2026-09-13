@@ -23,7 +23,7 @@ type Stored = { pending?: Pending; status: OAuthLoginStatus }
  */
 export class TabOAuthLoginFlow implements OAuthLoginFlow {
   private serial = synchronize(<T>(operation: () => Promise<T>) => operation())
-  private cancellation = 0
+  private cancelled = false
   private finishing = false
   private complete?: (result: OAuthSessionResult) => Promise<void>
 
@@ -37,7 +37,7 @@ export class TabOAuthLoginFlow implements OAuthLoginFlow {
       void this.read()
         .then(async ({ pending }) => {
           if (pending?.tabId !== tabId || pending.session || this.finishing) return
-          this.cancellation++
+          this.cancelled = true
           await this.serial(async () => {
             if ((await this.read()).pending?.tabId === tabId) {
               await this.fail('Login was cancelled. Please try again.')
@@ -67,6 +67,7 @@ export class TabOAuthLoginFlow implements OAuthLoginFlow {
       if (!this.complete) throw new Error('Tab login is not initialized')
       await this.resume()
       if ((await this.read()).pending) throw new Error('A login is already open in another tab')
+      this.cancelled = false
       let tabId: number | undefined
       try {
         const owner = (await getSession())?.userId ?? null
@@ -121,7 +122,7 @@ export class TabOAuthLoginFlow implements OAuthLoginFlow {
     // cannot clear credentials before the completion callback writes them again.
     if (this.finishing) return this.serial(async () => false)
     // Signal immediately, even while a callback exchange owns the serial queue.
-    this.cancellation++
+    this.cancelled = true
     return this.serial(async () => {
       const { pending } = await this.read()
       if (!pending) return false
@@ -158,8 +159,7 @@ export class TabOAuthLoginFlow implements OAuthLoginFlow {
 
   private async visit(tabId: number, href: string): Promise<void> {
     const { pending } = await this.read()
-    if (!pending || pending.tabId !== tabId || pending.phase !== 'waiting') return
-    const cancellation = this.cancellation
+    if (!pending || pending.tabId !== tabId || pending.phase !== 'waiting' || this.cancelled) return
     const url = new URL(href)
     const callback = new URL(TAB_CALLBACK_URI)
     if (url.origin !== callback.origin || url.pathname !== callback.pathname) return
@@ -182,6 +182,7 @@ export class TabOAuthLoginFlow implements OAuthLoginFlow {
       }
       if (((await getSession())?.userId ?? null) !== pending.owner)
         throw new Error('Account changed')
+      if (this.cancelled) return
       await this.write({
         pending: { ...pending, phase: 'completing' },
         status: { status: 'pending' },
@@ -205,7 +206,7 @@ export class TabOAuthLoginFlow implements OAuthLoginFlow {
       ) {
         throw new Error('Invalid session response')
       }
-      if (this.cancellation !== cancellation) {
+      if (this.cancelled) {
         // Consent may already have minted a session; revoke it without installing it.
         await authBridgePost({ action: 'logout', refreshToken: result.refreshToken }).catch(
           () => {},

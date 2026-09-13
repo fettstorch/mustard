@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fakeBrowser } from 'wxt/testing/fake-browser'
+import { awaitable } from '@fettstorch/jule'
 import { TabOAuthLoginFlow } from '@/background/platform/TabOAuthLoginFlow'
 import { authBridgePost } from '@/background/auth/AuthBridge'
 import { getSession } from '@/background/auth/SessionStore'
@@ -44,6 +45,32 @@ async function begin() {
 }
 
 describe('tab login background recovery', () => {
+  it.each(['reading storage', 'waiting in the queue'])(
+    'honors cancellation while a callback is %s',
+    async (position) => {
+      const queued = position === 'waiting in the queue'
+      const { flow, complete } = await begin()
+      const reading = awaitable()
+      const release = awaitable()
+      const get = browser.storage.session.get.bind(browser.storage.session)
+      vi.spyOn(browser.storage.session, 'get').mockImplementationOnce(async (...args) => {
+        reading.resolve()
+        await release
+        return get(...args)
+      })
+      const update = vi.mocked(browser.tabs.onUpdated.addListener).mock.calls[0]![0]
+      update(7, { url: queued ? url : callback }, {} as never)
+      await reading
+      if (queued) update(7, { url: callback }, {} as never)
+      const cancelled = flow.cancel()
+      release.resolve()
+      expect(await cancelled).toBe(true)
+      expect(complete).not.toHaveBeenCalled()
+      expect(authBridgePost).toHaveBeenCalledTimes(1)
+      expect(await flow.getStatus()).toEqual({ status: 'idle' })
+    },
+  )
+
   it('finishes a persisted session in a fresh background without repeating OAuth', async () => {
     await begin()
     const stored = (await browser.storage.session.get('mustard_tab_login')).mustard_tab_login
