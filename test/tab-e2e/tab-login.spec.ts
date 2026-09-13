@@ -77,15 +77,18 @@ async function openLogin(context: BrowserContext, popupUrl: string, provider = '
 }
 
 async function start(context: BrowserContext, popup: Page, provider = 'atproto') {
-  const opened = context.waitForEvent('page')
   await popup
     .getByRole('button', {
       name: provider === 'github' ? 'Continue with GitHub' : 'Login',
       exact: true,
     })
     .click()
-  const auth = await opened
-  await auth.waitForURL('https://provider.example/authorize')
+  // Installation can open a welcome tab before the login tab.
+  const findAuth = () =>
+    context.pages().find((page) => page.url() === 'https://provider.example/authorize')
+  await expect.poll(() => Boolean(findAuth())).toBe(true)
+  const auth = findAuth()!
+  await auth.waitForLoadState()
   return auth
 }
 
@@ -155,6 +158,14 @@ test('ignores another tab and wrong callback path, then accepts only its own cal
   popupUrl,
 }) => {
   const requests = await mockAuth(context)
+  // Reproduce CI timing: an unrelated tab opens before the provider tab.
+  await context.route('**/functions/v1/auth-bridge', async (route) => {
+    if (route.request().postDataJSON().action === 'initiate') {
+      const welcome = await context.newPage()
+      await welcome.setContent('<h1>Welcome</h1>')
+    }
+    await route.fallback()
+  })
   const popup = await openLogin(context, popupUrl)
   const auth = await start(context, popup)
   const other = await context.newPage()
