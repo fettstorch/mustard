@@ -1,4 +1,4 @@
-import type { ExtensionUpdateAction, ExtensionUpdateState } from '@/shared/extension-update'
+import type { ExtensionUpdateState } from '@/shared/extension-update'
 import type { ExtensionUpdateProvider } from './ExtensionUpdateProvider'
 
 export class SafariExtensionUpdateProvider implements ExtensionUpdateProvider {
@@ -6,16 +6,11 @@ export class SafariExtensionUpdateProvider implements ExtensionUpdateProvider {
     return {
       status: 'unavailable',
       currentVersion,
-      message: 'This Safari preview cannot check for updates automatically.',
-      action: {
-        type: 'manual',
-        instructions: ['Install a newer Safari preview from the same source as this build.'],
-      },
     }
   }
 
-  async perform(_action: ExtensionUpdateAction): Promise<void> {
-    // Installing a containing app/temporary extension is a manual operation.
+  async perform(): Promise<void> {
+    // No update action is available until Mustard has a published store listing.
   }
 
   subscribe(): () => void {

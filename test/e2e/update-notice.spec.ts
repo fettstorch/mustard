@@ -25,8 +25,6 @@ test('unavailable updates show a notice only when the backend minimum requires o
   const state: ExtensionUpdateState = {
     status: 'unavailable',
     currentVersion: '1.0.0',
-    message: 'Automatic updates unavailable',
-    action: { type: 'manual', instructions: [] },
   }
 
   async function announce(update: ExtensionUpdateState) {

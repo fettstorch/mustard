@@ -54,15 +54,15 @@ describe('Safari platform without Chrome-only APIs', () => {
     })
   })
 
-  it('keeps required-update protection and manual instructions when no store check exists', async () => {
+  it('keeps required-update protection without offering an unavailable update action', async () => {
     vi.mocked(MinimumVersionCriterion.prototype.getMinimumVersion).mockResolvedValue('3.0.0')
     const service = new ExtensionUpdateService()
     expect(await service.isClientOutdated()).toBe(true)
-    expect(await service.check()).toMatchObject({
+    expect(await service.check()).toEqual({
       status: 'unavailable',
+      currentVersion: '2.14.2',
       required: true,
       minimumVersion: '3.0.0',
-      action: { type: 'manual', instructions: expect.arrayContaining([expect.any(String)]) },
     })
     await service.performAction()
     expect(browser.runtime.reload).not.toHaveBeenCalled()
