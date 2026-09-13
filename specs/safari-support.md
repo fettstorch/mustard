@@ -1,6 +1,6 @@
 # macOS Safari support plan
 
-Research date: **2026-09-12**. Status: **Safari build and tab sign-in implemented locally; OAuth deployment and Safari runtime acceptance pending**.
+Research date: **2026-09-12**. Status updated **2026-09-13**: **desktop Safari preview works; Bluesky and GitHub login manually confirmed; OAuth deployment complete**. See section 9 for verification and remaining release work. The initial research below is retained as design rationale, not a list of unfinished implementation tasks.
 
 ## Scope and priority
 
@@ -146,7 +146,7 @@ Temporary add-on reinstallation does not prove session persistence across browse
 
 ### Explicit Safari build
 
-The preview implements the following scripts. Safari dev-server startup is checked locally; Safari HMR/CSP behavior still requires manual runtime verification:
+The preview implements the following scripts. Use `build:safari` followed by manual reload. Both dev commands remain available, but their generated extension fails to open its popup in Safari; the cause is unresolved. Do not treat a running WXT server as a working Safari dev extension.
 
 ```json
 {
@@ -203,18 +203,18 @@ Apple recommends starting OAuth in a new tab when `identity` is unavailable. `Ta
 
 **Recovery:** session storage survives background suspension. Startup and `GET_OAUTH_LOGIN_STATUS` reconcile the saved tab URL. The UI checks status only while mounted. Closing/cancelling the tab, expiry, logout, disconnect, or a changed local account prevents stale completion; only one tab login runs at once. A browser restart clears pending session storage. An interrupted exchange requires a fresh login because its provider code may already have been consumed.
 
-The callback page remains static, with no script, third-party requests, credentials, or backend access. Its referrer policy is `no-referrer` and its CSP denies resources. The OAuth query stays intact for tab observation. Mustard JWTs and refresh tokens are returned to the extension, never placed in the callback URL.
+The callback page remains static, with no script, third-party requests, credentials, or backend access. Its referrer policy is `no-referrer`; its CSP allows only same-origin styles and images. The OAuth query stays intact for tab observation. Mustard JWTs and refresh tokens are returned to the extension, never placed in the callback URL.
 
-**No new authentication protocol or database schema is required by this implementation.** The only backend change is explicit Safari GitHub credential selection for the fixed callback. The earlier extra completion-secret/account-binding protocol, its migration, and its dedicated tests have been removed, including the migration's application to the local test database.
+**No new authentication protocol or database schema is required.** The only backend change is explicit Safari GitHub credential selection for the fixed callback.
 
 Sources: [Apple browser compatibility](https://developer.apple.com/documentation/safariservices/assessing-your-safari-web-extension-s-browser-compatibility?changes=_1_2&language=objc), [MDN tab URL permissions](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/tabs), [MDN tab update events](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/tabs/onUpdated).
 
 ### Hosting and provider registration
 
-- The prepared `docs/callback.html` is a static status page; all callback exchange happens in the extension.
+- `docs/callback.html` is a static status page hosted on GitHub Pages; all callback exchange happens in the extension.
 - Verify deployed HTML MIME type, HTTPS, CSP/referrer policy, and both providers' redirects before live Safari acceptance. Hosted Supabase Edge Functions on the standard domain rewrite HTML responses to plain text; do not assume they can serve the callback UI. [Supabase routing documentation](https://supabase.com/docs/guides/functions/http-methods)
-- Add the exact Safari callback to ATProto production/test metadata while retaining current Chrome/Firefox redirects and confidential-client keys. Keep old request/response contracts working; the tab transport is explicitly selected on the existing actions.
-- GitHub changed on **2026-08-14**: OAuth apps can now register up to **10 callback URIs**. A new Safari OAuth app is optional, not required by a one-callback restriction. The README/backend comments describing that restriction are stale. Prefer an isolated Safari registration if it avoids changing existing app settings; a separate registration is an isolation choice, not an API requirement. [GitHub announcement](https://github.blog/changelog/2026-08-14-multiple-redirect-uris-and-token-refresh-for-oauth-apps/)
+- The exact Safari callback is published in ATProto production/test metadata alongside the existing Chrome/Firefox redirects and confidential-client keys. Keep old request/response contracts working; the tab transport is explicitly selected on the existing actions.
+- GitHub changed on **2026-08-14**: OAuth apps can now register up to **10 callback URIs**. Mustard uses an isolated Safari app to preserve existing Chrome/Firefox settings; separate registration is an isolation choice, not an API requirement. [GitHub announcement](https://github.blog/changelog/2026-08-14-multiple-redirect-uris-and-token-refresh-for-oauth-apps/)
 - Inspect GitHub registration token-expiry settings. New OAuth apps now default to expiring tokens; the current backend treats GitHub tokens as classic long-lived tokens. Either retain a compatible setting for this slice or separately implement/test GitHub refresh before relying on an expiring-token registration. Do not accidentally change existing users' token policy.
 - Native authentication is a fallback investigation only. It adds app lifecycle and messaging work; a native messaging handler is not automatically an interactive auth presentation surface. Validate those boundaries before choosing it. [Apple native messaging](https://developer.apple.com/documentation/safariservices/messaging-between-the-app-and-javascript-in-a-safari-web-extension)
 
@@ -261,9 +261,9 @@ Source: [Apple permission management](https://developer.apple.com/documentation/
 - Add a Safari provider with a safe no-op subscription; it must never call Chrome update APIs.
 - App Store updates update the containing app/extension. `runtime.reload()` does not download an App Store update.
 - Keep `MinimumVersionCriterion`, required-update status, optional patch preference, and remote-write protection in the existing service. Do not introduce a second Safari-only banner or guard.
-- Initially support a truthful manual App Store update action for a required version. The current action DTO supports instructions; add a store link only after an actual listing exists.
+- Until an App Store listing exists, required updates show only “You must update Mustard to keep using it.” in the popup and persistent page toast. Local notes remain usable. No install action or preview-limitation banner is shown.
 - Optional “new version available” detection needs **Safari-distributed version metadata**. Do not use Chrome Web Store, AMO, or a GitHub tag as proof that Apple has released that version.
-- If optional Safari metadata is unavailable, expose that limitation without claiming the store was checked. Decide whether the existing state union needs an explicit unavailable-check state.
+- The provider returns `unavailable` with the installed version. The shared service applies the backend minimum; optional unavailability stays silent. Store discovery is deferred in [follow-ups](safari/follow-ups.md).
 - If release channels have different versions, add an optional Safari-specific minimum while preserving the existing global field and its Chrome/Firefox semantics, or keep the global minimum below every supported distributed version. An Apple review delay must not lock Safari users out with no update available.
 - Test required updates overriding the patch preference, read-only remote writes, continued local-note access, offline behavior, and recognizing the newly installed version on next startup.
 
@@ -284,13 +284,13 @@ Target selection lives in `src/background/platform/createBrowserPlatform.ts`. Se
 
 Keep this layer limited to real differences. Supported storage, messaging, content scripts, Vue rendering, and desktop context menus do not need a new wrapper merely because Safari is being added. Keep existing domain DTOs, message names, note interactions, and session persistence.
 
-| System / interface                                 | Chrome implementation                                          | Firefox implementation                                             | macOS Safari implementation                                      | Shared owner                                                                              |
-| -------------------------------------------------- | -------------------------------------------------------------- | ------------------------------------------------------------------ | ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `OAuthLoginFlow` (new)                             | Existing identity flow, same redirects and backend actions     | Existing identity flow, same redirects and backend actions         | Tab flow from section 4                                          | Provider-facing login functions and session orchestration                                 |
-| `ExtensionUpdateProvider` (existing)               | Keep requestUpdateCheck, downloaded-event and reload semantics | Keep AMO lookup, manual instructions and downloaded-event handling | Manual Mac App Store provider; no unsupported event subscription | `ExtensionUpdateService` and `MinimumVersionCriterion`                                    |
-| `NativeNotificationDelivery` (new narrow boundary) | Existing notification API delivery                             | Existing delivery, including Firefox staggering                    | Explicitly unsupported implementation                            | Existing unread fetching, preference, deduplication, acknowledgement and deep-link policy |
-| `BrowserSettingsHelp` (new data contract)          | Existing actionable shortcut-settings URL                      | Existing manual Firefox instructions                               | Safari-specific instructions, no fabricated settings URL         | Options UI                                                                                |
-| Toolbar action helper (existing)                   | `browser.action`                                               | `browser.browserAction` for current MV2                            | `browser.action`                                                 | Badge logic; reuse existing helper                                                        |
+| System / interface                                 | Chrome implementation                                          | Firefox implementation                                             | macOS Safari implementation                              | Shared owner                                                                              |
+| -------------------------------------------------- | -------------------------------------------------------------- | ------------------------------------------------------------------ | -------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `OAuthLoginFlow` (new)                             | Existing identity flow, same redirects and backend actions     | Existing identity flow, same redirects and backend actions         | Tab flow from section 4                                  | Provider-facing login functions and session orchestration                                 |
+| `ExtensionUpdateProvider` (existing)               | Keep requestUpdateCheck, downloaded-event and reload semantics | Keep AMO lookup, manual instructions and downloaded-event handling | Store check unavailable; shared minimum-version notice   | `ExtensionUpdateService` and `MinimumVersionCriterion`                                    |
+| `NativeNotificationDelivery` (new narrow boundary) | Existing notification API delivery                             | Existing delivery, including Firefox staggering                    | Explicitly unsupported implementation                    | Existing unread fetching, preference, deduplication, acknowledgement and deep-link policy |
+| `BrowserSettingsHelp` (new data contract)          | Existing actionable shortcut-settings URL                      | Existing manual Firefox instructions                               | Safari-specific instructions, no fabricated settings URL | Options UI                                                                                |
+| Toolbar action helper (existing)                   | `browser.action`                                               | `browser.browserAction` for current MV2                            | `browser.action`                                         | Badge logic; reuse existing helper                                                        |
 
 No Safari limitation should disable a working Chrome/Firefox feature. Unsupported is a capability outcome, not a successful operation or an empty data result.
 
@@ -316,7 +316,7 @@ Production selection depends on WXT's browser target. `VITE_E2E_TAB_LOGIN=true` 
 `ExtensionUpdateProvider` already defines `check(currentVersion)`, `perform(action)`, and `subscribe(listener)`. Reuse it; do not replace the two existing providers or duplicate the coordinator.
 
 - Add Safari selection and provider in isolation. Preserve existing Chrome/Firefox state transitions, cache TTLs, retry behavior, patch filtering, mandatory-update override, and write guards.
-- Represent inability to check an optional store update explicitly, for example a new `unavailable` result/state. Keep existing state names and serialized shapes valid; add exhaustive handling and restoration tests before introducing a new state. Safari must still expose a manual required-update action when a minimum is known.
+- `unavailable` represents the absent store check without an action or explanatory message. Existing Chrome/Firefox states remain unchanged. Safari displays the required-update notice when the shared service marks it required.
 - UI renders supported actions from the result; it does not infer “download then reload” from the browser name.
 - Test every existing provider against the same coordinator contract. Mocked Safari success must not mask a failing Chrome event subscription or Firefox manual update path.
 
@@ -407,57 +407,27 @@ Each row is a coherent implementation slice. Recheck the shared checkout before 
 
 During implementation, update the cross-browser/auth skills and auth specs alongside behavior changes. Correct outdated setup instructions where touched. The initial boundary extraction adds no native project, Safari build target, or production configuration.
 
-### Implementation checkpoint: browser boundaries (2026-09-12)
+### Current implementation and rollout (2026-09-13)
 
-Implemented the order-1 extraction in `feat/safari-support`:
+- Browser boundaries, Safari MV3 build, tab login, website-access requests, and required-update UI are implemented. Existing Chrome/Firefox auth, notification, and update behavior stays behind the same interfaces.
+- The static callback and both ATProto metadata files were published on `main` in `46ae60f`. Existing callbacks and keys were retained.
+- Safari GitHub credentials are configured in Supabase. The approved `auth-bridge` deployment adds only exact Safari callback credential selection. Downloaded production source matched the reviewed source; live initiation selected the expected OAuth app and callback for all three browsers. No database migration or other function deployment was involved.
+- The user confirmed the production Safari build, Bluesky login, and GitHub login work. This is manual confirmation, not automated Safari coverage or a complete release acceptance pass.
+- Callback-page styling is committed in this lane and awaits the general merge; it was checked locally for layout, assets, CSP, and referrer behavior. It does not change the callback protocol.
+- `dev:safari` remains unresolved: the popup fails to open and Safari reports background content as not loaded. Use `build:safari` and manual reload. No speculative CSP/reload workaround was added.
 
-- `OAuthLoginFlow` / `IdentityOAuthLoginFlow`: existing Chrome/Firefox transport, lazy redirect resolution, unchanged callback payloads and provider-owned session persistence.
-- `NativeNotificationDelivery` / `WebExtensionNotificationDelivery`: native API and icon handling isolated; shared dispatch policy retained, including Firefox spacing between attempts.
-- `createBrowserPlatform.ts`: factory selection reuses the existing update providers and coordinator.
-- `browser-settings.ts`: explicit WXT target selects the existing Chrome settings link or formatted Firefox instructions.
+### Recorded verification
 
-**Automated regression gate passed:** `npm run check` ran 266 unit tests, type checking, lint, formatting, Knip, both browser builds, and Firefox add-on validation (zero errors, the same eight warnings). Generated Chrome and Firefox manifests are byte-for-byte unchanged from the saved baseline. `npm run test:e2e:all` passed 18 smoke tests, 49 authenticated tests, and the real Bluesky login/logout test with local account `teststorch.npmx.social`.
+- On 2026-09-12, `npm run test:e2e:all` passed **77 tests**: 18 smoke, 49 authenticated, one real Chromium Bluesky login/logout, and nine tab-flow tests. `npm run check` passed **279 unit/integration tests**, all three builds, and Firefox validation (zero errors, eight existing warnings). Chrome/Firefox manifests matched the saved pre-extraction baselines.
+- On 2026-09-13, all nine Chromium tab-flow E2E tests passed again. These use deterministic provider/backend responses; they do not perform live Safari OAuth.
+- The local E2E minimum-version isolation and editor-removal wait are retained as explicitly accepted baseline fixes. They make regression checks reliable without changing production behavior.
+- Supplemental tests cover unsupported Safari APIs, background reconstruction, expiry, interrupted exchanges, changed accounts, duplicate callbacks, and concurrent starts. Browser automation remains Chromium-only; Firefox and Safari runtime checks are manual.
 
-Firefox runtime acceptance is **still pending manual testing** using the checklist in Phase 0; static builds and Chromium results do not establish that runtime result. This checkpoint does not add a Safari target, Safari auth, a backend change, or a native package. The next implementation slice is order 2: startup-safe Safari MV3 and explicit capabilities. Validate in actual macOS Safari before claiming runtime support.
+### Remaining work
 
-### Initial Safari local-notes preview checkpoint (2026-09-12)
-
-- WXT now builds `dist/safari` with explicit MV3, Safari 18.4 minimum and matching JS/CSS targets. `identity` and `notifications` are omitted only from Safari's manifest. `build:safari` is part of `npm run check` and the CI quality job.
-- Safari gets an explicitly unavailable login transport and no-native-notification implementation. The popup/options state that sign-in is not yet supported; local notes remain usable. No OAuth workaround, registration change, backend change, or native bridge was added.
-- Safari update state is `unavailable`, not a claim that the store was checked. Required-version policy still blocks remote writes and presents manual preview-install instructions. Existing serialized Chrome/Firefox states remain valid.
-- The real background entrypoint is tested with `identity`, `notifications`, `requestUpdateCheck`, and `onUpdateAvailable` removed from WXT's fake browser. It registers desktop context menus and responds to local-note save/query and status messages. This is a mocked integration test, not Safari runtime proof.
-- **Verification:** the complete quality/build gate passed for Chrome, Firefox, and Safari. The final unit/integration run passed **273 tests**; lint, formatting, and Knip passed. `npm run test:e2e:all` passed **18 smoke + 49 authenticated + 1 real Bluesky login/logout** tests. Chrome/Firefox generated manifests are semantically unchanged. CI configuration is updated locally; no new remote CI run or publication is claimed.
-- Safari runtime testing is deferred to the user by explicit instruction. Do not automate Safari UI or block independent implementation on a manual review. The preview covers local-note testing only; authentication, permission recovery, native packaging/signing, and installed upgrade checks remain unfinished.
-
-### Tab sign-in implementation checkpoint (2026-09-12)
-
-- Safari uses a normal tab in place of the unsupported identity API. Existing auth request/response payloads, token exchange, linking, and database handling are reused.
-- There are no database migration changes in this lane. The extra protocol and its two local test-database columns were removed at the user's direction.
-- Both ATProto metadata files retain Chrome/Firefox callbacks and keys, with the Safari HTTPS callback added. The metadata and static callback page are prepared locally, not published.
-- GitHub selects explicit `GITHUB_CLIENT_ID_SAFARI` / `GITHUB_CLIENT_SECRET_SAFARI`, preserving existing browser registrations. No GitHub live-login automation was added.
-- Chromium tab E2E verifies both provider paths against the existing payload shapes using deterministic HTTP responses. It covers popup closure, logout, callback tab/path/state validation, errors, cancellation, and cancellation during exchange. Supplemental lifecycle tests cover background reconstruction, interruption, expiry, local account changes, duplicate tab events, and concurrent starts.
-- Tab E2E is included in the existing Chromium smoke CI job and `test:e2e:all`. It does not prove live-provider tab authentication or Safari runtime behavior.
-- Keep the previously authorized baseline fixes: isolate the local E2E minimum-version setting and wait for editor removal before reopening. They make the existing-browser regression gate reliable.
-
-### Verification after scope correction
-
-After removing the extra protocol and rolling back its local database changes:
-
-- `npm run test:e2e:all`: **77 passed** — 18 smoke, 49 authenticated, one real Chromium Bluesky login/logout, and nine tab-flow tests. The tab tests verify the existing backend payload format.
-- `npm run check`: **279 unit/integration tests passed**, all quality checks and Chrome/Firefox/Safari builds passed. Firefox validation: zero errors, eight existing warnings.
-- Generated Chrome and Firefox manifests exactly match the saved pre-extraction baselines. Normal production build artifacts were restored after E2E.
-- No migration diff remains against the base. The local test database has neither the two added columns nor the migration 024 record. No production database or hosted files were changed.
-- Safari and Firefox runtime acceptance remain manual; no live Safari login pass or remote CI run is claimed.
-
-### Remaining Safari activation and acceptance
-
-1. With explicit publishing approval, publish the static callback page and the additional URI in both ATProto metadata documents. Existing callbacks and JWKs remain unchanged. A local-only metadata edit cannot enable a live ATProto redirect.
-2. For GitHub, configure the Safari registration/secrets and deploy the credential-selection change in `auth-bridge`. Bluesky needs no backend code or database change for the tab transport.
-3. Manually test Safari login, popup closure/reopen, logout, cancellation, linking with the existing account UUID, and suspension/retry. Then exercise publish/read/delete with a disposable note.
-4. Manually check Firefox login and affected flows before release. Retain Chrome/Firefox regression checks throughout.
-5. Signed macOS packaging, installation/upgrade checks, and release distribution remain later Safari work, subject to explicit publication approval.
-
-No production deployment, hosted-file publication, provider registration change, or manual Safari login pass is claimed.
+- Review and merge this lane, including callback styling. OAuth activation is already complete.
+- Before public release, use the manual acceptance matrix below for broader Safari behavior and existing Firefox compatibility. Account linking reuses the unchanged backend; the Safari-specific check is that the current account session reaches the tab callback.
+- Signed macOS packaging, data-preserving installation/upgrades, and public distribution are later release work. App Store update discovery remains deferred until publication; see [follow-ups](safari/follow-ups.md).
 
 ## 10. Verification matrix
 
@@ -509,7 +479,7 @@ Run on the proposed oldest supported Safari and a current stable release on supp
 | Sleep/wake or lock/unlock and memory pressure                   | Required         | Messaging/session/cache recover                                        |
 | Minimize, expand, anchor drag, editor                           | Mouse + keyboard | Every action reachable                                                 |
 | Options, larger text, themes, accessibility                     | Required         | No clipped controls or focus traps                                     |
-| Required update before/after installation                       | Required         | Correct store instructions; writes unlock at supported version         |
+| Required update before/after installation                       | Required         | Required-update notice; writes unlock at supported version             |
 | Signed upgrade, stable ID and local-note keys                   | Required         | No lost local notes or unnecessary logout                              |
 | Profiles and private browsing                                   | Required         | Explicit enablement/access behavior; no accidental cross-account state |
 
@@ -527,7 +497,7 @@ Run on the proposed oldest supported Safari and a current stable release on supp
 - [ ] Chrome and Firefox checks remain green.
 - [ ] macOS release is explicitly approved after Chrome, Firefox, and Safari acceptance passes.
 
-## 11. Decisions to settle during implementation
+## 11. Selected defaults and deferred decisions
 
 | Decision                                  | Proposed default                               | What would change it                                                   |
 | ----------------------------------------- | ---------------------------------------------- | ---------------------------------------------------------------------- |
@@ -539,4 +509,4 @@ Run on the proposed oldest supported Safari and a current stable release on supp
 | Optional Safari update notices            | Add only with reliable Safari release metadata | Available distribution-specific version source                         |
 | Local draft migration from other browsers | Separate future feature                        | Explicit cross-browser draft migration requirement                     |
 
-The largest uncertainty is **OAuth plus suspension recovery**, followed by **preserving existing browsers and signed Safari upgrades**. Build generation is already proven; implementation starts by passing the automated Chromium baseline with manual Firefox compatibility checks, then preserving that baseline through interface extraction and Safari implementation.
+The desktop preview and both real-provider logins are working. Keep the remaining acceptance work distinct from missing implementation: signed upgrades and public distribution are not yet verified, and automated Safari extension coverage is not available through the chosen WXT/Playwright workflow.

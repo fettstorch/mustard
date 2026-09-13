@@ -24,8 +24,9 @@ and Firefox (MV2/MV3) with WXT. Read this before touching `wxt.config.ts`,
   do not add a Firefox automation harness or unproven browser workarounds. Record
   manual Firefox checks at shared-code checkpoints and before release. New GitHub
   login E2E is not required for this prerequisite.
-- WXT 0.20.27 Safari MV3 compilation and macOS Xcode project generation passed;
-  runtime and signing remain unverified. Use explicit `--mv3` because WXT defaults
+- WXT 0.20.27 Safari MV3 compilation and macOS Xcode project generation passed.
+  The user confirmed the production preview and both logins on 2026-09-13;
+  signed installation/upgrades remain unverified. Use explicit `--mv3` because WXT defaults
   Safari to MV2. Keep Chrome MV3 and Firefox's existing MV2 manifest unchanged.
 - Safari lacks `identity`, `notifications`, `runtime.requestUpdateCheck`, and
   `runtime.onUpdateAvailable`. Isolate auth, native-notification delivery, updates,
@@ -48,7 +49,7 @@ and Firefox (MV2/MV3) with WXT. Read this before touching `wxt.config.ts`,
   native-notification, and update implementations. Importing it and constructing
   its implementations must not read unsupported browser APIs. Safari explicitly
   selects a normal-tab login transport, unsupported native toasts,
-  and a manual-update provider. This is not proof of Safari runtime support.
+  and an unavailable-store-check provider. Runtime acceptance remains a separate check.
 - `IdentityOAuthLoginFlow` owns the existing initiate/identity/callback transport;
   it resolves the identity redirect only when login starts. Provider wrappers keep
   session persistence for completed identity results. Safari may return a pending result;
@@ -71,8 +72,8 @@ and Firefox (MV2/MV3) with WXT. Read this before touching `wxt.config.ts`,
   minimum, and matching JS/CSS compilation targets. The CI quality job and local
   `npm run check` build it. Safari excludes identity/notifications permissions;
   it adds `tabs` for login URL observation. Chrome/Firefox manifest contracts remain unchanged.
-- Safari tab sign-in is implemented, with hosted metadata/backend rollout and
-  manual real-provider acceptance still pending. `browser-capabilities.ts` hides
+- Safari tab sign-in, hosted metadata, and GitHub credential-selection deployment
+  are complete; the user confirmed both real-provider logins on 2026-09-13. `browser-capabilities.ts` hides
   native-toast controls; in-app notifications remain part of the shared system.
 - `TabOAuthLoginFlow` registers basic tab listeners synchronously (no event filters),
   persists pending state in session storage, and only accepts its own tab's exact
@@ -82,9 +83,13 @@ and Firefox (MV2/MV3) with WXT. Read this before touching `wxt.config.ts`,
   to run the same transport in standard Playwright Chromium. Production builds
   ignore this test override. Tests use controlled provider/backend HTTP responses;
   the existing live Bluesky E2E separately verifies the identity transport.
-- `SafariExtensionUpdateProvider` returns `unavailable` with manual preview-install
-  instructions, never a fabricated store check or reload/download. Required-version
-  protection remains in `ExtensionUpdateService`; preserve existing serialized states.
+- `SafariExtensionUpdateProvider` returns only `unavailable` and the installed
+  version. The shared service applies the backend minimum: required updates show
+  “You must update Mustard to keep using it.” Optional unavailability stays silent;
+  no install action or preview explanation is offered before App Store publication.
+- Use `build:safari` and manual reload. `dev:safari` currently fails to open the
+  popup, with Safari background content shown as not loaded. Its cause remains
+  unresolved; do not invent a hot-reload/CSP workaround or label dev mode verified.
 - `SafariBackground.test.ts` runs the actual entrypoint with Safari-absent APIs
   removed from WXT's fake browser and verifies local saves/queries and status replies.
   This is mocked integration coverage, not a Safari E2E result.
