@@ -44,6 +44,25 @@ async function begin() {
 }
 
 describe('tab login background recovery', () => {
+  it('finishes a persisted session in a fresh background without repeating OAuth', async () => {
+    await begin()
+    const stored = (await browser.storage.session.get('mustard_tab_login')).mustard_tab_login
+    stored.pending.phase = 'completing'
+    stored.pending.session = result
+    // The provider exchange is already complete; its old login deadline no longer applies.
+    stored.pending.expiresAt = 0
+    await browser.storage.session.set({ mustard_tab_login: stored })
+    const resumed = new TabOAuthLoginFlow()
+    const complete = vi.fn().mockResolvedValue(undefined)
+    resumed.initialize(complete)
+    await expect.poll(() => resumed.getStatus()).toEqual({ status: 'idle' })
+    expect(complete).toHaveBeenCalledExactlyOnceWith(result)
+    expect(authBridgePost).toHaveBeenCalledTimes(1)
+    expect((await browser.storage.session.get('mustard_tab_login')).mustard_tab_login).toEqual({
+      status: { status: 'idle' },
+    })
+  })
+
   it('resumes a callback from persisted tab state in a fresh background instance', async () => {
     await begin()
     url = callback

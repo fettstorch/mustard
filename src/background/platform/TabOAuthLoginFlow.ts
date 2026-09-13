@@ -12,6 +12,7 @@ type Pending = {
   owner: string | null
   expiresAt: number
   phase: 'waiting' | 'completing'
+  session?: OAuthSessionResult
 }
 type Stored = { pending?: Pending; status: OAuthLoginStatus }
 
@@ -34,7 +35,7 @@ export class TabOAuthLoginFlow implements OAuthLoginFlow {
     browser.tabs.onRemoved.addListener((tabId) => {
       void this.read()
         .then(async ({ pending }) => {
-          if (pending?.tabId !== tabId || this.finishing) return
+          if (pending?.tabId !== tabId || pending.session || this.finishing) return
           this.cancellation++
           await this.serial(async () => {
             if ((await this.read()).pending?.tabId === tabId) {
@@ -128,8 +129,13 @@ export class TabOAuthLoginFlow implements OAuthLoginFlow {
     this.cancellation++
     return this.serial(async () => {
       const { pending } = await this.read()
+      if (!pending) return false
+      if (pending.session) {
+        await this.finish(pending, pending.session)
+        return false
+      }
       await this.write({ status: { status: 'idle' } })
-      if (pending) await browser.tabs.remove(pending.tabId).catch(() => {})
+      await browser.tabs.remove(pending.tabId).catch(() => {})
       return true
     })
   }
@@ -137,6 +143,10 @@ export class TabOAuthLoginFlow implements OAuthLoginFlow {
   private async resume(): Promise<void> {
     const { pending } = await this.read()
     if (!pending) return
+    if (pending.session) {
+      await this.finish(pending, pending.session)
+      return
+    }
     if (pending.expiresAt <= Date.now()) {
       await this.fail('Login expired. Please try again.')
       return
@@ -207,19 +217,33 @@ export class TabOAuthLoginFlow implements OAuthLoginFlow {
         )
         return
       }
-      this.finishing = true
-      await this.complete!({
+      await this.finish(pending, {
         userId: result.userId,
         jwt: result.jwt,
         expiresAt: result.expiresAt,
         refreshToken: result.refreshToken,
         ...(typeof result.did === 'string' ? { did: result.did } : {}),
       })
-      await this.write({ status: { status: 'idle' } })
-      await browser.tabs.remove(tabId).catch(() => {})
     } catch {
       // Never expose codes or backend response bodies in UI/logs.
       await this.fail('Sign-in failed or was cancelled. Please try again.')
+    }
+  }
+
+  private async finish(pending: Pending, session: OAuthSessionResult): Promise<void> {
+    this.finishing = true
+    try {
+      // Retain the exchanged result until both credentials and identities are saved.
+      // A fresh background can repeat installation without reusing the OAuth code.
+      await this.write({
+        pending: { ...pending, phase: 'completing', session },
+        status: { status: 'finishing' },
+      })
+      await this.complete!(session)
+      await this.write({ status: { status: 'idle' } })
+      await browser.tabs.remove(pending.tabId).catch(() => {})
+    } catch {
+      await this.fail('Sign-in failed. Please try again.')
     } finally {
       this.finishing = false
     }

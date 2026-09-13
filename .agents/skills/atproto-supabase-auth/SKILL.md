@@ -38,6 +38,10 @@ receives no Mustard credentials. Pending tab ID/state/request/local account
 and expiry live in `storage.session`. Startup and UI status reads reconcile the
 saved tab; there is no background polling. An uncertain interrupted exchange
 requires a fresh login rather than retrying a possibly consumed code.
+Once the exchange result is received, it is retained in the existing pending
+session-storage record until installation finishes. Background recovery repeats
+credential/identity installation from that result, never the OAuth exchange;
+the pending credentials are removed on success or handled failure.
 
 Tab login can be cancelled until session installation starts. During installation,
 status is `finishing` and Cancel is disabled; late cancellation returns `false`.

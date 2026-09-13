@@ -109,6 +109,87 @@ async function stored(context: BrowserContext) {
   })
 }
 
+for (const linking of [false, true]) {
+  test(`recovers partially saved ${linking ? 'account linking' : 'first login'}`, async ({
+    context,
+    popupUrl,
+  }) => {
+    const requests = await mockAuth(context)
+    const popup = await context.newPage()
+    await popup.goto(popupUrl)
+    await context.serviceWorkers()[0]!.evaluate(
+      async ({ userId, linking }) => {
+        const ext = globalThis as typeof globalThis & {
+          chrome: {
+            storage: {
+              local: { set(value: unknown): Promise<void> }
+              session: { set(value: unknown): Promise<void> }
+            }
+            tabs: { create(value: unknown): Promise<{ id: number }> }
+          }
+        }
+        const session = {
+          userId,
+          jwt: 'test-jwt',
+          expiresAt: Math.floor(Date.now() / 1000) + 86400,
+          refreshToken: 'test-refresh',
+        }
+        // State left after saving credentials but before saving fresh identities.
+        await ext.chrome.storage.local.set({
+          supabase_jwt: session,
+          ...(linking
+            ? {
+                mustard_session: {
+                  userId,
+                  identities: [{ provider: 'github', providerAccountId: 'old' }],
+                },
+              }
+            : {}),
+        })
+        const tab = await ext.chrome.tabs.create({ url: 'about:blank' })
+        await ext.chrome.storage.session.set({
+          mustard_tab_login: {
+            pending: {
+              tabId: tab.id,
+              state: 'already-exchanged',
+              request: { provider: 'github' },
+              owner: linking ? userId : null,
+              expiresAt: 0,
+              phase: 'completing',
+              session,
+            },
+            status: { status: 'finishing' },
+          },
+        })
+      },
+      { userId, linking },
+    )
+    // Exercise recovery through the real background message handler.
+    await popup.evaluate(() =>
+      (
+        globalThis as typeof globalThis & {
+          chrome: { runtime: { sendMessage(value: unknown): Promise<unknown> } }
+        }
+      ).chrome.runtime.sendMessage({ type: 'GET_OAUTH_LOGIN_STATUS' }),
+    )
+    await expect
+      .poll(async () => (await stored(context)).transient)
+      .toEqual({
+        mustard_tab_login: { status: { status: 'idle' } },
+      })
+    expect((await stored(context)).local.mustard_session).toMatchObject({
+      userId,
+      identities: [{ provider: 'atproto', providerAccountId: 'did:plc:test' }],
+    })
+    expect(requests.filter((r) => r.action === 'list-identities')).toHaveLength(1)
+    expect(requests.some((r) => r.action === 'initiate' || r.action === 'callback')).toBe(false)
+    await popup.reload()
+    await expect(popup.getByRole('button', { name: 'Logout', exact: true })).toBeVisible()
+    await popup.getByRole('button', { name: 'Logout', exact: true }).click()
+    await expect.poll(async () => (await stored(context)).local.supabase_jwt).toBeUndefined()
+  })
+}
+
 for (const provider of ['atproto', 'github']) {
   test(`${provider}: completes after the popup closes, keeps credentials out of the callback page, and logs out`, async ({
     context,
