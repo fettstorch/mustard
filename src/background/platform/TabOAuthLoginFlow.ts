@@ -144,7 +144,11 @@ export class TabOAuthLoginFlow implements OAuthLoginFlow {
       return
     }
     if (pending.expiresAt <= Date.now()) {
-      await this.fail('Login expired. Please try again.')
+      try {
+        await this.fail('Login expired. Please try again.')
+      } finally {
+        await browser.tabs.remove(pending.tabId).catch(() => {})
+      }
       return
     }
     if (pending.phase === 'completing') {

@@ -132,6 +132,7 @@ describe('tab login background recovery', () => {
       })
     expect(complete).not.toHaveBeenCalled()
     expect(authBridgePost).toHaveBeenCalledTimes(1)
+    expect(browser.tabs.remove).toHaveBeenCalledExactlyOnceWith(7)
   })
 
   it('rejects completion when the local account changed', async () => {
