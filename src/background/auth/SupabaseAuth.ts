@@ -149,14 +149,15 @@ async function clearSupabaseJwt(): Promise<void> {
  * the refresh token can't be reused elsewhere) and clear local credentials.
  * Best-effort on the network call: a failed revoke must never block the user
  * from logging out on this device — they end up logged out locally either way.
+ * Login rollback can pass a returned token whose credential write failed.
  */
-export async function revokeSupabaseSession(): Promise<void> {
-  const cached = await getCachedJwt()
+export async function revokeSupabaseSession(refreshToken?: string): Promise<void> {
+  const token = refreshToken ?? (await getCachedJwt())?.refreshToken
   // End the active local session first. Keep the refresh token only in this
   // stack frame for a bounded best-effort server revocation; never persist a
   // usable credential after logout merely so it can be retried later.
   await clearSupabaseJwt()
-  if (!cached?.refreshToken) return
+  if (!token) return
 
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), SESSION_REVOCATION_TIMEOUT_MS)
@@ -168,7 +169,7 @@ export async function revokeSupabaseSession(): Promise<void> {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
         },
-        body: JSON.stringify({ action: 'logout', refreshToken: cached.refreshToken }),
+        body: JSON.stringify({ action: 'logout', refreshToken: token }),
         signal: controller.signal,
       }).catch((error: unknown) => {
         if (!controller.signal.aborted && tryCount < SESSION_REVOCATION_MAX_TRIES) {

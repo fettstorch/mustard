@@ -76,14 +76,14 @@ export default defineBackground(() => {
   const extensionUpdateService = new ExtensionUpdateService()
   const oauthLogin = createOAuthLoginFlow()
   oauthLogin.initialize?.(async (result) => {
-    await storeSupabaseJwt(result.jwt, result.expiresAt, result.userId, result.refreshToken)
     try {
+      await storeSupabaseJwt(result.jwt, result.expiresAt, result.userId, result.refreshToken)
       if (!(await syncSessionIdentities(result.jwt, result.userId))) {
         throw new Error('Login returned no linked identities')
       }
       await invalidateRemoteIndexCache()
     } catch (error) {
-      await revokeSupabaseSession()
+      await revokeSupabaseSession(result.refreshToken)
       await logout(result.userId)
       throw error
     }

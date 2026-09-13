@@ -407,6 +407,70 @@ for (const ending of ['cancel', 'close']) {
   })
 }
 
+for (const linking of [false, true]) {
+  test(`credential write failure revokes the returned session during ${linking ? 'account linking' : 'first login'}`, async ({
+    context,
+    popupUrl,
+  }) => {
+    const requests = await mockAuth(context, { linking })
+    const popup = await openLogin(context, popupUrl)
+    if (linking) {
+      await context.serviceWorkers()[0]!.evaluate(async (userId) => {
+        const ext = globalThis as typeof globalThis & {
+          chrome: { storage: { local: { set(value: unknown): Promise<void> } } }
+        }
+        await ext.chrome.storage.local.set({
+          mustard_session: {
+            userId,
+            identities: [
+              { provider: 'atproto', providerAccountId: 'did:plc:test', handle: 'test.example' },
+            ],
+          },
+          supabase_jwt: {
+            userId,
+            jwt: 'old-jwt',
+            refreshToken: 'old-refresh',
+            expiresAt: Math.floor(Date.now() / 1000) + 86400,
+          },
+        })
+      }, userId)
+      await popup.goto(popupUrl.replace('popup.html', 'options.html'))
+      await popup.getByRole('button', { name: 'Connect GitHub', exact: true }).click()
+    } else {
+      await start(context, popup)
+    }
+    const auth = await providerTab(context)
+    // Fail only the initial JWT write, leaving the existing rollback APIs usable.
+    await context.serviceWorkers()[0]!.evaluate(() => {
+      const ext = globalThis as typeof globalThis & {
+        chrome: { storage: { local: { set(value: Record<string, unknown>): Promise<void> } } }
+      }
+      const storage = ext.chrome.storage.local
+      const set = storage.set.bind(storage)
+      storage.set = async (value) => {
+        if ('supabase_jwt' in value) {
+          storage.set = set
+          throw new Error('Test credential write failure')
+        }
+        return set(value)
+      }
+    })
+    await auth.goto(callbackUrl)
+    await expect
+      .poll(async () => (await stored(context)).transient)
+      .toMatchObject({
+        mustard_tab_login: { status: { status: 'failed' } },
+      })
+    expect(requests.filter((r) => r.action === 'logout')).toEqual([
+      { action: 'logout', refreshToken: 'test-refresh' },
+    ])
+    expect((await stored(context)).local).toEqual({})
+    expect(requests.some((r) => r.action === 'list-identities')).toBe(false)
+    await popup.goto(popupUrl)
+    await expect(popup.getByRole('button', { name: 'Login', exact: true })).toBeVisible()
+  })
+}
+
 test('cache cleanup failure rolls back the installed login', async ({ context, popupUrl }) => {
   const requests = await mockAuth(context)
   const popup = await openLogin(context, popupUrl)
