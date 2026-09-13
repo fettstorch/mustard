@@ -1,0 +1,75 @@
+:root {
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  color: #3d2200;
+  background: #f5f5f5;
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  min-height: 100vh;
+  min-height: 100svh;
+  margin: 0;
+  padding: 32px 20px;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(ellipse at top, #fff3c4, transparent 70%);
+}
+
+.sign-in-card {
+  width: 100%;
+  max-width: 480px;
+  padding: 36px 32px 32px;
+  text-align: center;
+  background: #fffdf5;
+  border: 2px solid #5c3a1e;
+  border-radius: 24px;
+  box-shadow:
+    0 6px 0 #ffcc33,
+    0 16px 40px #3d220010;
+}
+
+.mascot {
+  display: block;
+  margin: 0 auto 20px;
+}
+
+.brand {
+  display: inline-block;
+  margin: 0 0 20px;
+  padding: 6px 12px;
+  background: #ffe066;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+h1 {
+  margin: 0;
+  font-size: clamp(22px, 5vw, 28px);
+  letter-spacing: -0.04em;
+  line-height: 1.25;
+}
+
+p {
+  line-height: 1.65;
+  text-wrap: pretty;
+}
+
+.message {
+  margin: 16px 0 24px;
+  font-size: 15px;
+}
+
+.help {
+  margin: 0;
+  padding-top: 20px;
+  border-top: 1px solid #eadfc5;
+  color: #725b3e;
+  font-size: 12px;
+}
