@@ -43,8 +43,11 @@ session-storage record until installation finishes. Background recovery repeats
 credential/identity installation from that result, never the OAuth exchange;
 the pending credentials are removed on success or handled failure.
 
-Tab login can be cancelled until session installation starts. During installation,
-status is `finishing` and Cancel is disabled; late cancellation returns `false`.
+First login can be cancelled until session installation starts. Account linking
+becomes non-cancellable before its callback exchange: the backend can revoke the
+previous session while minting its replacement, so the extension must retain the
+replacement. During that exchange and session installation, status is `finishing`
+and Cancel is disabled; late cancellation returns `false`.
 Cancellation still waits for installation to settle so logout can safely clear it.
 
 Safari uses the existing initiate/callback payloads and backend token exchange.

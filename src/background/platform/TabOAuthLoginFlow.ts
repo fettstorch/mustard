@@ -183,9 +183,12 @@ export class TabOAuthLoginFlow implements OAuthLoginFlow {
       if (((await getSession())?.userId ?? null) !== pending.owner)
         throw new Error('Account changed')
       if (this.cancelled) return
+      // Linking can replace the active server session during the exchange itself.
+      // From here on we must install its replacement, even if the tab is closed.
+      this.finishing = Boolean(pending.request.currentJwt)
       await this.write({
         pending: { ...pending, phase: 'completing' },
-        status: { status: 'pending' },
+        status: { status: this.finishing ? 'finishing' : 'pending' },
       })
       const result = await authBridgePost({
         action: 'callback',
@@ -227,6 +230,8 @@ export class TabOAuthLoginFlow implements OAuthLoginFlow {
     } catch {
       // Never expose codes or backend response bodies in UI/logs.
       await this.fail('Sign-in failed or was cancelled. Please try again.')
+    } finally {
+      this.finishing = false
     }
   }
 

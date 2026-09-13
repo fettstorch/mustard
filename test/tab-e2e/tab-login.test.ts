@@ -15,6 +15,7 @@ async function mockAuth(
     reject?: boolean
     completionGate?: Promise<void>
     identitiesGate?: Promise<void>
+    linking?: boolean
   } = {},
 ) {
   const requests: Record<string, unknown>[] = []
@@ -57,6 +58,9 @@ async function mockAuth(
                     provider_account_id: 'did:plc:test',
                     handle: 'test.example',
                   },
+                  ...(options.linking && requests.some((r) => r.action === 'callback')
+                    ? [{ provider: 'github', provider_account_id: '42', handle: 'test-github' }]
+                    : []),
                 ],
               }
             : {}
@@ -84,6 +88,10 @@ async function start(context: BrowserContext, popup: Page, provider = 'atproto')
       exact: true,
     })
     .click()
+  return providerTab(context)
+}
+
+async function providerTab(context: BrowserContext) {
   // Installation can open a welcome tab before the login tab.
   const findAuth = () =>
     context.pages().find((page) => page.url() === 'https://provider.example/authorize')
@@ -322,6 +330,82 @@ test('cancelling during exchange revokes the returned session without installing
     true,
   )
 })
+
+for (const ending of ['cancel', 'close']) {
+  test(`account linking keeps its replacement session after ${ending} during exchange`, async ({
+    context,
+    popupUrl,
+  }) => {
+    const completionGate = awaitable()
+    const requests = await mockAuth(context, { completionGate, linking: true })
+    await context.serviceWorkers()[0]!.evaluate(async (userId) => {
+      const ext = globalThis as typeof globalThis & {
+        chrome: { storage: { local: { set(value: unknown): Promise<void> } } }
+      }
+      await ext.chrome.storage.local.set({
+        mustard_session: {
+          userId,
+          identities: [
+            { provider: 'atproto', providerAccountId: 'did:plc:test', handle: 'test.example' },
+          ],
+        },
+        supabase_jwt: {
+          userId,
+          jwt: 'old-jwt',
+          refreshToken: 'old-refresh',
+          expiresAt: Math.floor(Date.now() / 1000) + 86400,
+        },
+      })
+    }, userId)
+    const options = await context.newPage()
+    await options.goto(popupUrl.replace('popup.html', 'options.html'))
+    await options.getByRole('button', { name: 'Connect GitHub', exact: true }).click()
+    const auth = await providerTab(context)
+    await auth.goto(callbackUrl)
+    await expect.poll(() => requests.some((r) => r.action === 'callback')).toBe(true)
+    if (ending === 'close') await auth.close()
+    else {
+      // A cancellation message already in flight must be rejected, too.
+      await options.evaluate(() => {
+        const page = globalThis as typeof globalThis & {
+          chrome: { runtime: { sendMessage(message: unknown): Promise<boolean> } }
+          cancellation?: Promise<boolean>
+        }
+        page.cancellation = page.chrome.runtime.sendMessage({ type: 'CANCEL_OAUTH_LOGIN' })
+      })
+    }
+    await expect(options.getByText('Finishing sign-in…')).toBeVisible()
+    await expect(options.getByRole('button', { name: 'Cancel sign-in' })).toBeDisabled()
+    completionGate.resolve()
+    if (ending === 'cancel') {
+      expect(
+        await options.evaluate(
+          () => (globalThis as typeof globalThis & { cancellation: Promise<boolean> }).cancellation,
+        ),
+      ).toBe(false)
+    }
+    await expect
+      .poll(async () => (await stored(context)).local.supabase_jwt)
+      .toMatchObject({
+        jwt: 'test-jwt',
+        refreshToken: 'test-refresh',
+        userId,
+      })
+    await expect
+      .poll(async () => (await stored(context)).transient)
+      .toEqual({
+        mustard_tab_login: { status: { status: 'idle' } },
+      })
+    expect((await stored(context)).local.mustard_session).toMatchObject({
+      userId,
+      identities: expect.arrayContaining([
+        { provider: 'github', providerAccountId: '42', handle: 'test-github' },
+      ]),
+    })
+    expect(requests.find((r) => r.action === 'callback')).toMatchObject({ currentJwt: 'old-jwt' })
+    expect(requests.some((r) => r.action === 'logout')).toBe(false)
+  })
+}
 
 test('cache cleanup failure rolls back the installed login', async ({ context, popupUrl }) => {
   const requests = await mockAuth(context)
