@@ -81,12 +81,12 @@ export default defineBackground(() => {
       if (!(await syncSessionIdentities(result.jwt, result.userId))) {
         throw new Error('Login returned no linked identities')
       }
+      await invalidateRemoteIndexCache()
     } catch (error) {
       await revokeSupabaseSession()
       await logout(result.userId)
       throw error
     }
-    await invalidateRemoteIndexCache()
     void broadcastSessionChanged(result.userId)
     void updateActionBadge()
   })

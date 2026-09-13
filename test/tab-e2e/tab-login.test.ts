@@ -323,6 +323,39 @@ test('cancelling during exchange revokes the returned session without installing
   )
 })
 
+test('cache cleanup failure rolls back the installed login', async ({ context, popupUrl }) => {
+  const requests = await mockAuth(context)
+  const popup = await openLogin(context, popupUrl)
+  const auth = await start(context, popup)
+  // Inject a single storage failure in the real background completion handler.
+  await context.serviceWorkers()[0]!.evaluate(() => {
+    const ext = globalThis as typeof globalThis & {
+      chrome: { storage: { session: { remove(key: string): Promise<void> } } }
+    }
+    const storage = ext.chrome.storage.session
+    const remove = storage.remove.bind(storage)
+    storage.remove = async (key) => {
+      if (key === 'mustard-remote-index-cache') {
+        storage.remove = remove
+        throw new Error('Test cache cleanup failure')
+      }
+      return remove(key)
+    }
+  })
+  await auth.goto(callbackUrl)
+  await expect
+    .poll(async () => (await stored(context)).transient)
+    .toMatchObject({
+      mustard_tab_login: { status: { status: 'failed' } },
+    })
+  expect((await stored(context)).local).toEqual({})
+  expect(requests.some((r) => r.action === 'logout' && r.refreshToken === 'test-refresh')).toBe(
+    true,
+  )
+  await popup.reload()
+  await expect(popup.getByRole('button', { name: 'Login', exact: true })).toBeVisible()
+})
+
 test('finishing sign-in disables Cancel and rejects a late cancellation request', async ({
   context,
   popupUrl,
