@@ -1,5 +1,6 @@
 import { test, expect } from '../e2e/extension.fixture'
 import type { BrowserContext, Page } from '@playwright/test'
+import { awaitable } from '@fettstorch/jule'
 
 // Real extension UI, tabs, messaging and storage; deterministic provider/backend
 // HTTP responses. This tests the transport, not live provider authentication.
@@ -296,10 +297,7 @@ test('cancelling during exchange revokes the returned session without installing
   context,
   popupUrl,
 }) => {
-  let release!: () => void
-  const completionGate = new Promise<void>((resolve) => {
-    release = resolve
-  })
+  const completionGate = awaitable()
   const requests = await mockAuth(context, { completionGate })
   const popup = await openLogin(context, popupUrl)
   const auth = await start(context, popup)
@@ -307,7 +305,7 @@ test('cancelling during exchange revokes the returned session without installing
   await auth.goto(callbackUrl)
   await expect.poll(() => requests.some((r) => r.action === 'callback')).toBe(true)
   await popup.getByRole('button', { name: 'Cancel sign-in' }).click()
-  release()
+  completionGate.resolve()
   await expect
     .poll(async () => (await stored(context)).transient)
     .toEqual({ mustard_tab_login: { status: { status: 'idle' } } })
@@ -321,10 +319,7 @@ test('finishing sign-in disables Cancel and rejects a late cancellation request'
   context,
   popupUrl,
 }) => {
-  let release!: () => void
-  const identitiesGate = new Promise<void>((resolve) => {
-    release = resolve
-  })
+  const identitiesGate = awaitable()
   const requests = await mockAuth(context, { identitiesGate })
   const popup = await openLogin(context, popupUrl)
   const auth = await start(context, popup)
@@ -341,7 +336,7 @@ test('finishing sign-in disables Cancel and rejects a late cancellation request'
     }
     page.lateCancellation = page.chrome.runtime.sendMessage({ type: 'CANCEL_OAUTH_LOGIN' })
   })
-  release()
+  identitiesGate.resolve()
   expect(
     await popup.evaluate(
       () =>

@@ -1,4 +1,5 @@
 import { authBridgePost } from '../auth/AuthBridge'
+import { synchronize } from '@fettstorch/jule'
 import { getSession } from '../auth/SessionStore'
 import { TAB_CALLBACK_URI, type OAuthLoginStatus, type PendingLogin } from '@/shared/oauth-login'
 import type { OAuthLoginFlow, OAuthLoginRequest, OAuthSessionResult } from './OAuthLoginFlow'
@@ -21,7 +22,7 @@ type Stored = { pending?: Pending; status: OAuthLoginStatus }
  * Only our tracked tab and exact HTTPS callback can complete the login.
  */
 export class TabOAuthLoginFlow implements OAuthLoginFlow {
-  private queue: Promise<unknown> = Promise.resolve()
+  private serial = synchronize(<T>(operation: () => Promise<T>) => operation())
   private cancellation = 0
   private finishing = false
   private complete?: (result: OAuthSessionResult) => Promise<void>
@@ -48,12 +49,6 @@ export class TabOAuthLoginFlow implements OAuthLoginFlow {
     void this.getStatus().catch(() => {})
   }
 
-  private serial<T>(operation: () => Promise<T>): Promise<T> {
-    const result = this.queue.then(operation)
-    this.queue = result.catch(() => {})
-    return result
-  }
-
   private async read(): Promise<Stored> {
     const values = await browser.storage.session.get(STORAGE_KEY)
     return (values[STORAGE_KEY] as Stored | undefined) ?? { status: { status: 'idle' } }
@@ -67,8 +62,8 @@ export class TabOAuthLoginFlow implements OAuthLoginFlow {
     await this.write({ status: { status: 'failed', message } })
   }
 
-  start(request: OAuthLoginRequest): Promise<PendingLogin> {
-    return this.serial(async () => {
+  async start(request: OAuthLoginRequest): Promise<PendingLogin> {
+    return this.serial<PendingLogin>(async () => {
       if (!this.complete) throw new Error('Tab login is not initialized')
       await this.resume()
       if ((await this.read()).pending) throw new Error('A login is already open in another tab')
@@ -121,7 +116,7 @@ export class TabOAuthLoginFlow implements OAuthLoginFlow {
     return this.finishing ? { status: 'finishing' } : status
   }
 
-  cancel(): Promise<boolean> {
+  async cancel(): Promise<boolean> {
     // Installation has committed to finishing. Still wait for it so logout callers
     // cannot clear credentials before the completion callback writes them again.
     if (this.finishing) return this.serial(async () => false)
