@@ -50,7 +50,7 @@ describe('tab login background recovery', () => {
     const resumed = new TabOAuthLoginFlow()
     const complete = vi.fn().mockResolvedValue(undefined)
     resumed.initialize(complete)
-    expect(await resumed.getStatus()).toEqual({ status: 'idle' })
+    await expect.poll(() => resumed.getStatus()).toEqual({ status: 'idle' })
     expect(complete).toHaveBeenCalledExactlyOnceWith(result)
     expect(browser.tabs.remove).toHaveBeenCalledExactlyOnceWith(7)
     expect((await browser.storage.session.get('mustard_tab_login')).mustard_tab_login).toEqual({
@@ -65,10 +65,12 @@ describe('tab login background recovery', () => {
     await browser.storage.session.set({ mustard_tab_login: stored })
     const resumed = new TabOAuthLoginFlow()
     resumed.initialize(vi.fn())
-    expect(await resumed.getStatus()).toEqual({
-      status: 'failed',
-      message: 'Login was interrupted. Please start a new login.',
-    })
+    await expect
+      .poll(() => resumed.getStatus())
+      .toEqual({
+        status: 'failed',
+        message: 'Login was interrupted. Please start a new login.',
+      })
     expect(authBridgePost).toHaveBeenCalledTimes(1)
   })
 
@@ -76,10 +78,12 @@ describe('tab login background recovery', () => {
     const { flow, complete } = await begin()
     vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 11 * 60 * 1000)
     url = callback
-    expect(await flow.getStatus()).toEqual({
-      status: 'failed',
-      message: 'Login expired. Please try again.',
-    })
+    await expect
+      .poll(() => flow.getStatus())
+      .toEqual({
+        status: 'failed',
+        message: 'Login expired. Please try again.',
+      })
     expect(complete).not.toHaveBeenCalled()
     expect(authBridgePost).toHaveBeenCalledTimes(1)
   })
@@ -88,7 +92,7 @@ describe('tab login background recovery', () => {
     const { flow, complete } = await begin()
     vi.mocked(getSession).mockResolvedValue({ userId: 'other-user', identities: [] })
     url = callback
-    expect(await flow.getStatus()).toMatchObject({ status: 'failed' })
+    await expect.poll(() => flow.getStatus()).toMatchObject({ status: 'failed' })
     expect(complete).not.toHaveBeenCalled()
     expect(authBridgePost).toHaveBeenCalledTimes(1)
   })
@@ -98,7 +102,7 @@ describe('tab login background recovery', () => {
     const update = vi.mocked(browser.tabs.onUpdated.addListener).mock.calls[0]![0]
     update(7, { url: callback }, {} as never)
     update(7, { url: callback }, {} as never)
-    expect(await flow.getStatus()).toEqual({ status: 'idle' })
+    await expect.poll(() => flow.getStatus()).toEqual({ status: 'idle' })
     expect(complete).toHaveBeenCalledExactlyOnceWith(result)
     expect(authBridgePost).toHaveBeenCalledTimes(2)
   })
@@ -106,7 +110,7 @@ describe('tab login background recovery', () => {
   it('retains the first pending login when another sign-in is requested', async () => {
     const { flow } = await begin()
     await expect(flow.start({ provider: 'github' })).rejects.toThrow('already open')
-    expect(await flow.getStatus()).toEqual({ status: 'pending' })
+    await expect.poll(() => flow.getStatus()).toEqual({ status: 'pending' })
     expect(authBridgePost).toHaveBeenCalledTimes(1)
   })
 })

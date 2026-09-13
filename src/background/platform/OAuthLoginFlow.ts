@@ -17,5 +17,5 @@ export interface OAuthLoginFlow {
   start(request: OAuthLoginRequest): Promise<OAuthSessionResult | PendingLogin>
   initialize?(complete: (result: OAuthSessionResult) => Promise<void>): void
   getStatus?(): Promise<OAuthLoginStatus>
-  cancel?(): Promise<void>
+  cancel?(): Promise<boolean>
 }

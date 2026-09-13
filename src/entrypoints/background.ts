@@ -600,10 +600,7 @@ export default defineBackground(() => {
     },
 
     GET_OAUTH_LOGIN_STATUS: async () => (await oauthLogin.getStatus?.()) ?? { status: 'idle' },
-    CANCEL_OAUTH_LOGIN: async () => {
-      await oauthLogin.cancel?.()
-      return null
-    },
+    CANCEL_OAUTH_LOGIN: async () => (await oauthLogin.cancel?.()) ?? true,
 
     GET_ATPROTO_SESSION: async () => {
       try {

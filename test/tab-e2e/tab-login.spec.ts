@@ -10,7 +10,11 @@ const callbackUrl = `${callback}?code=test-code&state=${state}&iss=https%3A%2F%2
 
 async function mockAuth(
   context: BrowserContext,
-  options: { reject?: boolean; completionGate?: Promise<void> } = {},
+  options: {
+    reject?: boolean
+    completionGate?: Promise<void>
+    identitiesGate?: Promise<void>
+  } = {},
 ) {
   const requests: Record<string, unknown>[] = []
   await context.route('https://provider.example/**', (route) =>
@@ -29,6 +33,7 @@ async function mockAuth(
     const body = route.request().postDataJSON() as Record<string, unknown>
     requests.push(body)
     if (body.action === 'callback') await options.completionGate
+    if (body.action === 'list-identities') await options.identitiesGate
     const json =
       body.action === 'initiate'
         ? {
@@ -218,4 +223,40 @@ test('cancelling during exchange revokes the returned session without installing
   expect(requests.some((r) => r.action === 'logout' && r.refreshToken === 'test-refresh')).toBe(
     true,
   )
+})
+
+test('finishing sign-in disables Cancel and rejects a late cancellation request', async ({
+  context,
+  popupUrl,
+}) => {
+  let release!: () => void
+  const identitiesGate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const requests = await mockAuth(context, { identitiesGate })
+  const popup = await openLogin(context, popupUrl)
+  const auth = await start(context, popup)
+  await auth.goto(callbackUrl)
+  await expect.poll(() => requests.some((r) => r.action === 'list-identities')).toBe(true)
+  await expect(popup.getByText('Finishing sign-in…')).toBeVisible()
+  await expect(popup.getByRole('button', { name: 'Cancel sign-in' })).toBeDisabled()
+
+  // Bypass the disabled UI to exercise a click/message already in flight.
+  await popup.evaluate(() => {
+    const page = globalThis as typeof globalThis & {
+      chrome: { runtime: { sendMessage(message: unknown): Promise<boolean> } }
+      lateCancellation?: Promise<boolean>
+    }
+    page.lateCancellation = page.chrome.runtime.sendMessage({ type: 'CANCEL_OAUTH_LOGIN' })
+  })
+  release()
+  expect(
+    await popup.evaluate(
+      () =>
+        (globalThis as typeof globalThis & { lateCancellation: Promise<boolean> }).lateCancellation,
+    ),
+  ).toBe(false)
+  await expect(popup.getByRole('button', { name: 'Logout', exact: true })).toBeVisible()
+  expect((await stored(context)).local.mustard_session).toMatchObject({ userId })
+  expect(requests.some((r) => r.action === 'logout')).toBe(false)
 })

@@ -552,7 +552,7 @@ type MessageResponses = {
   NOTE_DELETED: void
   SET_REPOST: DtoMustardNote[]
   GET_OAUTH_LOGIN_STATUS: OAuthLoginStatus
-  CANCEL_OAUTH_LOGIN: null
+  CANCEL_OAUTH_LOGIN: boolean
   ATPROTO_LOGIN: { userId: string; did?: string } | PendingLogin | null
   GITHUB_LOGIN: { userId: string } | PendingLogin | null
   GET_ATPROTO_SESSION: AtprotoSessionResponse

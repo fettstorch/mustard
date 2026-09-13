@@ -39,6 +39,10 @@ and expiry live in `storage.session`. Startup and UI status reads reconcile the
 saved tab; there is no background polling. An uncertain interrupted exchange
 requires a fresh login rather than retrying a possibly consumed code.
 
+Tab login can be cancelled until session installation starts. During installation,
+status is `finishing` and Cancel is disabled; late cancellation returns `false`.
+Cancellation still waits for installation to settle so logout can safely clear it.
+
 Safari uses the existing initiate/callback payloads and backend token exchange.
 There is no Safari database migration, completion-secret protocol, or server-side
 account-binding layer. The only backend delta is explicit Safari GitHub credential

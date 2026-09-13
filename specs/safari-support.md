@@ -303,11 +303,11 @@ interface OAuthLoginFlow {
   start(request: OAuthLoginRequest): Promise<OAuthSessionResult | PendingLogin>
   initialize?(complete: (result: OAuthSessionResult) => Promise<void>): void
   getStatus?(): Promise<OAuthLoginStatus>
-  cancel?(): Promise<void>
+  cancel?(): Promise<boolean>
 }
 ```
 
-`background.ts` owns one instance. It registers Safari listeners synchronously and supplies the shared session completion callback. `GET_OAUTH_LOGIN_STATUS` returns only idle/pending/failure, and `CANCEL_OAUTH_LOGIN` clears the single pending operation. Credentials are never added to these UI DTOs. Provider wrappers distinguish pending results before persisting or reporting successful login.
+`background.ts` owns one instance. It registers Safari listeners synchronously and supplies the shared session completion callback. `GET_OAUTH_LOGIN_STATUS` returns idle/pending/finishing/failure. `CANCEL_OAUTH_LOGIN` clears the single pending operation until session installation starts; after that it returns `false` and the UI shows “Finishing sign-in…” with Cancel disabled. Status reads do not wait for network work. Credentials are never added to these UI DTOs. Provider wrappers distinguish pending results before persisting or reporting successful login.
 
 Production selection depends on WXT's browser target. `VITE_E2E_TAB_LOGIN=true` selects the same tab implementation **only in WXT mode `e2e`**, allowing the standard Playwright Chromium extension fixture to test it. The flag cannot change production Chrome/Firefox builds.
 

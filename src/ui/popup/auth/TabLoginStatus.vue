@@ -18,7 +18,7 @@ async function refresh() {
       const session = await sendMessage({ type: 'GET_ATPROTO_SESSION' })
       if (session) emit('success', session)
     }
-    wasPending = status.value.status === 'pending'
+    wasPending = status.value.status === 'pending' || status.value.status === 'finishing'
   } catch {
     status.value = {
       status: 'failed',
@@ -31,9 +31,11 @@ async function refresh() {
 }
 
 async function cancel() {
-  await sendMessage({ type: 'CANCEL_OAUTH_LOGIN' })
-  wasPending = false
-  status.value = { status: 'idle' }
+  const cancelled = await sendMessage({ type: 'CANCEL_OAUTH_LOGIN' })
+  if (cancelled) {
+    wasPending = false
+    status.value = { status: 'idle' }
+  }
 }
 
 onMounted(refresh)
@@ -45,9 +47,12 @@ onUnmounted(() => {
 
 <template>
   <div aria-live="polite">
-    <template v-if="status.status === 'pending'">
-      <p>Finish signing in in the new tab, then reopen Mustard.</p>
-      <button type="button" @click="cancel">Cancel sign-in</button>
+    <template v-if="status.status === 'pending' || status.status === 'finishing'">
+      <p v-if="status.status === 'finishing'">Finishing sign-in…</p>
+      <p v-else>Finish signing in in the new tab, then reopen Mustard.</p>
+      <button type="button" :disabled="status.status === 'finishing'" @click="cancel">
+        Cancel sign-in
+      </button>
     </template>
     <p v-else-if="status.status === 'failed'" role="alert">{{ status.message }}</p>
   </div>

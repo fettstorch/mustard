@@ -22,6 +22,7 @@ type Stored = { pending?: Pending; status: OAuthLoginStatus }
 export class TabOAuthLoginFlow implements OAuthLoginFlow {
   private queue: Promise<unknown> = Promise.resolve()
   private cancellation = 0
+  private finishing = false
   private complete?: (result: OAuthSessionResult) => Promise<void>
 
   initialize(complete: (result: OAuthSessionResult) => Promise<void>): void {
@@ -33,7 +34,7 @@ export class TabOAuthLoginFlow implements OAuthLoginFlow {
     browser.tabs.onRemoved.addListener((tabId) => {
       void this.read()
         .then(async ({ pending }) => {
-          if (pending?.tabId !== tabId) return
+          if (pending?.tabId !== tabId || this.finishing) return
           this.cancellation++
           await this.serial(async () => {
             if ((await this.read()).pending?.tabId === tabId) {
@@ -112,20 +113,24 @@ export class TabOAuthLoginFlow implements OAuthLoginFlow {
     })
   }
 
-  getStatus(): Promise<OAuthLoginStatus> {
-    return this.serial(async () => {
-      await this.resume()
-      return (await this.read()).status
-    })
+  async getStatus(): Promise<OAuthLoginStatus> {
+    // Reconcile in order, but let the UI read status while network/storage work runs.
+    void this.serial(() => this.resume()).catch(() => {})
+    const { status } = await this.read()
+    return this.finishing ? { status: 'finishing' } : status
   }
 
-  cancel(): Promise<void> {
+  cancel(): Promise<boolean> {
+    // Installation has committed to finishing. Still wait for it so logout callers
+    // cannot clear credentials before the completion callback writes them again.
+    if (this.finishing) return this.serial(async () => false)
     // Signal immediately, even while a callback exchange owns the serial queue.
     this.cancellation++
     return this.serial(async () => {
       const { pending } = await this.read()
       await this.write({ status: { status: 'idle' } })
       if (pending) await browser.tabs.remove(pending.tabId).catch(() => {})
+      return true
     })
   }
 
@@ -202,6 +207,7 @@ export class TabOAuthLoginFlow implements OAuthLoginFlow {
         )
         return
       }
+      this.finishing = true
       await this.complete!({
         userId: result.userId,
         jwt: result.jwt,
@@ -214,6 +220,8 @@ export class TabOAuthLoginFlow implements OAuthLoginFlow {
     } catch {
       // Never expose codes or backend response bodies in UI/logs.
       await this.fail('Sign-in failed or was cancelled. Please try again.')
+    } finally {
+      this.finishing = false
     }
   }
 }
