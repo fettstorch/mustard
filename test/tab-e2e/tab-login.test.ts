@@ -331,8 +331,8 @@ test('cancelling during exchange revokes the returned session without installing
   )
 })
 
-for (const ending of ['cancel', 'close']) {
-  test(`account linking keeps its replacement session after ${ending} during exchange`, async ({
+for (const ending of ['cancel', 'close', 'status cleanup failure']) {
+  test(`account linking keeps its replacement session after ${ending}`, async ({
     context,
     popupUrl,
   }) => {
@@ -364,7 +364,7 @@ for (const ending of ['cancel', 'close']) {
     await auth.goto(callbackUrl)
     await expect.poll(() => requests.some((r) => r.action === 'callback')).toBe(true)
     if (ending === 'close') await auth.close()
-    else {
+    else if (ending === 'cancel') {
       // A cancellation message already in flight must be rejected, too.
       await options.evaluate(() => {
         const page = globalThis as typeof globalThis & {
@@ -372,6 +372,23 @@ for (const ending of ['cancel', 'close']) {
           cancellation?: Promise<boolean>
         }
         page.cancellation = page.chrome.runtime.sendMessage({ type: 'CANCEL_OAUTH_LOGIN' })
+      })
+    } else {
+      // Reject the final idle write after credentials and identities are installed.
+      await context.serviceWorkers()[0]!.evaluate(() => {
+        const ext = globalThis as typeof globalThis & {
+          chrome: { storage: { session: { set(value: Record<string, unknown>): Promise<void> } } }
+        }
+        const storage = ext.chrome.storage.session
+        const set = storage.set.bind(storage)
+        storage.set = async (value) => {
+          const login = value.mustard_tab_login as { status?: { status: string } } | undefined
+          if (login?.status?.status === 'idle') {
+            storage.set = set
+            throw new Error('Test final status cleanup failure')
+          }
+          return set(value)
+        }
       })
     }
     await expect(options.getByText('Finishing sign-in…')).toBeVisible()
@@ -403,7 +420,12 @@ for (const ending of ['cancel', 'close']) {
       ]),
     })
     expect(requests.find((r) => r.action === 'callback')).toMatchObject({ currentJwt: 'old-jwt' })
+    expect(requests.filter((r) => r.action === 'callback')).toHaveLength(1)
     expect(requests.some((r) => r.action === 'logout')).toBe(false)
+    await expect(options.getByText('test-github', { exact: true })).toBeVisible()
+    await expect(options.getByRole('button', { name: 'Connect GitHub', exact: true })).toHaveCount(
+      0,
+    )
   })
 }
 

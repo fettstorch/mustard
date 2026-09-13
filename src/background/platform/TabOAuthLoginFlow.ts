@@ -245,7 +245,9 @@ export class TabOAuthLoginFlow implements OAuthLoginFlow {
         status: { status: 'finishing' },
       })
       await this.complete!(session)
-      await this.write({ status: { status: 'idle' } })
+      // Login is installed. If cleanup fails, retain the completion record so
+      // normal status reconciliation can retry instead of reporting a failed login.
+      await this.write({ status: { status: 'idle' } }).catch(() => {})
       await browser.tabs.remove(pending.tabId).catch(() => {})
     } catch {
       await this.fail('Sign-in failed. Please try again.')

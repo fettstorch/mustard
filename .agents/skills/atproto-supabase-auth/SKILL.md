@@ -42,6 +42,8 @@ Once the exchange result is received, it is retained in the existing pending
 session-storage record until installation finishes. Background recovery repeats
 credential/identity installation from that result, never the OAuth exchange;
 the pending credentials are removed on success or handled failure.
+If final status cleanup fails after installation, retain the completion record
+for normal reconciliation rather than mark the installed login as failed.
 Tab-login rollback revokes the callback's returned refresh token explicitly, even
 if the initial credential write failed. Reading only cached credentials would
 miss that new session or target the superseded session during account linking.
