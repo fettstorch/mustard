@@ -210,6 +210,10 @@ export class TabOAuthLoginFlow implements OAuthLoginFlow {
         await authBridgePost({ action: 'logout', refreshToken: result.refreshToken }).catch(
           () => {},
         )
+        // Settle cancellation before queued status reads can mistake this exchange
+        // for an interrupted background. The queued cancel may run after them.
+        await this.write({ status: { status: 'idle' } })
+        await browser.tabs.remove(pending.tabId).catch(() => {})
         return
       }
       await this.finish(pending, {

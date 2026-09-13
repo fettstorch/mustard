@@ -304,6 +304,14 @@ test('cancelling during exchange revokes the returned session without installing
   await expect(popup.getByRole('button', { name: 'Cancel sign-in' })).toBeVisible()
   await auth.goto(callbackUrl)
   await expect.poll(() => requests.some((r) => r.action === 'callback')).toBe(true)
+  // Queue the popup's status reconciliation before cancellation while exchange waits.
+  await popup.evaluate(() =>
+    (
+      globalThis as typeof globalThis & {
+        chrome: { runtime: { sendMessage(value: unknown): Promise<unknown> } }
+      }
+    ).chrome.runtime.sendMessage({ type: 'GET_OAUTH_LOGIN_STATUS' }),
+  )
   await popup.getByRole('button', { name: 'Cancel sign-in' }).click()
   completionGate.resolve()
   await expect
