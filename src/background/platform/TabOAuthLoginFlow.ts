@@ -229,7 +229,13 @@ export class TabOAuthLoginFlow implements OAuthLoginFlow {
       })
     } catch {
       // Never expose codes or backend response bodies in UI/logs.
-      await this.fail('Sign-in failed or was cancelled. Please try again.')
+      // Save the terminal status before closing the tab so onRemoved cannot
+      // reinterpret the failure as a cancellation.
+      try {
+        await this.fail('Sign-in failed or was cancelled. Please try again.')
+      } finally {
+        await browser.tabs.remove(pending.tabId).catch(() => {})
+      }
     } finally {
       this.finishing = false
     }

@@ -282,13 +282,15 @@ for (const ending of ['close', 'cancel', 'wrong-state', 'provider-error', 'backe
     else if (ending === 'cancel')
       await popup.getByRole('button', { name: 'Cancel sign-in' }).click()
     else
-      await auth.goto(
-        ending === 'wrong-state'
-          ? callbackUrl.replace(state, 'wrong-state')
-          : ending === 'provider-error'
-            ? `${callback}?error=access_denied&state=${state}`
-            : callbackUrl,
-      )
+      await auth
+        .goto(
+          ending === 'wrong-state'
+            ? callbackUrl.replace(state, 'wrong-state')
+            : ending === 'provider-error'
+              ? `${callback}?error=access_denied&state=${state}`
+              : callbackUrl,
+        )
+        .catch(() => {}) // Extension closes the tab after a terminal callback failure.
     await expect
       .poll(async () => (await stored(context)).transient)
       .toMatchObject({
@@ -298,6 +300,7 @@ for (const ending of ['close', 'cancel', 'wrong-state', 'provider-error', 'backe
     expect(requests.filter((r) => r.action === 'callback')).toHaveLength(
       ending === 'backend-error' ? 1 : 0,
     )
+    if (!['close', 'cancel'].includes(ending)) expect(auth.isClosed()).toBe(true)
   })
 }
 
