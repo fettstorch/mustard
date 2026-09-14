@@ -335,7 +335,7 @@ quits or after 24 hours; signed installation and upgrade persistence remain sepa
 release checks. Existing Chrome/Firefox versions retain their login flows and features.
 
 Build validation runs in CI. Automated runtime E2E runs in Chromium; Safari and
-Firefox runtime acceptance is manual. See [the Safari plan](specs/safari-support.md).
+Firefox runtime acceptance is manual.
 
 ## Supabase Deployment
 

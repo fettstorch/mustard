@@ -64,8 +64,7 @@ session lifecycle; do not expand browser compatibility work into auth redesign.
 The Safari callback URI must be published in both ATProto metadata files before
 live testing; local file edits are insufficient. GitHub uses explicit `_SAFARI`
 credentials without Chrome fallback. Neither production rollout nor real Safari
-login is proven by Chromium transport tests. Deployment/manual acceptance status
-is recorded in `specs/safari-support.md`.
+login is proven by Chromium transport tests.
 
 ## Account model (UUID-always)
 

@@ -15,11 +15,11 @@ Hard-won quirks for building Mustard as a single codebase targeting Chrome (MV3)
 and Firefox (MV2/MV3) with WXT. Read this before touching `wxt.config.ts`,
 `src/entrypoints/**`, background messaging, or content-script injection.
 
-## Desktop Safari planning findings (2026-09-12)
+## Desktop Safari compatibility
 
-- [specs/safari-support.md](../../../specs/safari-support.md) covers **macOS Safari
-  only**. Preserving existing Chrome/Firefox behavior and installed-client backend
-  compatibility is its highest priority. Preserve the existing automated Chromium suites, including real Bluesky login.
+- Safari support covers **macOS Safari only**. Preserving existing Chrome/Firefox
+  behavior and installed-client backend compatibility is the highest priority.
+  Preserve the existing automated Chromium suites, including real Bluesky login.
   Firefox runtime/login coverage is manual by explicit user decision (2026-09-12);
   do not add a Firefox automation harness or unproven browser workarounds. Record
   manual Firefox checks at shared-code checkpoints and before release. New GitHub
@@ -248,8 +248,7 @@ in several ways:
   The deterministic authenticated fixture instead injects a locally minted
   Mustard session; its seeded GitHub identity does not test GitHub OAuth. No
   Firefox runner or live GitHub login test exists yet. `test:e2e:all` currently
-  means the Chromium suites; `check` does not run E2E. Recheck coverage when the
-  phase-zero prerequisites in `specs/safari-support.md` change. Missing Firefox
+  means the Chromium suites; `check` does not run E2E. Missing Firefox
   automation is deliberate: the user accepts manual Firefox testing. Missing
   GitHub live-login automation is recorded coverage, not a requirement to add it.
 - Keep the existing Chromium harness and production login flows intact. Do not
