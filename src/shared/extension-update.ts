@@ -20,6 +20,7 @@ export type ExtensionUpdateState = {
 } & (
   | { status: 'checking' }
   | { status: 'current'; currentVersion: string }
+  | { status: 'unavailable'; currentVersion: string }
   | { status: 'downloading'; currentVersion: string; latestVersion: string }
   | {
       status: 'action-required'

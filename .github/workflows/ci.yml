@@ -57,6 +57,9 @@ jobs:
       - name: Firefox package lint
         run: npm run lint:firefox
 
+      - name: Build Safari preview
+        run: npm run build:safari
+
   extension-e2e:
     name: Extension E2E (Chromium)
     runs-on: ubuntu-latest
@@ -80,6 +83,9 @@ jobs:
 
       - name: Run E2E smoke tests
         run: npm run test:e2e
+
+      - name: Run tab OAuth transport E2E (Chromium)
+        run: npm run test:e2e:tab-login
 
       - name: Upload failure report
         if: failure()

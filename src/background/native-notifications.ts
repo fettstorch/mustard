@@ -9,11 +9,8 @@
 // events the app already fires. Default-on; users opt out in the options page.
 
 import type { DtoMustardNotification } from '@/shared/dto/DtoMustardMention'
-// Inlined as a base64 data URI by the `inlineIcons` Vite plugin (see
-// wxt.config.ts). Chrome's MV3 notifications.create() fails to fetch an
-// extension-URL iconUrl from the service worker ("Unable to download all
-// specified images"), so we hand it the bytes directly instead.
-import notifIconUrl from '@/assets/icons/mustard_bottle_smile_48.png'
+import { createNativeNotificationDelivery } from './platform/createBrowserPlatform'
+import type { NativeNotificationDelivery } from './platform/NativeNotificationDelivery'
 import { sleep } from '@fettstorch/jule'
 
 // Off only when explicitly `false` (default ON). The options page mirrors this key.
@@ -26,10 +23,6 @@ const NOTIFIED_IDS_KEY = 'mustard-native-notified-ids'
 const TARGETS_KEY = 'mustard-native-notif-targets'
 // Coalesce bursts (e.g. many tabs reloading) into at most one fetch per window.
 const DISPATCH_MIN_INTERVAL_MS = 15_000
-// Firefox drops toasts created in rapid succession (per MDN), so a multi-row
-// batch can show zero. Space successive creates out — Firefox only, since Chrome
-// has no such quirk and we don't want to keep its MV3 worker alive longer.
-const FIREFOX_CREATE_STAGGER_MS = 500
 
 type NativeNotifTarget = { pageUrl: string; noteId: string }
 
@@ -56,6 +49,7 @@ interface NativeNotifications {
    * new. Fire-and-forget-safe: self-throttles and guards against re-entrancy.
    */
   dispatch: () => Promise<void>
+  dispose: () => void
 }
 
 /**
@@ -74,7 +68,10 @@ export async function clearNativeNotificationState(): Promise<void> {
  * Create the native-notifications dispatcher and register the toast-click
  * handler. Call once from the background composition root.
  */
-export function createNativeNotifications(deps: NativeNotificationsDeps): NativeNotifications {
+export function createNativeNotifications(
+  deps: NativeNotificationsDeps,
+  delivery: NativeNotificationDelivery = createNativeNotificationDelivery(),
+): NativeNotifications {
   let inFlight = false
   let lastDispatchAt = 0
 
@@ -83,9 +80,7 @@ export function createNativeNotifications(deps: NativeNotificationsDeps): Native
   }
 
   async function dispatch(): Promise<void> {
-    // Absent on some surfaces (e.g. older Firefox MV2); WXT types assume it
-    // exists, so guard before touching it.
-    if (!browser.notifications?.create) return
+    if (!delivery.supported) return
     if (inFlight) return
     const now = Date.now()
     if (now - lastDispatchAt < DISPATCH_MIN_INTERVAL_MS) return
@@ -115,16 +110,14 @@ export function createNativeNotifications(deps: NativeNotificationsDeps): Native
 
       let staggered = false
       for (const n of fresh) {
-        if (import.meta.env.FIREFOX && staggered) {
-          await sleep(FIREFOX_CREATE_STAGGER_MS)
+        if (delivery.createSpacingMs && staggered) {
+          await sleep(delivery.createSpacingMs)
         }
         staggered = true
         const title =
           n.type === 'mention' ? `${actorName(n)} mentioned you` : `${actorName(n)} added a comment`
         try {
-          await browser.notifications.create(n.id, {
-            type: 'basic',
-            iconUrl: notifIconUrl,
+          await delivery.create(n.id, {
             title,
             message: n.snippet || '',
           })
@@ -157,14 +150,14 @@ export function createNativeNotifications(deps: NativeNotificationsDeps): Native
   // Clicking a toast acknowledges that exact notification (its id IS the DB
   // notification id) and deep-links to the note — identical to pressing its row
   // in the popup, via the same shared openDeepLink routine.
-  browser.notifications?.onClicked?.addListener(async (notificationId) => {
+  const dispose = delivery.onClicked(async (notificationId) => {
     try {
       void deps.acknowledge(notificationId).catch(() => {})
 
       const store = await browser.storage.local.get(TARGETS_KEY)
       const targets = (store[TARGETS_KEY] as Record<string, NativeNotifTarget>) ?? {}
       const target = targets[notificationId]
-      browser.notifications?.clear?.(notificationId)
+      void delivery.clear(notificationId).catch(() => {})
       if (!target) return
       await deps.openDeepLink(target.pageUrl, target.noteId)
     } catch (err) {
@@ -172,5 +165,5 @@ export function createNativeNotifications(deps: NativeNotificationsDeps): Native
     }
   })
 
-  return { dispatch }
+  return { dispatch, dispose }
 }

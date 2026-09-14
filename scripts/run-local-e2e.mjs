@@ -2,6 +2,7 @@ import { spawn, spawnSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { createClient } from '@supabase/supabase-js'
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const FUNCTIONS_ENV = resolve(REPO_ROOT, 'supabase/functions/.env')
@@ -11,18 +12,19 @@ const TEST_COMMANDS = {
   smoke: ['npx', 'playwright', 'test'],
   auth: ['npx', 'playwright', 'test', '--config', 'playwright.auth.config.ts'],
   bluesky: ['npx', 'playwright', 'test', '--config', 'playwright.bluesky-auth.config.ts'],
+  'tab-login': ['npm', 'run', 'test:e2e:tab-login'],
 }
 
 export function buildLocalE2ePlan(suite = 'all') {
   const selectedTests =
     suite === 'all'
-      ? [TEST_COMMANDS.smoke, TEST_COMMANDS.auth, TEST_COMMANDS.bluesky]
+      ? [TEST_COMMANDS.smoke, TEST_COMMANDS.auth, TEST_COMMANDS.bluesky, TEST_COMMANDS['tab-login']]
       : suite in TEST_COMMANDS
         ? [TEST_COMMANDS[suite]]
         : null
 
   if (!selectedTests) {
-    throw new Error(`Unknown E2E suite "${suite}". Use: all, smoke, auth, or bluesky.`)
+    throw new Error(`Unknown E2E suite "${suite}". Use: all, smoke, auth, bluesky, or tab-login.`)
   }
 
   return {
@@ -109,6 +111,31 @@ function localSupabaseEnvironment(required = true) {
   return values
 }
 
+export async function withTestMinimumVersion(admin, runTests) {
+  const { data, error } = await admin
+    .from('app_config')
+    .select('min_client_version')
+    .eq('id', 1)
+    .single()
+  if (error) throw new Error(`Could not read local test app config: ${error.message}`)
+
+  const setMinimum = async (value) => {
+    const { error: updateError } = await admin
+      .from('app_config')
+      .update({ min_client_version: value })
+      .eq('id', 1)
+    if (updateError) throw new Error(`Could not set local test app config: ${updateError.message}`)
+  }
+
+  // Match a fresh CI database without resetting the developer's other data.
+  await setMinimum('0.0.0')
+  try {
+    return await runTests()
+  } finally {
+    await setMinimum(data.min_client_version)
+  }
+}
+
 function startFunctions() {
   const child = spawn('supabase', ['functions', 'serve'], {
     cwd: REPO_ROOT,
@@ -178,8 +205,23 @@ async function main() {
       VITE_SUPABASE_URL: local.API_URL,
       VITE_SUPABASE_ANON_KEY: local.ANON_KEY,
     }
-    await run(plan.build, { env: testEnvironment })
-    for (const command of plan.tests) await run(command, { env: testEnvironment })
+    const runTests = async () => {
+      await run(plan.build, { env: testEnvironment })
+      for (const command of plan.tests) await run(command, { env: testEnvironment })
+    }
+    if (suite === 'bluesky') {
+      await runTests()
+    } else {
+      const url = new URL(local.API_URL)
+      if (!['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname)) {
+        throw new Error('Local E2E app config must only be changed on a loopback backend')
+      }
+      if (!local.SERVICE_ROLE_KEY) throw new Error('Local Supabase service-role key is missing')
+      const admin = createClient(local.API_URL, local.SERVICE_ROLE_KEY, {
+        auth: { persistSession: false, autoRefreshToken: false },
+      })
+      await withTestMinimumVersion(admin, runTests)
+    }
   } catch (error) {
     const logs = functions.logs().trim()
     if (logs) console.error(`\nLocal Edge Function logs:\n${logs}`)

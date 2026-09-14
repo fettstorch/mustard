@@ -225,7 +225,7 @@ flowchart TD
 
 ## Test plan
 
-**test/e2e/authenticated/session-refresh.spec.ts** (new — full lifecycle against
+**test/e2e/authenticated/session-refresh.test.ts** (new — full lifecycle against
 local Supabase; the existing fixture's jwt-only injected state doubles as the
 legacy-user scenario)
 

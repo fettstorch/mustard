@@ -62,7 +62,17 @@ export default defineConfig({
           },
         }
       : {}),
-    permissions: ['storage', 'contextMenus', 'identity', 'notifications'],
+    ...(browser === 'safari'
+      ? {
+          description: 'Add notes to web pages and save them locally.',
+          browser_specific_settings: { safari: { strict_min_version: '18.4' } },
+        }
+      : {}),
+    permissions: [
+      'storage',
+      'contextMenus',
+      ...(browser === 'safari' ? ['tabs'] : ['identity', 'notifications']),
+    ],
     host_permissions: ['<all_urls>'],
     // Keyboard shortcuts. Users can rebind via:
     //   - Chrome:  chrome://extensions/shortcuts
@@ -117,7 +127,7 @@ export default defineConfig({
     ],
   }),
 
-  vite: () => ({
+  vite: ({ browser }) => ({
     plugins: [inlineIcons, vue()],
     resolve: {
       alias: {
@@ -132,6 +142,7 @@ export default defineConfig({
       entries: ['src/entrypoints/**/*.html'],
     },
     build: {
+      ...(browser === 'safari' ? { target: 'safari18.4', cssTarget: 'safari18.4' } : {}),
       assetsInlineLimit: 65536,
     },
   }),

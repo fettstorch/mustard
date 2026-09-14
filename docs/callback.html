@@ -6,13 +6,21 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'none'; base-uri 'none'; form-action 'none'"
+      content="default-src 'none'; style-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'"
     />
+    <link rel="stylesheet" href="./callback.css" />
+    <link rel="icon" href="./favicon.ico" />
     <title>Mustard sign-in</title>
   </head>
   <body>
-    <h1>Return to Mustard</h1>
-    <p>Mustard will finish signing in and close this tab.</p>
-    <p>If this tab stays open, reopen Mustard to check the sign-in status or start again.</p>
+    <main class="sign-in-card">
+      <img class="mascot" src="./mustard_bottle_smile_512.webp" width="128" height="128" alt="" />
+      <p class="brand">Mustard</p>
+      <h1>Return to Mustard</h1>
+      <p class="message">Mustard will finish signing in and close this tab.</p>
+      <p class="help">
+        If this tab stays open, reopen Mustard to check the sign-in status or start again.
+      </p>
+    </main>
   </body>
 </html>

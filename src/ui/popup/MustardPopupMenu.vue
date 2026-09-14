@@ -225,6 +225,14 @@ const logoUrl = browser.runtime.getURL('/mustard_bottle_smile_512.png')
       </span>
     </div>
 
+    <div
+      v-else-if="extensionUpdateState?.status === 'unavailable' && extensionUpdateState.required"
+      class="update-banner"
+    >
+      <strong>Update required</strong>
+      <span>You must update Mustard to keep using it.</span>
+    </div>
+
     <!-- Notes visibility toggle -->
     <div v-if="activeTabId" class="mustard-toggle-row">
       <span class="mustard-label">Show notes</span>

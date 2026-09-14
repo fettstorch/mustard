@@ -46,6 +46,10 @@ import { displayUrl } from '@/shared/display-url'
 import { DEV_INDEX_CACHE_ENABLED_KEY } from '@/background/business/service/MustardNotesServiceRemote'
 import { pageKeyToHref } from '@/shared/site-strategies'
 import { INCLUDE_PATCH_UPDATES_KEY } from '@/shared/extension-update'
+import { getShortcutSettingsHelp } from '@/shared/browser-settings'
+import { getBrowserCapabilities, usesTabLogin } from '@/shared/browser-capabilities'
+import TabLoginStatus from '@/ui/popup/auth/TabLoginStatus.vue'
+import { requestLoginPermission } from '@/ui/popup/auth/requestLoginPermission'
 import HiddenNoteCard from './HiddenNoteCard.vue'
 import { useHiddenNotes } from './use-hidden-notes'
 
@@ -125,8 +129,9 @@ const webFonts = computed(() => MUSTARD_FONTS.filter((f) => f.category === 'web'
 const minimizeShortcut = ref<string>('')
 const showAllNotesShortcut = ref<string>('')
 const popupShortcut = ref<string>('')
-const shortcutsUrl = ref<string>('')
-const isFirefoxBrowser = ref<boolean>(false)
+const shortcutsHelp = getShortcutSettingsHelp()
+const capabilities = getBrowserCapabilities()
+const tabLogin = usesTabLogin()
 const isMacPlatform = ref<boolean>(false)
 
 const refreshSessionOnFocus = () => {
@@ -177,14 +182,6 @@ onMounted(async () => {
 
   await refreshSession()
 
-  // Chromium exposes chrome://extensions/shortcuts and allows extensions to
-  // open it via tabs.create. Firefox blocks extensions from opening `about:`
-  // URLs (only a small whitelist like about:blank is allowed), so we surface
-  // navigation instructions instead of a clickable link there.
-  const isFirefox =
-    typeof (browser.runtime as { getBrowserInfo?: unknown }).getBrowserInfo === 'function'
-  isFirefoxBrowser.value = isFirefox
-  shortcutsUrl.value = isFirefox ? '' : 'chrome://extensions/shortcuts'
   // Pick the right modifier for the Firefox add-ons shortcut hint.
   isMacPlatform.value = /Mac/i.test(navigator.userAgent)
 })
@@ -192,8 +189,8 @@ onMounted(async () => {
 onUnmounted(() => window.removeEventListener('focus', refreshSessionOnFocus))
 
 function openShortcutsPage() {
-  if (!shortcutsUrl.value) return
-  browser.tabs.create({ url: shortcutsUrl.value }).catch((err) => {
+  if (shortcutsHelp?.kind !== 'link') return
+  browser.tabs.create({ url: shortcutsHelp.url }).catch((err) => {
     console.warn('Could not open shortcuts page:', err)
   })
 }
@@ -259,6 +256,7 @@ async function connectGithub() {
   busyProvider.value = 'github'
   accountError.value = null
   try {
+    await requestLoginPermission()
     // These controls only appear for a logged-in account, so this is always a
     // LINK. Without the current JWT the auth-bridge would create a brand-new
     // account (or switch) instead of attaching to this one — abort and ask the
@@ -269,6 +267,7 @@ async function connectGithub() {
       return
     }
     const result = await sendMessage(createGithubLoginMessage(jwt))
+    if (result && 'pending' in result) return
     if (!result) accountError.value = 'GitHub connection failed or was cancelled'
     else await refreshSession()
   } catch (e) {
@@ -284,6 +283,7 @@ async function connectBluesky() {
   busyProvider.value = 'atproto'
   accountError.value = null
   try {
+    await requestLoginPermission()
     // Always a LINK (shown only when logged in); abort without the current JWT
     // so we never fork the account. See connectGithub for the rationale.
     const jwt = await getSupabaseJwt()
@@ -292,6 +292,7 @@ async function connectBluesky() {
       return
     }
     const result = await sendMessage(createAtprotoLoginMessage(handle, jwt))
+    if (result && 'pending' in result) return
     if (!result) {
       accountError.value = 'Bluesky connection failed or was cancelled'
     } else {
@@ -363,6 +364,7 @@ async function disconnect(provider: string, label: string) {
 
       <section class="prefs-section">
         <h2 class="section-title">Connected Accounts</h2>
+        <TabLoginStatus v-if="tabLogin" @success="refreshSession" />
         <div v-if="!currentSession" class="pref-row">
           <span class="pref-label" style="opacity: 0.6">Not logged in</span>
         </div>
@@ -488,7 +490,7 @@ async function disconnect(provider: string, label: string) {
             use {{ isMacPlatform ? 'Option' : 'Alt' }}+Click.
           </span>
         </div>
-        <div class="pref-row pref-row-stack">
+        <div v-if="capabilities.nativeNotifications" class="pref-row pref-row-stack">
           <label class="pref-row">
             <input
               v-model="browserNotificationsEnabled"
@@ -656,15 +658,33 @@ async function disconnect(provider: string, label: string) {
           <kbd v-if="showAllNotesShortcut" class="shortcut-key">{{ showAllNotesShortcut }}</kbd>
           <span v-else class="shortcut-unset">Not set</span>
         </div>
-        <a v-if="!isFirefoxBrowser" class="welcome-link" @click.prevent="openShortcutsPage">
+        <a
+          v-if="shortcutsHelp?.kind === 'link'"
+          class="welcome-link"
+          @click.prevent="openShortcutsPage"
+        >
           Customize shortcuts &rarr;
         </a>
-        <p v-else class="shortcut-hint">
+        <p
+          v-else-if="
+            shortcutsHelp?.kind === 'instructions' && shortcutsHelp.guide === 'firefox-shortcuts'
+          "
+          class="shortcut-hint"
+        >
           To customize, open Firefox's application menu (☰) and choose
           <strong>Extensions and themes</strong> (or press
           <kbd class="shortcut-key">{{ isMacPlatform ? '⌘⇧A' : 'Ctrl+Shift+A' }}</kbd
           >). Then click the <strong>⚙</strong> icon in the <strong>top right</strong> and pick
           <strong>Manage Extension Shortcuts</strong>.
+        </p>
+        <p
+          v-else-if="
+            shortcutsHelp?.kind === 'instructions' && shortcutsHelp.guide === 'safari-shortcuts'
+          "
+          class="shortcut-hint"
+        >
+          Use the shortcuts shown above. If a shortcut conflicts with macOS, use the Mustard popup,
+          page controls, or the page's right-click menu instead.
         </p>
       </section>
 

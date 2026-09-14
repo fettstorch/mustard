@@ -854,12 +854,15 @@ async function handleAtprotoCallback(body: {
 // ─── GitHub strategy ──────────────────────────────────────────────────────────
 // Standard OAuth 2.0 + PKCE. No DPoP, no PAR. Identity verified via GET /user.
 
-// A GitHub OAuth App allows only ONE callback URL, but Chrome and Firefox hand
-// out different extension redirect hosts (…chromiumapp.org vs
-// …extensions.allizom.org). So we register one OAuth App per browser and pick
-// its credentials here based on the redirect_uri host. The Firefox app's creds
-// are optional — if unset, Firefox logins fail with a clear message.
+// Keep the existing Chrome/Firefox registrations and select Safari explicitly
+// for its fixed HTTPS callback. Missing Safari credentials must not use Chrome's.
 function githubCreds(redirectUri: string): { clientId?: string; clientSecret?: string } {
+  if (redirectUri === 'https://fettstorch.github.io/mustard/callback.html') {
+    return {
+      clientId: Deno.env.get('GITHUB_CLIENT_ID_SAFARI'),
+      clientSecret: Deno.env.get('GITHUB_CLIENT_SECRET_SAFARI'),
+    }
+  }
   let isFirefox = false
   try {
     isFirefox = new URL(redirectUri).hostname.endsWith('extensions.allizom.org')
