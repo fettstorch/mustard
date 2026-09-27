@@ -1,18 +1,17 @@
 <script setup lang="ts">
 /**
- * "Mentions" section in the popup.
+ * Existing notification section in the popup.
  *
- * Lists the current user's unread @-mentions (in notes or comments). Only
- * rendered when there's at least one unread mention. Clicking a row opens the
- * page where the mention lives and marks that single mention seen.
+ * Lists every unread notification. Clicking a row opens the associated note
+ * and marks that notification seen.
  */
 import { onMounted, ref } from 'vue'
 import {
-  createGetMyMentionsMessage,
-  createMarkMentionSeenMessage,
+  createGetMyNotificationsMessage,
+  createMarkNotificationSeenMessage,
   sendMessage,
 } from '@/shared/messaging'
-import type { DtoMustardMention } from '@/shared/dto/DtoMustardMention'
+import type { DtoMustardNotification } from '@/shared/dto/DtoMustardMention'
 import { useNotificationsChanged } from './use-notifications-changed'
 import { openPageFocused } from './open-page-focused'
 import { displayUrl } from '@/shared/display-url'
@@ -22,70 +21,76 @@ const props = defineProps<{
   isOutdated?: boolean
 }>()
 
-const mentions = ref<DtoMustardMention[]>([])
+const notifications = ref<DtoMustardNotification[]>([])
 
 async function refresh() {
   try {
-    const data = await sendMessage(createGetMyMentionsMessage())
-    mentions.value = data ?? []
+    const data = await sendMessage(createGetMyNotificationsMessage())
+    notifications.value = data ?? []
   } catch (err) {
-    console.error('MentionsSection.refresh failed:', err)
-    mentions.value = []
+    console.error('NotificationsSection.refresh failed:', err)
+    notifications.value = []
   }
 }
 
 onMounted(refresh)
 useNotificationsChanged(refresh)
 
-function actorLabel(m: DtoMustardMention): string {
+function actorLabel(m: DtoMustardNotification): string {
   if (m.actorHandle) return `@${m.actorHandle}`
   if (m.actorDisplayName) return m.actorDisplayName
   return 'Someone'
 }
 
-async function openMention(m: DtoMustardMention) {
+function actionLabel(notification: DtoMustardNotification): string {
+  if (notification.type === 'mention') return `mentioned you in a ${notification.source}`
+  if (notification.type === 'comment') return 'added a comment'
+  return 'added a note you subscribed to'
+}
+
+async function openNotification(m: DtoMustardNotification) {
   if (!props.isOutdated) {
     // Optimistically remove from the list and mark seen.
-    mentions.value = mentions.value.filter((x) => x.id !== m.id)
-    sendMessage(createMarkMentionSeenMessage(m.id)).catch(() => {})
+    notifications.value = notifications.value.filter((x) => x.id !== m.id)
+    sendMessage(createMarkNotificationSeenMessage(m.id)).catch(() => {})
   }
   await openPageFocused(m.pageUrl, m.noteId)
 }
 </script>
 
 <template>
-  <div v-if="mentions.length > 0" class="mentions-section">
-    <div class="mentions-header">
-      <span class="mentions-title">
-        Mentions
-        <span class="mentions-unread-pill">{{ mentions.length }}</span>
+  <div v-if="notifications.length > 0" class="notifications-section">
+    <div class="notifications-header">
+      <span class="notifications-title">
+        Notifications
+        <span class="notifications-unread-pill">{{ notifications.length }}</span>
       </span>
     </div>
 
-    <div class="mentions-list">
+    <div class="notifications-list">
       <button
-        v-for="m in mentions"
+        v-for="m in notifications"
         :key="m.id"
         type="button"
-        class="mentions-row"
+        class="notifications-row"
         :title="m.pageUrl"
-        @click="openMention(m)"
+        @click="openNotification(m)"
       >
         <img
           v-if="m.actorAvatarUrl"
           :src="m.actorAvatarUrl"
           alt=""
-          class="mentions-avatar"
+          class="notifications-avatar"
           referrerpolicy="no-referrer"
         />
-        <div v-else class="mentions-avatar mentions-avatar-placeholder" />
-        <span class="mentions-body">
-          <span class="mentions-line">
-            <span class="mentions-actor">{{ actorLabel(m) }}</span>
-            mentioned you in a {{ m.source }}
+        <div v-else class="notifications-avatar notifications-avatar-placeholder" />
+        <span class="notifications-body">
+          <span class="notifications-line">
+            <span class="notifications-actor">{{ actorLabel(m) }}</span>
+            {{ actionLabel(m) }}
           </span>
-          <span v-if="m.snippet" class="mentions-snippet">{{ m.snippet }}</span>
-          <span class="mentions-url">{{ displayUrl(m.pageUrl) }}</span>
+          <span v-if="m.snippet" class="notifications-snippet">{{ m.snippet }}</span>
+          <span class="notifications-url">{{ displayUrl(m.pageUrl) }}</span>
         </span>
       </button>
     </div>
@@ -93,13 +98,13 @@ async function openMention(m: DtoMustardMention) {
 </template>
 
 <style scoped>
-.mentions-section {
+.notifications-section {
   margin-bottom: 0.75rem;
   border-bottom: 1px solid var(--mustard-border-subtle);
   padding-bottom: 0.5rem;
 }
 
-.mentions-header {
+.notifications-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -108,13 +113,13 @@ async function openMention(m: DtoMustardMention) {
   font-weight: 500;
 }
 
-.mentions-title {
+.notifications-title {
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
 }
 
-.mentions-unread-pill {
+.notifications-unread-pill {
   display: inline-flex;
   align-items: center;
   padding: 1px 6px;
@@ -125,7 +130,7 @@ async function openMention(m: DtoMustardMention) {
   color: #fff;
 }
 
-.mentions-list {
+.notifications-list {
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -136,7 +141,7 @@ async function openMention(m: DtoMustardMention) {
   scrollbar-gutter: stable;
 }
 
-.mentions-row {
+.notifications-row {
   display: flex;
   align-items: flex-start;
   gap: 8px;
@@ -152,11 +157,11 @@ async function openMention(m: DtoMustardMention) {
   transition: background 0.15s ease;
 }
 
-.mentions-row:hover {
+.notifications-row:hover {
   background: var(--mustard-glass-hover);
 }
 
-.mentions-avatar {
+.notifications-avatar {
   width: 28px;
   height: 28px;
   border-radius: 50%;
@@ -164,33 +169,33 @@ async function openMention(m: DtoMustardMention) {
   flex-shrink: 0;
 }
 
-.mentions-avatar-placeholder {
+.notifications-avatar-placeholder {
   background: rgba(128, 128, 128, 0.3);
 }
 
-.mentions-body {
+.notifications-body {
   display: flex;
   flex-direction: column;
   min-width: 0;
   gap: 1px;
 }
 
-.mentions-line {
+.notifications-line {
   line-height: 1.3;
 }
 
-.mentions-actor {
+.notifications-actor {
   font-weight: 600;
 }
 
-.mentions-snippet {
+.notifications-snippet {
   opacity: 0.75;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.mentions-url {
+.notifications-url {
   opacity: 0.5;
   overflow: hidden;
   text-overflow: ellipsis;

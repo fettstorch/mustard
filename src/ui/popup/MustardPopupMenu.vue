@@ -24,7 +24,7 @@ import type { UserProfile } from '@/shared/model/UserProfile'
 import type { ExtensionUpdateState } from '@/shared/extension-update'
 import ProviderLogin from './auth/ProviderLogin.vue'
 import MyPagesSection from './MyPagesSection.vue'
-import MentionsSection from './MentionsSection.vue'
+import NotificationsSection from './NotificationsSection.vue'
 
 const NOTES_MINIMIZED_KEY = 'mustard-notes-minimized'
 
@@ -267,7 +267,7 @@ const logoUrl = browser.runtime.getURL('/mustard_bottle_smile_512.png')
 
     <!-- Logged in -->
     <div v-if="session" class="session-container">
-      <MentionsSection :is-outdated="extensionUpdateState?.required === true" />
+      <NotificationsSection :is-outdated="extensionUpdateState?.required === true" />
       <MyPagesSection />
       <div class="profile-row">
         <img

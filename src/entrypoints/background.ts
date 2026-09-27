@@ -203,7 +203,7 @@ export default defineBackground(() => {
 
   /**
    * Acknowledge one notification by id — the single code path that both the
-   * popup's mention press (via the MARK_MENTION_SEEN message) and a native-toast
+   * popup's notification press and a native-toast
    * click funnel through, so "engage with the notification → it's seen" behaves
    * identically on both surfaces. Deletes the row (any type) and fans out the
    * badge/UI refresh.
@@ -893,7 +893,7 @@ export default defineBackground(() => {
       }
     },
 
-    GET_MY_MENTIONS: async () => {
+    GET_MY_NOTIFICATIONS: async () => {
       try {
         const session = await getSession()
         if (!session) return []
@@ -901,18 +901,18 @@ export default defineBackground(() => {
         const notifications = await mustardNotificationsManager.getUnreadNotifications((ids) =>
           resolveProfilesByUserId(jwt, ids),
         )
-        return notifications.filter((n) => n.type === 'mention')
+        return notifications
       } catch (err) {
-        console.error('GET_MY_MENTIONS failed:', err)
+        console.error('GET_MY_NOTIFICATIONS failed:', err)
         return []
       }
     },
 
-    MARK_MENTION_SEEN: async (message) => {
+    MARK_NOTIFICATION_SEEN: async (message) => {
       try {
         await acknowledgeNotification(message.notificationId)
       } catch (err) {
-        console.error('MARK_MENTION_SEEN failed:', err)
+        console.error('MARK_NOTIFICATION_SEEN failed:', err)
       }
       return null
     },

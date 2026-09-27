@@ -38,14 +38,14 @@ describe('isRemoteMutationMessage', () => {
     'UPSERT_COMMENT',
     'DELETE_COMMENT',
     'MARK_NOTIFICATIONS_SEEN_FOR_NOTE',
-    'MARK_MENTION_SEEN',
+    'MARK_NOTIFICATION_SEEN',
     'SET_PAGE_SUBSCRIPTION',
     'SET_USER_SUBSCRIPTION',
     'SET_IDENTITY_SUBSCRIPTION',
   ] as const)('returns true for %s', (type) => {
     const msg = {
       type,
-      ...(type === 'MARK_MENTION_SEEN' ? { notificationId: 'x' } : {}),
+      ...(type === 'MARK_NOTIFICATION_SEEN' ? { notificationId: 'x' } : {}),
       ...(type === 'MARK_NOTIFICATIONS_SEEN_FOR_NOTE' ? { noteId: 'n' } : {}),
       ...(type === 'SET_REPOST'
         ? { noteId: 'n', pageUrl: 'https://example.com', reposted: true }

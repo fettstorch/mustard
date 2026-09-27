@@ -36,16 +36,15 @@ export const mustardNotificationsManager = {
     }
   },
 
-  /** Acknowledge a single notification (mention or comment) by its id. */
+  /** Acknowledge a single notification by its id. */
   async markNotificationSeen(notificationId: string): Promise<void> {
     await notificationsService.markNotificationSeen(notificationId)
   },
 
   /**
-   * All of the current user's unread notifications (mentions AND comment-thread
-   * activity), newest first, with each actor resolved to a profile. Drives
-   * both native browser notifications and the popup's Mentions list (filtered to
-   * `type === 'mention'` by the caller).
+   * All of the current user's unread notifications, newest first, with each
+   * actor resolved to a profile. Drives both native browser notifications and
+   * the popup's notification list.
    *
    * Actor ids are opaque Mustard UUIDs (post multi-provider migration), so
    * resolution goes through the caller-supplied resolver (identities → atproto
