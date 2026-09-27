@@ -9,6 +9,7 @@ import type { BskyProfile } from './model/BskyProfile'
 import type { MentionCandidate } from './model/MentionCandidate'
 import type { LinkPreview } from './model/LinkPreview'
 import type { ExtensionUpdateState } from './extension-update'
+import type { Subscription, SubscriptionIdentityTarget } from './model/Subscription'
 
 type BaseMessage = {
   type: string
@@ -243,6 +244,35 @@ export type GetGithubMentionCandidatesMessage = Satisfies<
 >
 
 type GetGithubMentionCandidatesResponse = MentionCandidate[]
+
+export type GetSubscriptionsMessage = Satisfies<BaseMessage, { type: 'GET_SUBSCRIPTIONS' }>
+
+export type SetPageSubscriptionMessage = Satisfies<
+  BaseMessage,
+  {
+    type: 'SET_PAGE_SUBSCRIPTION'
+    pageKey: string
+    subscribed: boolean
+  }
+>
+
+export type SetUserSubscriptionMessage = Satisfies<
+  BaseMessage,
+  {
+    type: 'SET_USER_SUBSCRIPTION'
+    targetUserId: string
+    subscribed: boolean
+  }
+>
+
+export type SetIdentitySubscriptionMessage = Satisfies<
+  BaseMessage,
+  {
+    type: 'SET_IDENTITY_SUBSCRIPTION'
+    target: SubscriptionIdentityTarget
+    subscribed: boolean
+  }
+>
 
 // Response types for AT Protocol auth messages.
 // userId is the stable Mustard account id (opaque UUID).
@@ -501,6 +531,10 @@ export type Message =
   | GetMutualsMessage
   | SearchBskyActorsMessage
   | GetGithubMentionCandidatesMessage
+  | GetSubscriptionsMessage
+  | SetPageSubscriptionMessage
+  | SetUserSubscriptionMessage
+  | SetIdentitySubscriptionMessage
   | GetNotesVisibleMessage
   | SetNotesVisibleMessage
   | LoadAllNotesMessage
@@ -557,6 +591,10 @@ type MessageResponses = {
   GET_MUTUALS: GetMutualsResponse
   SEARCH_BSKY_ACTORS: SearchBskyActorsResponse
   GET_GITHUB_MENTION_CANDIDATES: GetGithubMentionCandidatesResponse
+  GET_SUBSCRIPTIONS: Subscription[]
+  SET_PAGE_SUBSCRIPTION: null
+  SET_USER_SUBSCRIPTION: null
+  SET_IDENTITY_SUBSCRIPTION: string | null
   GET_NOTES_VISIBLE: boolean
   SET_NOTES_VISIBLE: boolean
   LOAD_ALL_NOTES: number
@@ -784,6 +822,31 @@ export function createGetGithubMentionCandidatesMessage(): GetGithubMentionCandi
   return {
     type: 'GET_GITHUB_MENTION_CANDIDATES',
   }
+}
+
+export function createGetSubscriptionsMessage(): GetSubscriptionsMessage {
+  return { type: 'GET_SUBSCRIPTIONS' }
+}
+
+export function createSetPageSubscriptionMessage(
+  pageKey: string,
+  subscribed: boolean,
+): SetPageSubscriptionMessage {
+  return { type: 'SET_PAGE_SUBSCRIPTION', pageKey, subscribed }
+}
+
+export function createSetUserSubscriptionMessage(
+  targetUserId: string,
+  subscribed: boolean,
+): SetUserSubscriptionMessage {
+  return { type: 'SET_USER_SUBSCRIPTION', targetUserId, subscribed }
+}
+
+export function createSetIdentitySubscriptionMessage(
+  target: SubscriptionIdentityTarget,
+  subscribed: boolean,
+): SetIdentitySubscriptionMessage {
+  return { type: 'SET_IDENTITY_SUBSCRIPTION', target, subscribed }
 }
 
 export function createGetNotesVisibleMessage(): GetNotesVisibleMessage {

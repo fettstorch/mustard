@@ -15,6 +15,7 @@ import {
 import { mustardNotesManager } from '@/background/business/MustardNotesManager'
 import { mustardCommentsManager } from '@/background/business/MustardCommentsManager'
 import { mustardNotificationsManager } from '@/background/business/MustardNotificationsManager'
+import { mustardSubscriptionsServiceRemote } from '@/background/business/service/MustardSubscriptionsServiceRemote'
 import { DtoMustardNote } from '@/shared/dto/DtoMustardNote'
 import { DtoMustardComment } from '@/shared/dto/DtoMustardComment'
 import { RateLimitError } from '@/shared/errors'
@@ -38,6 +39,7 @@ import {
   resolveIdentities,
   resolveGithubAccounts,
   getGithubMentionCandidates,
+  resolveAccountUserIds,
 } from '@/background/auth/AuthBridge'
 import {
   storeSupabaseJwt,
@@ -754,6 +756,52 @@ export default defineBackground(() => {
         console.error('GET_GITHUB_MENTION_CANDIDATES failed:', err)
         return []
       }
+    },
+
+    GET_SUBSCRIPTIONS: async () => {
+      const session = await getSession()
+      if (!session) return []
+      return mustardSubscriptionsServiceRemote.getSubscriptions()
+    },
+
+    SET_PAGE_SUBSCRIPTION: async (message) => {
+      const session = await getSession()
+      if (!session) throw new Error('Cannot manage subscriptions - user not logged in')
+      await mustardSubscriptionsServiceRemote.setPageSubscription(
+        session.userId,
+        message.pageKey,
+        message.subscribed,
+      )
+      return null
+    },
+
+    SET_USER_SUBSCRIPTION: async (message) => {
+      const session = await getSession()
+      if (!session) throw new Error('Cannot manage subscriptions - user not logged in')
+      await mustardSubscriptionsServiceRemote.setUserSubscription(
+        session.userId,
+        message.targetUserId,
+        message.subscribed,
+      )
+      return null
+    },
+
+    SET_IDENTITY_SUBSCRIPTION: async (message) => {
+      const session = await getSession()
+      if (!session) throw new Error('Cannot manage subscriptions - user not logged in')
+      const jwt = await getSupabaseJwt()
+      if (!jwt) throw new Error('Cannot manage subscriptions - session unavailable')
+      const resolved = await resolveAccountUserIds(jwt, message.target.provider, [
+        message.target.accountId,
+      ])
+      const targetUserId = resolved.get(message.target.accountId)
+      if (!targetUserId) return null
+      await mustardSubscriptionsServiceRemote.setUserSubscription(
+        session.userId,
+        targetUserId,
+        message.subscribed,
+      )
+      return targetUserId
     },
 
     QUERY_COMMENTS: async (message) => {

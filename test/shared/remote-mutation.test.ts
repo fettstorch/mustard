@@ -39,6 +39,9 @@ describe('isRemoteMutationMessage', () => {
     'DELETE_COMMENT',
     'MARK_NOTIFICATIONS_SEEN_FOR_NOTE',
     'MARK_MENTION_SEEN',
+    'SET_PAGE_SUBSCRIPTION',
+    'SET_USER_SUBSCRIPTION',
+    'SET_IDENTITY_SUBSCRIPTION',
   ] as const)('returns true for %s', (type) => {
     const msg = {
       type,
@@ -49,6 +52,13 @@ describe('isRemoteMutationMessage', () => {
         : {}),
       ...(type === 'UPSERT_COMMENT' ? { noteId: 'n', content: 'hi' } : {}),
       ...(type === 'DELETE_COMMENT' ? { commentId: 'c', noteId: 'n' } : {}),
+      ...(type === 'SET_PAGE_SUBSCRIPTION'
+        ? { pageKey: 'https://example.com', subscribed: true }
+        : {}),
+      ...(type === 'SET_USER_SUBSCRIPTION' ? { targetUserId: 'u', subscribed: true } : {}),
+      ...(type === 'SET_IDENTITY_SUBSCRIPTION'
+        ? { target: { provider: 'atproto', accountId: 'did:plc:test' }, subscribed: true }
+        : {}),
     } as Message
     expect(isRemoteMutationMessage(msg)).toBe(true)
   })

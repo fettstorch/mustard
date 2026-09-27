@@ -104,6 +104,22 @@ export async function resolveGithubAccounts(
   return toMap(rows, (r) => [r.provider_account_id, r.handle ?? undefined])
 }
 
+/** Resolve provider account ids to their stable Mustard user UUIDs. */
+export async function resolveAccountUserIds(
+  jwt: string,
+  provider: string,
+  accountIds: string[],
+): Promise<Map<string, string>> {
+  const result = await authBridgePost({
+    action: 'resolve-accounts',
+    currentJwt: jwt,
+    provider,
+    accountIds,
+  })
+  const rows = (result.identities as (RawIdentity & { user_id: string })[] | undefined) ?? []
+  return toMap(rows, (row) => [row.provider_account_id, row.user_id])
+}
+
 /**
  * The github accounts the caller follows who are also Mustard users — the only
  * github accounts that can be @-mentioned (see auth-bridge for why). Empty for
