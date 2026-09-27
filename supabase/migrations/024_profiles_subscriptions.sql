@@ -86,7 +86,7 @@ BEGIN
   SELECT DISTINCT
     subscriptions.subscriber_id::text,
     NEW.id,
-    NULL,
+    NULL::UUID,
     NEW.author_id,
     'subscription'
   FROM subscriptions
