@@ -60,7 +60,7 @@ function toggle() {
       :title="isExpanded ? 'Collapse' : 'Expand'"
       @click="toggle"
     >
-      <span class="my-pages-title">
+      <span class="my-pages-title popup-section-title">
         Notes &amp; Threads
         <span v-if="totalUnread > 0" class="my-pages-unread-pill"> {{ totalUnread }} unread </span>
       </span>

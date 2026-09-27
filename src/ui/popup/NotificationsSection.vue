@@ -61,7 +61,7 @@ async function openNotification(m: DtoMustardNotification) {
 <template>
   <div v-if="notifications.length > 0" class="notifications-section popup-section">
     <div class="notifications-header popup-section-header">
-      <span class="notifications-title">
+      <span class="notifications-title popup-section-title">
         Notifications
         <span class="notifications-unread-pill">{{ notifications.length }}</span>
       </span>

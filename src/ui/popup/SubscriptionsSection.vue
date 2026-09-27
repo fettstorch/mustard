@@ -154,7 +154,7 @@ function userLabel(targetUserId: string): string {
       aria-controls="subscriptions-panel"
       @click="expanded = !expanded"
     >
-      <span>Subscriptions</span>
+      <span class="popup-section-title">Subscriptions</span>
       <span class="subscriptions-chevron" :class="{ 'is-open': expanded }" aria-hidden="true"
         >›</span
       >

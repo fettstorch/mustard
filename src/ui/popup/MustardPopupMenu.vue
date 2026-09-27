@@ -324,17 +324,29 @@ body::-webkit-scrollbar {
 }
 
 .mustard-popup .popup-section {
-  padding: 0.375rem 0.5rem 0.5rem;
-  border: 1px solid var(--mustard-border-subtle);
-  border-radius: 10px;
-  background: var(--mustard-section-surface);
-  box-shadow: inset 0 1px 0 var(--mustard-glass-strong);
+  padding: 0.75rem 0.875rem;
+  border: 1.5px solid var(--mustard-border-subtle);
+  border-radius: 12px;
+  background: var(--mustard-glass);
 }
 
 .mustard-popup .popup-section-header {
   min-height: 1.75rem;
   box-sizing: border-box;
-  padding: 0.25rem;
+  padding: 0 0 0.625rem;
+  border-bottom: 1.5px solid var(--mustard-border-subtle);
+}
+
+.mustard-popup .popup-section-title {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--mustard-border);
+}
+
+.mustard-popup .popup-section > :not(.popup-section-header) {
+  margin-top: 0.75rem;
 }
 </style>
 

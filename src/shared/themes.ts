@@ -34,7 +34,6 @@ const THEME_VAR_KEYS = [
   '--mustard-glass',
   '--mustard-glass-hover',
   '--mustard-glass-strong',
-  '--mustard-section-surface',
   '--mustard-border-subtle',
   '--mustard-border-faded',
   '--mustard-gradient',
@@ -55,7 +54,6 @@ const MUSTARD_VARS: Record<string, string> = {
   '--mustard-glass': 'rgba(255, 255, 255, 0.3)',
   '--mustard-glass-hover': 'rgba(255, 255, 255, 0.5)',
   '--mustard-glass-strong': 'rgba(255, 255, 255, 0.7)',
-  '--mustard-section-surface': 'rgba(255, 224, 102, 0.36)',
   '--mustard-border-subtle': 'rgba(92, 58, 30, 0.25)',
   '--mustard-border-faded': '#5c3a1e50',
   '--mustard-gradient':
@@ -78,7 +76,6 @@ const BLUE_VARS: Record<string, string> = {
   '--mustard-glass': 'rgba(255, 255, 255, 0.3)',
   '--mustard-glass-hover': 'rgba(255, 255, 255, 0.5)',
   '--mustard-glass-strong': 'rgba(255, 255, 255, 0.7)',
-  '--mustard-section-surface': 'rgba(212, 232, 255, 0.32)',
   '--mustard-border-subtle': 'rgba(26, 74, 122, 0.25)',
   '--mustard-border-faded': '#1a4a7a50',
   '--mustard-gradient':
@@ -101,7 +98,6 @@ const GREY_LIGHT_VARS: Record<string, string> = {
   '--mustard-glass': 'rgba(255, 255, 255, 0.35)',
   '--mustard-glass-hover': 'rgba(255, 255, 255, 0.55)',
   '--mustard-glass-strong': 'rgba(255, 255, 255, 0.75)',
-  '--mustard-section-surface': 'rgba(245, 245, 245, 0.52)',
   '--mustard-border-subtle': 'rgba(74, 74, 74, 0.25)',
   '--mustard-border-faded': '#4a4a4a50',
   '--mustard-gradient':
@@ -124,7 +120,6 @@ const GREY_DARK_VARS: Record<string, string> = {
   '--mustard-glass': 'rgba(255, 255, 255, 0.08)',
   '--mustard-glass-hover': 'rgba(255, 255, 255, 0.15)',
   '--mustard-glass-strong': 'rgba(255, 255, 255, 0.22)',
-  '--mustard-section-surface': 'rgba(255, 255, 255, 0.08)',
   '--mustard-border-subtle': 'rgba(255, 255, 255, 0.15)',
   '--mustard-border-faded': '#a0a0a050',
   '--mustard-gradient':
@@ -147,7 +142,6 @@ const PINK_VARS: Record<string, string> = {
   '--mustard-glass': 'rgba(255, 255, 255, 0.3)',
   '--mustard-glass-hover': 'rgba(255, 255, 255, 0.5)',
   '--mustard-glass-strong': 'rgba(255, 255, 255, 0.7)',
-  '--mustard-section-surface': 'rgba(255, 214, 232, 0.34)',
   '--mustard-border-subtle': 'rgba(122, 32, 72, 0.25)',
   '--mustard-border-faded': '#7a204850',
   '--mustard-gradient':
@@ -170,7 +164,6 @@ const RAINBOW_VARS: Record<string, string> = {
   '--mustard-glass': 'rgba(255, 255, 255, 0.35)',
   '--mustard-glass-hover': 'rgba(255, 255, 255, 0.55)',
   '--mustard-glass-strong': 'rgba(255, 255, 255, 0.75)',
-  '--mustard-section-surface': 'rgba(255, 245, 230, 0.32)',
   '--mustard-border-subtle': 'rgba(74, 45, 92, 0.25)',
   '--mustard-border-faded': '#4a2d5c50',
   '--mustard-gradient':
