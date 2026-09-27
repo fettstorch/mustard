@@ -22,9 +22,11 @@ import {
 } from '@/shared/messaging'
 import type { UserProfile } from '@/shared/model/UserProfile'
 import type { ExtensionUpdateState } from '@/shared/extension-update'
+import { siteStrategyFor } from '@/shared/site-strategies'
 import ProviderLogin from './auth/ProviderLogin.vue'
 import MyPagesSection from './MyPagesSection.vue'
 import NotificationsSection from './NotificationsSection.vue'
+import SubscriptionsSection from './SubscriptionsSection.vue'
 
 const NOTES_MINIMIZED_KEY = 'mustard-notes-minimized'
 
@@ -34,6 +36,7 @@ const extensionUpdateState = ref<ExtensionUpdateState | null>(null)
 const areNotesVisible = ref(true)
 const areNotesMinimized = ref(false)
 const activeTabId = ref<number | null>(null)
+const activePageKey = ref<string | null>(null)
 
 // One-shot "Show all notes on this page" state.
 const isLoadingAllNotes = ref(false)
@@ -58,6 +61,7 @@ onMounted(async () => {
   const [tab] = await browser.tabs.query({ active: true, currentWindow: true })
   if (tab?.id && tab.url && (tab.url.startsWith('http://') || tab.url.startsWith('https://'))) {
     activeTabId.value = tab.id
+    activePageKey.value = siteStrategyFor(tab.url).getPageKey()
     try {
       areNotesVisible.value = await sendTabMessage(tab.id, createGetNotesVisibleMessage())
     } catch {
@@ -268,6 +272,10 @@ const logoUrl = browser.runtime.getURL('/mustard_bottle_smile_512.png')
     <!-- Logged in -->
     <div v-if="session" class="session-container">
       <NotificationsSection :is-outdated="extensionUpdateState?.required === true" />
+      <SubscriptionsSection
+        :page-key="activePageKey"
+        :is-outdated="extensionUpdateState?.required === true"
+      />
       <MyPagesSection />
       <div class="profile-row">
         <img
