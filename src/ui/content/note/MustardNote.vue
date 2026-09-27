@@ -350,9 +350,20 @@ watch(unreadCount, (count) => {
         <RepostAvatarStack
           v-if="isRemoteNote && hasReposters"
           :author="authorProfile"
+          :author-id="note.authorId"
+          :can-subscribe="isLoggedIn"
+          :is-own-profile="isMyOwnNote"
+          :is-outdated="mustardState.clientOutdated"
           :reposters="reposterProfiles"
         />
-        <AuthorAvatar v-else-if="isRemoteNote" :profile="authorProfile" />
+        <AuthorAvatar
+          v-else-if="isRemoteNote"
+          :profile="authorProfile"
+          :user-id="note.authorId"
+          :can-subscribe="isLoggedIn"
+          :is-own-profile="isMyOwnNote"
+          :is-outdated="mustardState.clientOutdated"
+        />
         <MustardNoteHeader class="mustard-note-actions" style="translate: 5px; flex: 1">
           <IconButton
             v-if="isMyOwnNote && showPublishButton"
