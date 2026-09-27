@@ -1,6 +1,13 @@
 import { expect, test } from './authenticated.fixture'
 import { TEST_USERS } from './auth-test-data'
-import { authedClient } from './local-supabase'
+import {
+  adminClient,
+  authedClient,
+  deleteNote,
+  getLocalSupabaseStatus,
+  seedNote,
+  setFollows,
+} from './local-supabase'
 import { loginAs } from '../extension.fixture'
 
 const fixtureUrl = 'http://127.0.0.1:4173/page.html'
@@ -16,6 +23,51 @@ test('popup recognizes the seeded GitHub session', async ({
   await expect(popup.getByRole('button', { name: 'Logout' })).toBeVisible()
   await expect(popup.getByText('@mustard-e2e')).toBeVisible()
   await expect(popup.getByRole('tab', { name: 'GitHub' })).not.toBeVisible()
+})
+
+test('note author profile card can subscribe and keeps the provider link', async ({
+  authenticatedContext: context,
+}) => {
+  const { viewer, author } = TEST_USERS
+  const status = getLocalSupabaseStatus()
+  await setFollows(viewer.userId, [author.userId], status)
+  const noteId = await seedNote(author.userId, fixtureUrl, 'Profile card subscription note', status)
+
+  try {
+    const page = await context.newPage()
+    await page.goto(fixtureUrl)
+    const mustard = page.locator('#mustard-host')
+    await expect(mustard.getByText('Profile card subscription note')).toBeVisible({
+      timeout: 8_000,
+    })
+
+    await mustard.getByRole('button', { name: 'mustard-author' }).click()
+    const card = mustard.getByRole('dialog', { name: 'mustard-author profile' })
+    await expect(card).toBeVisible()
+    await expect(card.getByRole('link', { name: 'View on GitHub' })).toHaveAttribute(
+      'href',
+      'https://github.com/mustard-author',
+    )
+
+    await card.getByRole('button', { name: 'Subscribe' }).click()
+    await expect(card.getByRole('button', { name: 'Unsubscribe' })).toBeVisible()
+
+    const { data, error } = await adminClient(status)
+      .from('subscriptions')
+      .select('subscriber_id, target_user_id, kind')
+      .eq('subscriber_id', viewer.userId)
+      .eq('target_user_id', author.userId)
+    if (error) throw new Error(`Could not query profile-card subscription: ${error.message}`)
+    expect(data).toEqual([
+      {
+        subscriber_id: viewer.userId,
+        target_user_id: author.userId,
+        kind: 'user',
+      },
+    ])
+  } finally {
+    await deleteNote(noteId, status)
+  }
 })
 
 test('publishes a remote note and restores it after reload', async ({
