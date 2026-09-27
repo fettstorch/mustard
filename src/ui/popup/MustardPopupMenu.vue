@@ -322,6 +322,20 @@ body::-webkit-scrollbar {
   /* Chrome/Safari/Edge */
   display: none;
 }
+
+.mustard-popup .popup-section {
+  padding: 0.375rem 0.5rem 0.5rem;
+  border: 1px solid var(--mustard-border-subtle);
+  border-radius: 10px;
+  background: var(--mustard-section-surface);
+  box-shadow: inset 0 1px 0 var(--mustard-glass-strong);
+}
+
+.mustard-popup .popup-section-header {
+  min-height: 1.75rem;
+  box-sizing: border-box;
+  padding: 0.25rem;
+}
 </style>
 
 <style scoped>

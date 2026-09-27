@@ -59,8 +59,8 @@ async function openNotification(m: DtoMustardNotification) {
 </script>
 
 <template>
-  <div v-if="notifications.length > 0" class="notifications-section">
-    <div class="notifications-header">
+  <div v-if="notifications.length > 0" class="notifications-section popup-section">
+    <div class="notifications-header popup-section-header">
       <span class="notifications-title">
         Notifications
         <span class="notifications-unread-pill">{{ notifications.length }}</span>
@@ -99,16 +99,13 @@ async function openNotification(m: DtoMustardNotification) {
 
 <style scoped>
 .notifications-section {
-  margin-bottom: 0.75rem;
-  border-bottom: 1px solid var(--mustard-border-subtle);
-  padding-bottom: 0.5rem;
+  min-width: 0;
 }
 
 .notifications-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.5rem 0;
   font-size: 0.875rem;
   font-weight: 500;
 }

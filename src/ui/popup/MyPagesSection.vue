@@ -53,10 +53,10 @@ function toggle() {
 </script>
 
 <template>
-  <div class="my-pages-section">
+  <div class="my-pages-section popup-section">
     <button
       type="button"
-      class="my-pages-header"
+      class="my-pages-header popup-section-header"
       :title="isExpanded ? 'Collapse' : 'Expand'"
       @click="toggle"
     >
@@ -96,9 +96,7 @@ function toggle() {
 
 <style scoped>
 .my-pages-section {
-  margin-bottom: 0.75rem;
-  border-bottom: 1px solid var(--mustard-border-subtle);
-  padding-bottom: 0.5rem;
+  min-width: 0;
 }
 
 .my-pages-header {
@@ -106,7 +104,6 @@ function toggle() {
   width: 100%;
   align-items: center;
   justify-content: space-between;
-  padding: 0.5rem 0;
   background: none;
   border: none;
   color: var(--mustard-text);

@@ -146,16 +146,18 @@ function userLabel(targetUserId: string): string {
 </script>
 
 <template>
-  <section class="subscriptions-section">
+  <section class="subscriptions-section popup-section">
     <button
       type="button"
-      class="subscriptions-heading"
+      class="subscriptions-heading popup-section-header"
       :aria-expanded="expanded"
       aria-controls="subscriptions-panel"
       @click="expanded = !expanded"
     >
       <span>Subscriptions</span>
-      <span aria-hidden="true">{{ expanded ? '−' : '+' }}</span>
+      <span class="subscriptions-chevron" :class="{ 'is-open': expanded }" aria-hidden="true"
+        >›</span
+      >
     </button>
 
     <div v-if="expanded" id="subscriptions-panel" class="subscriptions-panel">
@@ -217,7 +219,7 @@ function userLabel(targetUserId: string): string {
             :aria-label="`Unsubscribe from ${item.pageKey}`"
             @click="removePageSubscription(item.pageKey)"
           >
-            Remove
+            <span aria-hidden="true">×</span>
           </button>
         </div>
         <div v-for="item in userSubscriptions" :key="item.id" class="subscription-row">
@@ -229,7 +231,7 @@ function userLabel(targetUserId: string): string {
             :aria-label="`Unsubscribe from ${userLabel(item.targetUserId)}`"
             @click="removeUserSubscription(item.targetUserId)"
           >
-            Remove
+            <span aria-hidden="true">×</span>
           </button>
         </div>
       </div>
@@ -239,9 +241,7 @@ function userLabel(targetUserId: string): string {
 
 <style scoped>
 .subscriptions-section {
-  margin-bottom: 0.75rem;
-  border-bottom: 1px solid var(--mustard-border-subtle);
-  padding-bottom: 0.5rem;
+  min-width: 0;
 }
 
 .subscriptions-heading {
@@ -249,7 +249,6 @@ function userLabel(targetUserId: string): string {
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  padding: 0.5rem 0;
   border: 0;
   background: transparent;
   color: var(--mustard-text);
@@ -257,6 +256,16 @@ function userLabel(targetUserId: string): string {
   font-size: 0.875rem;
   font-weight: 500;
   cursor: pointer;
+}
+
+.subscriptions-chevron {
+  font-size: 1rem;
+  line-height: 1;
+  transition: transform 0.15s ease;
+}
+
+.subscriptions-chevron.is-open {
+  transform: rotate(90deg);
 }
 
 .subscriptions-panel {
@@ -296,6 +305,11 @@ function userLabel(targetUserId: string): string {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  max-height: 180px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 2px;
+  scrollbar-gutter: stable;
 }
 
 .subscription-row {
@@ -317,14 +331,31 @@ function userLabel(targetUserId: string): string {
 }
 
 .subscription-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
+  width: 22px;
+  height: 22px;
   padding: 0;
-  border: 0;
+  border: 1px solid transparent;
+  border-radius: 50%;
   background: transparent;
   color: inherit;
   font: inherit;
-  text-decoration: underline;
+  font-size: 1rem;
+  line-height: 1;
   cursor: pointer;
-  opacity: 0.65;
+  opacity: 0.7;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    opacity 0.15s ease;
+}
+
+.subscription-remove:hover {
+  border-color: var(--mustard-border-subtle);
+  background: var(--mustard-glass-hover);
+  opacity: 1;
 }
 </style>

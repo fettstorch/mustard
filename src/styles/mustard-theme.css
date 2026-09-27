@@ -21,6 +21,7 @@
   --mustard-glass: rgba(255, 255, 255, 0.3);
   --mustard-glass-hover: rgba(255, 255, 255, 0.5);
   --mustard-glass-strong: rgba(255, 255, 255, 0.7);
+  --mustard-section-surface: rgba(255, 224, 102, 0.36);
   --mustard-border-subtle: rgba(92, 58, 30, 0.25);
   --mustard-border-faded: #5c3a1e50; /* ~31% opacity, used for hover/placeholder effects */
 
