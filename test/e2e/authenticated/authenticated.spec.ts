@@ -25,6 +25,48 @@ test('popup recognizes the seeded GitHub session', async ({
   await expect(popup.getByRole('tab', { name: 'GitHub' })).not.toBeVisible()
 })
 
+test('popup subscriptions use compact controls and a bounded scroll area', async ({
+  authenticatedContext: context,
+  popupUrl,
+}) => {
+  const client = authedClient(TEST_USERS.viewer.userId)
+  const pageKeys = Array.from(
+    { length: 12 },
+    (_, index) => `https://example.com/subscribed-page-${index}`,
+  )
+  const { error } = await client.from('subscriptions').insert(
+    pageKeys.map((pageKey) => ({
+      subscriber_id: TEST_USERS.viewer.userId,
+      kind: 'page',
+      page_key: pageKey,
+    })),
+  )
+  if (error) throw new Error(`Could not seed popup subscriptions: ${error.message}`)
+
+  const popup = await context.newPage()
+  await popup.goto(popupUrl)
+
+  const section = popup.locator('.subscriptions-section')
+  const heading = section.getByRole('button', { name: 'Subscriptions' })
+  await expect(heading.locator('.subscriptions-chevron')).toHaveText('›')
+  await heading.click()
+
+  const list = section.locator('.subscription-list')
+  await expect(list.locator('.subscription-row')).toHaveCount(pageKeys.length)
+  await expect(section.getByRole('button', { name: /^Unsubscribe from https:\/\// })).toHaveCount(
+    pageKeys.length,
+  )
+  await expect(section.getByText('Remove', { exact: true })).toHaveCount(0)
+
+  const dimensions = await list.evaluate((element) => ({
+    clientHeight: element.clientHeight,
+    scrollHeight: element.scrollHeight,
+    overflowY: getComputedStyle(element).overflowY,
+  }))
+  expect(dimensions.overflowY).toBe('auto')
+  expect(dimensions.scrollHeight).toBeGreaterThan(dimensions.clientHeight)
+})
+
 test('note author profile card can subscribe and keeps the provider link', async ({
   authenticatedContext: context,
 }) => {
