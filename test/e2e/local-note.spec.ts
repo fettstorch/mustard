@@ -100,7 +100,7 @@ test.describe('Content script smoke', () => {
     await expect(editor).toBeVisible({ timeout: 8_000 })
     await editor.click()
     await page.keyboard.type(
-      '[Example docs](https://example.com/docs) and [Google](google.de) and [Escaped](https://example.com/a\\(b\\))',
+      '[Example docs](https://example.com/docs) and [Google](google.de) and [Escaped](https://example.com/a\\(b\\)) ([Parenthesized](https://example.com/paren)) See:[Colon](google.de/path) ![Not a link](https://example.com/not-image)',
     )
 
     const editorLink = editor.getByRole('link', { name: 'Example docs' })
@@ -109,6 +109,15 @@ test.describe('Content script smoke', () => {
     await expect(bareDomainEditorLink).toHaveAttribute('href', 'https://google.de')
     const escapedEditorLink = editor.getByRole('link', { name: 'Escaped' })
     await expect(escapedEditorLink).toHaveAttribute('href', 'https://example.com/a(b)')
+    await expect(editor.getByRole('link', { name: 'Parenthesized' })).toHaveAttribute(
+      'href',
+      'https://example.com/paren',
+    )
+    await expect(editor.getByRole('link', { name: 'Colon' })).toHaveAttribute(
+      'href',
+      'https://google.de/path',
+    )
+    await expect(editor.getByRole('link', { name: 'Not a link' })).toHaveCount(0)
 
     await mustard.locator('[title="Save this note locally"]').click()
 
@@ -125,6 +134,12 @@ test.describe('Content script smoke', () => {
       name: 'Escaped',
     })
     await expect(escapedSavedLink).toHaveAttribute('href', 'https://example.com/a(b)')
+    await expect(
+      mustard.locator('.mustard-note-content').getByRole('link', { name: 'Parenthesized' }),
+    ).toHaveAttribute('href', 'https://example.com/paren')
+    await expect(
+      mustard.locator('.mustard-note-content').getByRole('link', { name: 'Colon' }),
+    ).toHaveAttribute('href', 'https://google.de/path')
   })
 
   test('shows a CSP-safe Open Graph thumbnail in the editor and saved note', async ({
