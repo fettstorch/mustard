@@ -1,6 +1,26 @@
 import type { MustardNoteAnchorData } from '@/shared/model/MustardNoteAnchorData'
 import { resolveAnchoredElement, siteStrategyFor } from '@/shared/site-strategies'
 
+const VIEWPORT_GUTTER = 8
+
+export function calculateOverlayPositionStyle(
+  position: { x: number; y: number },
+  viewportWidth: number,
+  growsLeft?: boolean,
+) {
+  const anchorX = Number.isFinite(position.x) ? position.x : VIEWPORT_GUTTER
+  const x = Math.min(Math.max(anchorX, VIEWPORT_GUTTER), viewportWidth - VIEWPORT_GUTTER)
+  const shouldGrowLeft = growsLeft ?? x > viewportWidth / 2
+  const availableWidth = (shouldGrowLeft ? x : viewportWidth - x) - VIEWPORT_GUTTER
+
+  return {
+    top: `${Number.isFinite(position.y) ? position.y : VIEWPORT_GUTTER}px`,
+    left: shouldGrowLeft ? 'auto' : `${x}px`,
+    right: shouldGrowLeft ? `${viewportWidth - x}px` : 'auto',
+    '--mustard-overlay-max-width': `${availableWidth}px`,
+  }
+}
+
 /**
  * Viewport position for a note's anchor, or null when the note cannot be
  * placed on this page at all (a post-keyed note whose post isn't rendered

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { inject, computed, onMounted, onUnmounted, ref, reactive, defineAsyncComponent } from 'vue'
 import type { MustardState } from './mustard-state'
-import { calculateAnchorPosition } from './anchor-utils'
+import { calculateAnchorPosition, calculateOverlayPositionStyle } from './anchor-utils'
 const MustardNoteEditor = defineAsyncComponent(() => import('./note-editor/MustardNoteEditor.vue'))
 import MustardNote from './note/MustardNote.vue'
 import PublishConfirmBubble from './PublishConfirmBubble.vue'
@@ -34,26 +34,9 @@ const event = inject<Observable<Message>>('event')!
 
 // Reactive trigger for recalculating positions on resize/scroll
 const resizeTick = ref(0)
-const VIEWPORT_GUTTER = 8
 
-/**
- * Keep overlays tethered to their anchor while making them grow toward the
- * roomier side of the viewport. The available width is inherited by the note
- * or editor, so fit-content can grow naturally without ever crossing an edge.
- */
-function positionedStyle(position: { x: number; y: number }) {
-  const viewportWidth = window.innerWidth
-  const anchorX = Number.isFinite(position.x) ? position.x : VIEWPORT_GUTTER
-  const x = Math.min(Math.max(anchorX, VIEWPORT_GUTTER), viewportWidth - VIEWPORT_GUTTER)
-  const growsLeft = x > viewportWidth / 2
-  const availableWidth = (growsLeft ? x : viewportWidth - x) - VIEWPORT_GUTTER
-
-  return {
-    top: `${Number.isFinite(position.y) ? position.y : VIEWPORT_GUTTER}px`,
-    left: growsLeft ? 'auto' : `${x}px`,
-    right: growsLeft ? `${viewportWidth - x}px` : 'auto',
-    '--mustard-overlay-max-width': `${availableWidth}px`,
-  }
+function positionedStyle(position: { x: number; y: number }, growsLeft?: boolean) {
+  return calculateOverlayPositionStyle(position, window.innerWidth, growsLeft)
 }
 
 /**
@@ -160,6 +143,7 @@ const notesWithPositions = computed(() => {
             x: anchorPos.x + offset.x,
             y: anchorPos.y + offset.y,
           },
+          growsLeft: anchorPos.x > window.innerWidth / 2,
           dragOffset: offset,
         },
       ]
@@ -448,12 +432,12 @@ function onNoteUnhide(note: MustardNoteType) {
     <!-- Existing notes (TransitionGroup animates notes in/out when visibility toggles) -->
     <TransitionGroup name="mustard-note">
       <MustardNote
-        v-for="({ note, position, dragOffset }, index) in notesWithPositions"
+        v-for="({ note, position, growsLeft, dragOffset }, index) in notesWithPositions"
         :key="note.id ?? `unsaved-${index}`"
         :note="note"
         :drag-offset="dragOffset"
         class="mustard-positioned"
-        :style="positionedStyle(position)"
+        :style="positionedStyle(position, growsLeft)"
         @pressed-publish="onNotePublish"
         @pressed-delete="onNoteDelete"
         @pressed-repost="onNoteRepost"
