@@ -100,7 +100,7 @@ test.describe('Content script smoke', () => {
     await expect(editor).toBeVisible({ timeout: 8_000 })
     await editor.click()
     await page.keyboard.type(
-      '[Example docs](https://example.com/docs) and [Google](google.de) and [Escaped](https://example.com/a\\(b\\)) ([Parenthesized](https://example.com/paren)) See:[Colon](google.de/path) ![Not a link](https://example.com/not-image)',
+      '[Example docs](https://example.com/docs) and [Google](google.de) and [Escaped](https://example.com/a\\(b\\)) ([Parenthesized](https://example.com/paren)) See:[Colon](google.de/path) ![Not a link](https://example.com/not-image) \\[Literal](https://example.com/literal)',
     )
 
     const editorLink = editor.getByRole('link', { name: 'Example docs' })
@@ -118,6 +118,7 @@ test.describe('Content script smoke', () => {
       'https://google.de/path',
     )
     await expect(editor.getByRole('link', { name: 'Not a link' })).toHaveCount(0)
+    await expect(editor.getByRole('link', { name: 'Literal' })).toHaveCount(0)
 
     await mustard.locator('[title="Save this note locally"]').click()
 

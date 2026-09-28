@@ -5,7 +5,7 @@ import { Extension, InputRule } from '@tiptap/core'
 // capture deliberately allows one level of balanced parentheses so common
 // destinations such as Wikipedia URLs are not truncated.
 const MARKDOWN_LINK_INPUT_REGEX =
-  /(?:^|([^!]))\[([^\]\n]+)\]\((https?:\/\/(?:\\[()]|[^\s()<>\\]|\([^\s()<>]*\))+|(?:[a-z\d](?:[a-z\d-]*[a-z\d])?\.)+[a-z][a-z\d-]{1,62}(?::\d+)?(?:[/?#](?:\\[()]|[^\s()<>\\]|\([^\s()<>]*\))*)?)\)$/i
+  /(?:^|([^!\\]))\[([^\]\n]+)\]\((https?:\/\/(?:\\[()]|[^\s()<>\\]|\([^\s()<>]*\))+|(?:[a-z\d](?:[a-z\d-]*[a-z\d])?\.)+[a-z][a-z\d-]{1,62}(?::\d+)?(?:[/?#](?:\\[()]|[^\s()<>\\]|\([^\s()<>]*\))*)?)\)$/i
 
 function normalizeDestination(destination: string): string {
   const unescaped = destination.replace(/\\([()])/g, '$1')
