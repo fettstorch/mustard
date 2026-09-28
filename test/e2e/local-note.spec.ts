@@ -99,10 +99,12 @@ test.describe('Content script smoke', () => {
     const editor = mustard.locator('.tiptap[contenteditable="true"]')
     await expect(editor).toBeVisible({ timeout: 8_000 })
     await editor.click()
-    await page.keyboard.type('[Example docs](https://example.com/docs)')
+    await page.keyboard.type('[Example docs](https://example.com/docs) and [Google](google.de)')
 
     const editorLink = editor.getByRole('link', { name: 'Example docs' })
     await expect(editorLink).toHaveAttribute('href', 'https://example.com/docs')
+    const bareDomainEditorLink = editor.getByRole('link', { name: 'Google' })
+    await expect(bareDomainEditorLink).toHaveAttribute('href', 'https://google.de')
 
     await mustard.locator('[title="Save this note locally"]').click()
 
@@ -111,6 +113,10 @@ test.describe('Content script smoke', () => {
     })
     await expect(savedLink).toHaveAttribute('href', 'https://example.com/docs')
     await expect(savedLink).toHaveAttribute('target', '_blank')
+    const bareDomainSavedLink = mustard.locator('.mustard-note-content').getByRole('link', {
+      name: 'Google',
+    })
+    await expect(bareDomainSavedLink).toHaveAttribute('href', 'https://google.de')
   })
 
   test('shows a CSP-safe Open Graph thumbnail in the editor and saved note', async ({
