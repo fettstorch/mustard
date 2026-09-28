@@ -41,6 +41,60 @@ CREATE INDEX idx_subscriptions_user_target
   ON subscriptions(target_user_id)
   WHERE kind = 'user';
 
+-- Keep an authenticated account from growing this globally stored table
+-- without bound. The lock makes the count + insert safe under concurrent
+-- requests, while the duplicate check preserves idempotent subscribe calls at
+-- the limit (the unique indexes still reject the duplicate insert).
+CREATE OR REPLACE FUNCTION private.enforce_subscription_limit()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_subscription_count INTEGER;
+BEGIN
+  PERFORM pg_catalog.pg_advisory_xact_lock(
+    pg_catalog.hashtext(NEW.subscriber_id::TEXT),
+    pg_catalog.hashtext('subscription')
+  );
+
+  IF EXISTS (
+    SELECT 1
+    FROM public.subscriptions
+    WHERE subscriber_id = NEW.subscriber_id
+      AND (
+        (NEW.kind = 'page' AND kind = 'page' AND page_key = NEW.page_key)
+        OR (
+          NEW.kind = 'user'
+          AND kind = 'user'
+          AND target_user_id = NEW.target_user_id
+        )
+      )
+  ) THEN
+    RETURN NEW;
+  END IF;
+
+  SELECT COUNT(*) INTO v_subscription_count
+  FROM public.subscriptions
+  WHERE subscriber_id = NEW.subscriber_id;
+
+  IF v_subscription_count >= 500 THEN
+    RAISE EXCEPTION 'Subscription limit reached'
+      USING ERRCODE = 'check_violation';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION private.enforce_subscription_limit() FROM PUBLIC;
+
+CREATE TRIGGER trg_enforce_subscription_limit
+  BEFORE INSERT ON subscriptions
+  FOR EACH ROW
+  EXECUTE FUNCTION private.enforce_subscription_limit();
+
 ALTER TABLE subscriptions ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Subscribers read own subscriptions"
