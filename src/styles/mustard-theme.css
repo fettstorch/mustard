@@ -37,6 +37,10 @@
   /* Note content sizing */
   --mustard-note-content-width: 8ch;
   --mustard-note-content-max-width: 2000px;
+  --mustard-note-effective-content-max-width: min(
+    var(--mustard-note-content-max-width),
+    calc(var(--mustard-overlay-max-width, 100vw) - 1em - 6px)
+  );
 
   /* Plastic tube box-shadow */
   --mustard-plastic-shadow:

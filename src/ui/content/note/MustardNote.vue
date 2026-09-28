@@ -507,6 +507,7 @@ watch(unreadCount, (count) => {
  * it the positioning context for the slot. */
 .mustard-note-wrapper {
   width: fit-content;
+  max-width: var(--mustard-overlay-max-width, calc(100vw - 16px));
 }
 
 .mustard-note {
@@ -519,7 +520,8 @@ watch(unreadCount, (count) => {
    * the browser falls back to discrete animation (instant jump). Matches the
    * inner content's max-width + outer horizontal padding (1em total from
    * .mustard-notes-padding). */
-  max-width: calc(var(--mustard-note-content-max-width) + 1em);
+  box-sizing: border-box;
+  max-width: var(--mustard-overlay-max-width, calc(100vw - 16px));
 }
 
 .mustard-note.is-dragging {
@@ -805,7 +807,10 @@ watch(unreadCount, (count) => {
   contain: inline-size;
   grid-template-rows: 0fr;
   grid-template-columns: minmax(0, 1fr);
-  min-width: min(var(--mustard-note-content-width), var(--mustard-note-content-max-width));
+  min-width: min(
+    var(--mustard-note-content-width),
+    var(--mustard-note-effective-content-max-width)
+  );
   transition:
     grid-template-rows 0.2s ease,
     opacity 0.15s ease;
@@ -816,7 +821,7 @@ watch(unreadCount, (count) => {
   /* Keep the resulting note at a 400px floor, accounting for its 0.5em inline
    * padding and 3px border on each side. Once the note is wider, containment
    * above ensures the thread only fills that existing width. */
-  min-width: min(calc(400px - 1em - 6px), var(--mustard-note-content-max-width));
+  min-width: min(calc(400px - 1em - 6px), var(--mustard-note-effective-content-max-width));
   grid-template-rows: 1fr;
   opacity: 1;
 }

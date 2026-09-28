@@ -252,7 +252,8 @@ function handlePublish() {
     @keydown="handleKeyDown"
     style="
       width: fit-content;
-      max-width: calc(var(--mustard-note-content-max-width) + 1em);
+      max-width: var(--mustard-overlay-max-width, calc(100vw - 16px));
+      box-sizing: border-box;
       padding-top: 8px;
     "
   >
@@ -376,7 +377,7 @@ function handlePublish() {
   margin-top: 8px;
   padding-top: 8px;
   border-top: 1px solid var(--mustard-border-subtle);
-  max-width: var(--mustard-note-content-max-width);
+  max-width: var(--mustard-note-effective-content-max-width);
 }
 
 /* Hover-gated, like the other note controls: invisible until the section is hovered. */
@@ -462,7 +463,7 @@ function handlePublish() {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  max-width: var(--mustard-note-content-max-width);
+  max-width: var(--mustard-note-effective-content-max-width);
 }
 
 .anchor-row {

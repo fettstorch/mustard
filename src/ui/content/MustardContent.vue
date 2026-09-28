@@ -34,6 +34,27 @@ const event = inject<Observable<Message>>('event')!
 
 // Reactive trigger for recalculating positions on resize/scroll
 const resizeTick = ref(0)
+const VIEWPORT_GUTTER = 8
+
+/**
+ * Keep overlays tethered to their anchor while making them grow toward the
+ * roomier side of the viewport. The available width is inherited by the note
+ * or editor, so fit-content can grow naturally without ever crossing an edge.
+ */
+function positionedStyle(position: { x: number; y: number }) {
+  const viewportWidth = window.innerWidth
+  const anchorX = Number.isFinite(position.x) ? position.x : VIEWPORT_GUTTER
+  const x = Math.min(Math.max(anchorX, VIEWPORT_GUTTER), viewportWidth - VIEWPORT_GUTTER)
+  const growsLeft = x > viewportWidth / 2
+  const availableWidth = (growsLeft ? x : viewportWidth - x) - VIEWPORT_GUTTER
+
+  return {
+    top: `${Number.isFinite(position.y) ? position.y : VIEWPORT_GUTTER}px`,
+    left: growsLeft ? 'auto' : `${x}px`,
+    right: growsLeft ? `${viewportWidth - x}px` : 'auto',
+    '--mustard-overlay-max-width': `${availableWidth}px`,
+  }
+}
 
 /**
  * Temporary drag offsets per note. Allows users to reposition notes on screen
@@ -432,7 +453,7 @@ function onNoteUnhide(note: MustardNoteType) {
         :note="note"
         :drag-offset="dragOffset"
         class="mustard-positioned"
-        :style="{ left: `${position.x}px`, top: `${position.y}px` }"
+        :style="positionedStyle(position)"
         @pressed-publish="onNotePublish"
         @pressed-delete="onNoteDelete"
         @pressed-repost="onNoteRepost"
@@ -457,7 +478,7 @@ function onNoteUnhide(note: MustardNoteType) {
         v-if="mustardState.editor.isOpen"
         :anchor="mustardState.editor.anchor"
         class="mustard-positioned"
-        :style="{ left: `${editorPosition.x}px`, top: `${editorPosition.y}px` }"
+        :style="positionedStyle(editorPosition)"
         @pressed-x="onEditorClose"
         @pressed-save="onEditorSave"
         @pressed-publish="onEditorPublish"
