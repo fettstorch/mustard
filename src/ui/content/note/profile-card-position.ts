@@ -5,7 +5,7 @@ type ProfileCardPositionInput = {
 }
 
 const GAP = 6
-export const PROFILE_CARD_VIEWPORT_MARGIN = 8
+const PROFILE_CARD_VIEWPORT_MARGIN = 8
 
 export function calculateProfileCardPosition({
   anchor,
