@@ -21,6 +21,12 @@ export type SubscriptionIdentityTarget = {
   accountId: string
 }
 
+export type ResolvedSubscriptionIdentities = Record<string, string>
+
+export function subscriptionIdentityKey(target: SubscriptionIdentityTarget): string {
+  return `${target.provider}:${target.accountId}`
+}
+
 export function isPageSubscriptionSupported(pageKey: string): boolean {
   return pageKey.length > 0 && !pageKey.startsWith('at://')
 }

@@ -9,7 +9,11 @@ import type { BskyProfile } from './model/BskyProfile'
 import type { MentionCandidate } from './model/MentionCandidate'
 import type { LinkPreview } from './model/LinkPreview'
 import type { ExtensionUpdateState } from './extension-update'
-import type { Subscription, SubscriptionIdentityTarget } from './model/Subscription'
+import type {
+  ResolvedSubscriptionIdentities,
+  Subscription,
+  SubscriptionIdentityTarget,
+} from './model/Subscription'
 
 type BaseMessage = {
   type: string
@@ -246,6 +250,14 @@ export type GetGithubMentionCandidatesMessage = Satisfies<
 type GetGithubMentionCandidatesResponse = MentionCandidate[]
 
 export type GetSubscriptionsMessage = Satisfies<BaseMessage, { type: 'GET_SUBSCRIPTIONS' }>
+
+export type ResolveSubscriptionIdentitiesMessage = Satisfies<
+  BaseMessage,
+  {
+    type: 'RESOLVE_SUBSCRIPTION_IDENTITIES'
+    targets: SubscriptionIdentityTarget[]
+  }
+>
 
 export type SetPageSubscriptionMessage = Satisfies<
   BaseMessage,
@@ -532,6 +544,7 @@ export type Message =
   | SearchBskyActorsMessage
   | GetGithubMentionCandidatesMessage
   | GetSubscriptionsMessage
+  | ResolveSubscriptionIdentitiesMessage
   | SetPageSubscriptionMessage
   | SetUserSubscriptionMessage
   | SetIdentitySubscriptionMessage
@@ -592,6 +605,7 @@ type MessageResponses = {
   SEARCH_BSKY_ACTORS: SearchBskyActorsResponse
   GET_GITHUB_MENTION_CANDIDATES: GetGithubMentionCandidatesResponse
   GET_SUBSCRIPTIONS: Subscription[]
+  RESOLVE_SUBSCRIPTION_IDENTITIES: ResolvedSubscriptionIdentities
   SET_PAGE_SUBSCRIPTION: null
   SET_USER_SUBSCRIPTION: null
   SET_IDENTITY_SUBSCRIPTION: string | null
@@ -826,6 +840,12 @@ export function createGetGithubMentionCandidatesMessage(): GetGithubMentionCandi
 
 export function createGetSubscriptionsMessage(): GetSubscriptionsMessage {
   return { type: 'GET_SUBSCRIPTIONS' }
+}
+
+export function createResolveSubscriptionIdentitiesMessage(
+  targets: SubscriptionIdentityTarget[],
+): ResolveSubscriptionIdentitiesMessage {
+  return { type: 'RESOLVE_SUBSCRIPTION_IDENTITIES', targets }
 }
 
 export function createSetPageSubscriptionMessage(

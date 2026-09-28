@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import {
   createGetProfilesMessage,
   createGetSubscriptionsMessage,
+  createResolveSubscriptionIdentitiesMessage,
   createSetIdentitySubscriptionMessage,
   createSetPageSubscriptionMessage,
   createSetUserSubscriptionMessage,
@@ -15,6 +16,7 @@ import { isPageSubscriptionSupported } from '@/shared/model/Subscription'
 import type { UserProfile } from '@/shared/model/UserProfile'
 import MentionPicker from '@/ui/content/note-editor/MentionPicker.vue'
 import { useMentionCandidates } from '@/ui/content/note-editor/use-mention-candidates'
+import { filterSubscriptionCandidates } from './subscription-candidates'
 
 const props = defineProps<{
   pageKey: string | null
@@ -31,6 +33,28 @@ const activeSuggestionId = ref<string>()
 const busyTarget = ref<string | null>(null)
 const feedback = ref<string | null>(null)
 const { candidates } = useMentionCandidates()
+const resolvedCandidateUserIds = ref<Record<string, string>>({})
+let candidateRequestId = 0
+
+watch(
+  candidates,
+  async (nextCandidates) => {
+    const requestId = ++candidateRequestId
+    resolvedCandidateUserIds.value = {}
+    if (!nextCandidates.length) return
+    const resolved = await sendMessage(
+      createResolveSubscriptionIdentitiesMessage(
+        nextCandidates.map(({ provider, accountId }) => ({ provider, accountId })),
+      ),
+    ).catch(() => ({}))
+    if (requestId === candidateRequestId) resolvedCandidateUserIds.value = resolved
+  },
+  { immediate: true },
+)
+
+const subscriptionCandidates = computed(() =>
+  filterSubscriptionCandidates(candidates.value, resolvedCandidateUserIds.value),
+)
 
 const pageSupported = computed(
   () => props.pageKey != null && isPageSubscriptionSupported(props.pageKey),
@@ -42,8 +66,8 @@ const pageSubscriptions = computed(() => subscriptions.value.filter((item) => it
 const userSubscriptions = computed(() => subscriptions.value.filter((item) => item.kind === 'user'))
 const pickerItems = computed(() => {
   const needle = query.value.trim().replace(/^@/, '').toLowerCase()
-  if (!needle) return candidates.value
-  return candidates.value.filter(
+  if (!needle) return subscriptionCandidates.value
+  return subscriptionCandidates.value.filter(
     (item) =>
       item.handle.toLowerCase().includes(needle) || item.displayName.toLowerCase().includes(needle),
   )
@@ -201,7 +225,7 @@ function userLabel(targetUserId: string): string {
         :client-rect="null"
         :on-select="subscribeToCandidate"
         :on-highlight-change="(id) => (activeSuggestionId = id)"
-        footer="Bluesky mutuals & GitHub follows"
+        footer="Mustard accounts you follow"
         inline
       />
 

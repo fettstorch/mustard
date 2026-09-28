@@ -58,6 +58,10 @@ import { githubAvatarUrl } from '@/shared/providers'
 import { PENDING_FOCUS_KEY, type PendingFocus } from '@/shared/pending-focus'
 import { unhideNote } from '@/shared/hidden-notes'
 import { ExtensionUpdateService } from '@/background/business/service/extension-update/ExtensionUpdateService'
+import {
+  subscriptionIdentityKey,
+  type SubscriptionIdentityTarget,
+} from '@/shared/model/Subscription'
 
 /** Builds a github UserProfile from an id + login, falling back to the id when the login is unknown. */
 function buildGithubProfile(id: string, login: string | undefined): UserProfile {
@@ -762,6 +766,35 @@ export default defineBackground(() => {
       const session = await getSession()
       if (!session) return []
       return mustardSubscriptionsServiceRemote.getSubscriptions()
+    },
+
+    RESOLVE_SUBSCRIPTION_IDENTITIES: async (message) => {
+      const jwt = await getSupabaseJwt()
+      if (!jwt) return {}
+
+      const targetsByProvider = new Map<
+        SubscriptionIdentityTarget['provider'],
+        SubscriptionIdentityTarget[]
+      >()
+      for (const target of message.targets) {
+        const targets = targetsByProvider.get(target.provider) ?? []
+        targets.push(target)
+        targetsByProvider.set(target.provider, targets)
+      }
+      const resolvedEntries = await Promise.all(
+        [...targetsByProvider].map(async ([provider, targets]) => {
+          const resolved = await resolveAccountUserIds(
+            jwt,
+            provider,
+            targets.map((target) => target.accountId),
+          )
+          return targets.flatMap((target) => {
+            const userId = resolved.get(target.accountId)
+            return userId ? [[subscriptionIdentityKey(target), userId] as const] : []
+          })
+        }),
+      )
+      return Object.fromEntries(resolvedEntries.flat())
     },
 
     SET_PAGE_SUBSCRIPTION: async (message) => {
