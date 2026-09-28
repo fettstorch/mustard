@@ -73,6 +73,46 @@ test.describe('Content script smoke', () => {
     })
   })
 
+  test('turns typed Markdown link syntax into a saved link', async ({ context }) => {
+    await context.route('https://example.com/**', (route) =>
+      route.fulfill({ contentType: 'text/html', body: '<title>Example</title>' }),
+    )
+
+    const page = await context.newPage()
+    await page.goto(fixtureUrl)
+    const mustard = page.locator('#mustard-host')
+    await expect(mustard).toBeAttached({ timeout: 8_000 })
+    await page.locator('#content').dispatchEvent('contextmenu', {
+      button: 2,
+      clientX: 100,
+      clientY: 100,
+    })
+
+    let serviceWorker = context.serviceWorkers()[0]
+    if (!serviceWorker) serviceWorker = await context.waitForEvent('serviceworker')
+    await serviceWorker.evaluate(async (url: string) => {
+      const [tab] = await chrome.tabs.query({ url: `${url}*` })
+      if (tab?.id === undefined) throw new Error(`No tab found for ${url}`)
+      await chrome.tabs.sendMessage(tab.id, { type: 'OPEN_NOTE_EDITOR' })
+    }, fixtureUrl)
+
+    const editor = mustard.locator('.tiptap[contenteditable="true"]')
+    await expect(editor).toBeVisible({ timeout: 8_000 })
+    await editor.click()
+    await page.keyboard.type('[Example docs](https://example.com/docs)')
+
+    const editorLink = editor.getByRole('link', { name: 'Example docs' })
+    await expect(editorLink).toHaveAttribute('href', 'https://example.com/docs')
+
+    await mustard.locator('[title="Save this note locally"]').click()
+
+    const savedLink = mustard.locator('.mustard-note-content').getByRole('link', {
+      name: 'Example docs',
+    })
+    await expect(savedLink).toHaveAttribute('href', 'https://example.com/docs')
+    await expect(savedLink).toHaveAttribute('target', '_blank')
+  })
+
   test('shows a CSP-safe Open Graph thumbnail in the editor and saved note', async ({
     context,
   }) => {

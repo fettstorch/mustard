@@ -7,6 +7,7 @@ import { ImageUrlAutoConvert } from './image-url-auto-convert'
 import { ResizableImage } from './resizable-image'
 import { GiphySlash } from './giphy-slash'
 import { createMentionExtension } from './mention-node'
+import { MarkdownLinkInput } from './markdown-link-input'
 import { lowlight } from '../note/code-highlighting'
 import type { MentionCandidate } from '@/shared/model/MentionCandidate'
 
@@ -50,6 +51,7 @@ export function createEditorExtensions(opts: {
       placeholder: opts.placeholder,
     }),
     Markdown,
+    MarkdownLinkInput,
     ImageUrlAutoConvert,
     GiphySlash,
     createMentionExtension(opts.getCandidates),
