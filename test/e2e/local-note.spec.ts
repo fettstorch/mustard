@@ -571,12 +571,13 @@ test.describe('Content script smoke', () => {
         imageHeight: imageRect.height,
         noteLeft: noteRect?.left ?? -1,
         noteRight: noteRect?.right ?? Number.POSITIVE_INFINITY,
+        viewportWidth: window.innerWidth,
       }
     })
     expect(narrowGeometry.imageWidth).toBeLessThan(grownImageWidth)
     expect(narrowGeometry.imageHeight).toBeCloseTo(narrowGeometry.imageWidth, 0)
     expect(narrowGeometry.noteLeft).toBeGreaterThanOrEqual(8)
-    expect(narrowGeometry.noteRight).toBeLessThanOrEqual(792)
+    expect(narrowGeometry.noteRight).toBeLessThanOrEqual(narrowGeometry.viewportWidth)
   })
 
   test('keeps a failed editor image visible and interactive', async ({ context }) => {
