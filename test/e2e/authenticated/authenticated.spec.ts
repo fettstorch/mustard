@@ -77,6 +77,7 @@ test('note author profile card can subscribe and keeps the provider link', async
 
   try {
     const page = await context.newPage()
+    await page.setViewportSize({ width: 800, height: 360 })
     await page.goto(fixtureUrl)
     const mustard = page.locator('#mustard-host')
     await expect(mustard.getByText('Profile card subscription note')).toBeVisible({
@@ -90,6 +91,12 @@ test('note author profile card can subscribe and keeps the provider link', async
       'href',
       'https://github.com/mustard-author',
     )
+    const cardBounds = await card.evaluate((element) => {
+      const rect = element.getBoundingClientRect()
+      return { top: rect.top, bottom: rect.bottom, viewportHeight: window.innerHeight }
+    })
+    expect(cardBounds.top).toBeGreaterThanOrEqual(8)
+    expect(cardBounds.bottom).toBeLessThanOrEqual(cardBounds.viewportHeight - 8)
 
     await card.getByRole('button', { name: 'Subscribe' }).click()
     await expect(card.getByRole('button', { name: 'Unsubscribe' })).toBeVisible()

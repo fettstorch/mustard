@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onUnmounted, ref } from 'vue'
 import type { UserProfile } from '@/shared/model/UserProfile'
 import { providerProfileUrl } from '@/shared/providers'
 import {
@@ -7,6 +7,7 @@ import {
   createSetUserSubscriptionMessage,
   sendMessage,
 } from '@/shared/messaging'
+import { calculateProfileCardPosition } from './profile-card-position'
 
 const props = defineProps<{
   profile: UserProfile | null
@@ -18,11 +19,15 @@ const props = defineProps<{
 }>()
 
 const root = ref<HTMLElement | null>(null)
+const card = ref<HTMLElement | null>(null)
 const open = ref(false)
 const subscribed = ref(false)
 const loading = ref(false)
 const error = ref<string | null>(null)
 const cardPosition = ref({ top: 0, left: 0 })
+let cardResizeObserver: ResizeObserver | null = null
+
+const CARD_WIDTH = 220
 
 const profileUrl = computed(() => {
   if (!props.profile?.handle) return null
@@ -39,15 +44,14 @@ async function toggleCard() {
     return
   }
 
-  const rect = root.value?.getBoundingClientRect()
-  if (rect) {
-    cardPosition.value = {
-      top: rect.bottom + 6,
-      left: Math.max(8, Math.min(rect.left, window.innerWidth - 228)),
-    }
-  }
+  await nextTick()
+  updateCardPosition()
+  cardResizeObserver = new ResizeObserver(updateCardPosition)
+  if (card.value) cardResizeObserver.observe(card.value)
   document.addEventListener('mousedown', onDocumentMouseDown)
   document.addEventListener('keydown', onDocumentKeyDown)
+  window.addEventListener('scroll', updateCardPosition, true)
+  window.addEventListener('resize', updateCardPosition)
 
   if (props.canSubscribe && props.userId && !props.isOwnProfile) {
     loading.value = true
@@ -57,6 +61,20 @@ async function toggleCard() {
     )
     loading.value = false
   }
+}
+
+function updateCardPosition() {
+  const anchorRect = root.value?.getBoundingClientRect()
+  if (!anchorRect) return
+
+  const cardRect = card.value?.getBoundingClientRect()
+  const cardWidth = cardRect?.width ?? CARD_WIDTH
+  const cardHeight = cardRect?.height ?? 0
+  cardPosition.value = calculateProfileCardPosition({
+    anchor: anchorRect,
+    card: { width: cardWidth, height: cardHeight },
+    viewport: { width: window.innerWidth, height: window.innerHeight },
+  })
 }
 
 async function toggleSubscription() {
@@ -90,6 +108,10 @@ function onDocumentKeyDown(event: KeyboardEvent) {
 function removeGlobalListeners() {
   document.removeEventListener('mousedown', onDocumentMouseDown)
   document.removeEventListener('keydown', onDocumentKeyDown)
+  window.removeEventListener('scroll', updateCardPosition, true)
+  window.removeEventListener('resize', updateCardPosition)
+  cardResizeObserver?.disconnect()
+  cardResizeObserver = null
 }
 
 onUnmounted(removeGlobalListeners)
@@ -118,6 +140,7 @@ onUnmounted(removeGlobalListeners)
 
     <span
       v-if="open"
+      ref="card"
       role="dialog"
       :aria-label="`${profile?.displayName ?? 'Mustard user'} profile`"
       class="author-profile-card mustard-notes-bg mustard-notes-border mustard-notes-txt"
@@ -218,6 +241,8 @@ onUnmounted(removeGlobalListeners)
   grid-template-columns: 48px minmax(0, 1fr);
   gap: 8px 10px;
   width: 220px;
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
   box-sizing: border-box;
   padding: 10px;
   border-radius: 10px;
