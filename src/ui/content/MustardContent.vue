@@ -502,6 +502,10 @@ function onNoteUnhide(note: MustardNoteType) {
 
 .mustard-positioned {
   position: fixed;
+  --mustard-note-effective-content-max-width: min(
+    var(--mustard-note-content-max-width),
+    calc(var(--mustard-overlay-max-width) - 1em - 6px)
+  );
 }
 
 .mustard-note-enter-active,
