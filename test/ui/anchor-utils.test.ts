@@ -16,4 +16,20 @@ describe('calculateOverlayPositionStyle', () => {
       right: '180px',
     })
   })
+
+  it('keeps a right-anchored note grabbable at the left gutter', () => {
+    expect(calculateOverlayPositionStyle({ x: 8, y: 50 }, 600, true)).toMatchObject({
+      left: 'auto',
+      right: '512px',
+      '--mustard-overlay-max-width': '80px',
+    })
+  })
+
+  it('keeps a left-anchored note grabbable at the right gutter', () => {
+    expect(calculateOverlayPositionStyle({ x: 592, y: 50 }, 600, false)).toMatchObject({
+      left: '512px',
+      right: 'auto',
+      '--mustard-overlay-max-width': '80px',
+    })
+  })
 })

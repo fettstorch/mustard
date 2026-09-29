@@ -2,6 +2,7 @@ import type { MustardNoteAnchorData } from '@/shared/model/MustardNoteAnchorData
 import { resolveAnchoredElement, siteStrategyFor } from '@/shared/site-strategies'
 
 const VIEWPORT_GUTTER = 8
+const MIN_VISIBLE_OVERLAY_WIDTH = 80
 
 export function calculateOverlayPositionStyle(
   position: { x: number; y: number },
@@ -9,8 +10,18 @@ export function calculateOverlayPositionStyle(
   growsLeft?: boolean,
 ) {
   const anchorX = Number.isFinite(position.x) ? position.x : VIEWPORT_GUTTER
-  const x = Math.min(Math.max(anchorX, VIEWPORT_GUTTER), viewportWidth - VIEWPORT_GUTTER)
-  const shouldGrowLeft = growsLeft ?? x > viewportWidth / 2
+  const viewportMinX = VIEWPORT_GUTTER
+  const viewportMaxX = Math.max(viewportMinX, viewportWidth - VIEWPORT_GUTTER)
+  const viewportX = Math.min(Math.max(anchorX, viewportMinX), viewportMaxX)
+  const shouldGrowLeft = growsLeft ?? viewportX > viewportWidth / 2
+  const minimumAnchorX = Math.min(viewportMaxX, VIEWPORT_GUTTER + MIN_VISIBLE_OVERLAY_WIDTH)
+  const maximumAnchorX = Math.max(
+    viewportMinX,
+    viewportWidth - VIEWPORT_GUTTER - MIN_VISIBLE_OVERLAY_WIDTH,
+  )
+  const x = shouldGrowLeft
+    ? Math.max(viewportX, minimumAnchorX)
+    : Math.min(viewportX, maximumAnchorX)
   const availableWidth = (shouldGrowLeft ? x : viewportWidth - x) - VIEWPORT_GUTTER
 
   return {
