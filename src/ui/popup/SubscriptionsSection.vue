@@ -9,7 +9,7 @@ import {
   createSetUserSubscriptionMessage,
   sendMessage,
 } from '@/shared/messaging'
-import { displayUrl } from '@/shared/display-url'
+import { displayUrl, pageFaviconUrl } from '@/shared/display-url'
 import type { MentionCandidate } from '@/shared/model/MentionCandidate'
 import type { Subscription } from '@/shared/model/Subscription'
 import { isPageSubscriptionSupported } from '@/shared/model/Subscription'
@@ -167,6 +167,10 @@ function userLabel(targetUserId: string): string {
   const profile = profiles.value[targetUserId]
   return profile?.displayName || (profile?.handle ? `@${profile.handle}` : 'Mustard user')
 }
+
+function hideFailedImage(event: Event) {
+  if (event.currentTarget instanceof HTMLImageElement) event.currentTarget.hidden = true
+}
 </script>
 
 <template>
@@ -233,8 +237,25 @@ function userLabel(targetUserId: string): string {
 
       <div v-if="pageSubscriptions.length || userSubscriptions.length" class="subscription-list">
         <div v-for="item in pageSubscriptions" :key="item.id" class="subscription-row">
-          <span class="subscription-row-label" :title="item.pageKey">
-            {{ displayUrl(item.pageKey) }}
+          <span class="subscription-row-main">
+            <span class="subscription-row-icon subscription-page-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none">
+                <circle cx="12" cy="12" r="8.5" />
+                <path
+                  d="M3.5 12h17M12 3.5c2.2 2.3 3.3 5.1 3.3 8.5S14.2 18.2 12 20.5M12 3.5C9.8 5.8 8.7 8.6 8.7 12s1.1 6.2 3.3 8.5"
+                />
+              </svg>
+              <img
+                v-if="pageFaviconUrl(item.pageKey)"
+                :src="pageFaviconUrl(item.pageKey) ?? undefined"
+                alt=""
+                referrerpolicy="no-referrer"
+                @error="hideFailedImage"
+              />
+            </span>
+            <span class="subscription-row-label" :title="item.pageKey">
+              {{ displayUrl(item.pageKey) }}
+            </span>
           </span>
           <button
             type="button"
@@ -247,7 +268,22 @@ function userLabel(targetUserId: string): string {
           </button>
         </div>
         <div v-for="item in userSubscriptions" :key="item.id" class="subscription-row">
-          <span class="subscription-row-label">{{ userLabel(item.targetUserId) }}</span>
+          <span class="subscription-row-main">
+            <span class="subscription-row-icon subscription-user-avatar" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none">
+                <circle cx="12" cy="8.5" r="3.5" />
+                <path d="M5.5 20c.6-4 2.8-6 6.5-6s5.9 2 6.5 6" />
+              </svg>
+              <img
+                v-if="profiles[item.targetUserId]?.avatarUrl"
+                :src="profiles[item.targetUserId]?.avatarUrl"
+                alt=""
+                referrerpolicy="no-referrer"
+                @error="hideFailedImage"
+              />
+            </span>
+            <span class="subscription-row-label">{{ userLabel(item.targetUserId) }}</span>
+          </span>
           <button
             type="button"
             class="subscription-remove"
@@ -347,7 +383,64 @@ function userLabel(targetUserId: string): string {
   font-size: 0.7rem;
 }
 
+.subscription-row-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.subscription-row-icon {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
+  overflow: hidden;
+  border: 1px solid var(--mustard-border-subtle);
+  background: var(--mustard-glass-hover);
+  color: inherit;
+  opacity: 0.9;
+}
+
+.subscription-row-icon svg {
+  width: 15px;
+  height: 15px;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.55;
+}
+
+.subscription-row-icon img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: var(--mustard-glass);
+}
+
+.subscription-page-icon {
+  border-radius: 6px;
+}
+
+.subscription-page-icon img {
+  padding: 3px;
+  box-sizing: border-box;
+  object-fit: contain;
+}
+
+.subscription-user-avatar {
+  border-radius: 50%;
+}
+
 .subscription-row-label {
+  display: block;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;

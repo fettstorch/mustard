@@ -34,13 +34,19 @@ test('popup subscriptions use compact controls and a bounded scroll area', async
     { length: 12 },
     (_, index) => `https://example.com/subscribed-page-${index}`,
   )
-  const { error } = await client.from('subscriptions').insert(
-    pageKeys.map((pageKey) => ({
+  const { error } = await client.from('subscriptions').insert([
+    ...pageKeys.map((pageKey) => ({
       subscriber_id: TEST_USERS.viewer.userId,
       kind: 'page',
       page_key: pageKey,
     })),
-  )
+    {
+      subscriber_id: TEST_USERS.viewer.userId,
+      kind: 'user',
+      page_key: null,
+      target_user_id: TEST_USERS.author.userId,
+    },
+  ])
   if (error) throw new Error(`Could not seed popup subscriptions: ${error.message}`)
 
   const popup = await context.newPage()
@@ -52,7 +58,15 @@ test('popup subscriptions use compact controls and a bounded scroll area', async
   await heading.click()
 
   const list = section.locator('.subscription-list')
-  await expect(list.locator('.subscription-row')).toHaveCount(pageKeys.length)
+  await expect(list.locator('.subscription-row')).toHaveCount(pageKeys.length + 1)
+  await expect(list.locator('.subscription-page-icon img').first()).toHaveAttribute(
+    'src',
+    'https://example.com/favicon.ico',
+  )
+  await expect(list.locator('.subscription-user-avatar img')).toHaveAttribute(
+    'src',
+    'https://github.com/mustard-author.png',
+  )
   await expect(section.getByRole('button', { name: /^Unsubscribe from https:\/\// })).toHaveCount(
     pageKeys.length,
   )
