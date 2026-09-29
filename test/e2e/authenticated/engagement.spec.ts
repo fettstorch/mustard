@@ -350,6 +350,10 @@ test.describe('popup notification badge', () => {
     const unreadPage = popup.locator('.my-pages-row.has-unread')
     await expect(unreadPage).toHaveCount(1)
     await expect(unreadPage).toHaveAttribute('title', FIXTURE_URL)
+    await expect(unreadPage.locator('.my-pages-icon img')).toHaveAttribute(
+      'src',
+      'http://127.0.0.1:4173/favicon.ico',
+    )
 
     await popup.close()
   })
