@@ -14,7 +14,7 @@
     "build:firefox": "wxt build -b firefox",
     "build:e2e": "wxt build -b chrome",
     "build:e2e:auth": "wxt build -b chrome --mode e2e",
-    "zip": "rm -rf dist && nr build && nr build:firefox && wxt zip -b chrome && wxt zip -b firefox",
+    "zip": "rm -rf dist && npm run build && npm run build:firefox && wxt zip -b chrome && wxt zip -b firefox",
     "type-check": "vue-tsc --build",
     "postinstall": "wxt prepare",
     "knip": "knip",
