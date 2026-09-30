@@ -6,31 +6,17 @@ import {
 } from '@/ui/content/anchor-utils'
 
 describe('calculateOverlayPositionStyle', () => {
-  it('keeps the positioning edge stable when a dragged note crosses the midpoint', () => {
-    const before = calculateOverlayPositionStyle({ x: 100, y: 50 }, 600, false)
-    const after = calculateOverlayPositionStyle({ x: 420, y: 50 }, 600, false)
+  it('starts at the anchor on either side of the viewport midpoint', () => {
+    const before = calculateOverlayPositionStyle({ x: 100, y: 50 }, 600)
+    const after = calculateOverlayPositionStyle({ x: 420, y: 50 }, 600)
 
     expect(before).toMatchObject({ left: '100px', right: 'auto' })
     expect(after).toMatchObject({ left: '420px', right: 'auto' })
-  })
-
-  it('still chooses the roomier side when no fixed edge is supplied', () => {
-    expect(calculateOverlayPositionStyle({ x: 420, y: 50 }, 600)).toMatchObject({
-      left: 'auto',
-      right: '180px',
-    })
-  })
-
-  it('keeps a right-anchored note grabbable at the left gutter', () => {
-    expect(calculateOverlayPositionStyle({ x: 8, y: 50 }, 600, true)).toMatchObject({
-      left: 'auto',
-      right: '512px',
-      '--mustard-overlay-max-width': '80px',
-    })
+    expect(after['--mustard-overlay-max-width']).toBe('172px')
   })
 
   it('keeps a left-anchored note grabbable at the right gutter', () => {
-    expect(calculateOverlayPositionStyle({ x: 592, y: 50 }, 600, false)).toMatchObject({
+    expect(calculateOverlayPositionStyle({ x: 592, y: 50 }, 600)).toMatchObject({
       left: '512px',
       right: 'auto',
       '--mustard-overlay-max-width': '80px',
@@ -38,24 +24,24 @@ describe('calculateOverlayPositionStyle', () => {
   })
 
   it('provides the clamped anchor used to rebase stored drag offsets', () => {
-    expect(clampOverlayAnchorX(-40, 600, true)).toBe(88)
-    expect(clampOverlayAnchorX(640, 600, false)).toBe(512)
+    expect(clampOverlayAnchorX(-40, 600)).toBe(8)
+    expect(clampOverlayAnchorX(640, 600)).toBe(512)
   })
 
   it('rebases a stored drag offset against the current viewport', () => {
-    expect(rebaseOverlayDragOffset(500, { x: -460, y: 24 }, 600, true)).toEqual({
-      x: -412,
+    expect(rebaseOverlayDragOffset(500, { x: -460, y: 24 }, 600)).toEqual({
+      x: -460,
       y: 24,
     })
-    expect(rebaseOverlayDragOffset(100, { x: 460, y: -12 }, 600, false)).toEqual({
+    expect(rebaseOverlayDragOffset(100, { x: 460, y: -12 }, 600)).toEqual({
       x: 412,
       y: -12,
     })
   })
 
   it('rebases an initially off-screen anchor before the first drag', () => {
-    expect(rebaseOverlayDragOffset(700, { x: 0, y: 0 }, 600, true)).toEqual({
-      x: -108,
+    expect(rebaseOverlayDragOffset(700, { x: 0, y: 0 }, 600)).toEqual({
+      x: -188,
       y: 0,
     })
   })

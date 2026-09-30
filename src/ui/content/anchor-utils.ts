@@ -4,47 +4,39 @@ import { resolveAnchoredElement, siteStrategyFor } from '@/shared/site-strategie
 const VIEWPORT_GUTTER = 8
 const MIN_VISIBLE_OVERLAY_WIDTH = 80
 
-export function clampOverlayAnchorX(
-  anchorX: number,
-  viewportWidth: number,
-  growsLeft: boolean,
-): number {
+export function clampOverlayAnchorX(anchorX: number, viewportWidth: number): number {
   const viewportMinX = VIEWPORT_GUTTER
   const viewportMaxX = Math.max(viewportMinX, viewportWidth - VIEWPORT_GUTTER)
   const viewportX = Math.min(Math.max(anchorX, viewportMinX), viewportMaxX)
-  const minimumAnchorX = Math.min(viewportMaxX, VIEWPORT_GUTTER + MIN_VISIBLE_OVERLAY_WIDTH)
   const maximumAnchorX = Math.max(
     viewportMinX,
     viewportWidth - VIEWPORT_GUTTER - MIN_VISIBLE_OVERLAY_WIDTH,
   )
 
-  return growsLeft ? Math.max(viewportX, minimumAnchorX) : Math.min(viewportX, maximumAnchorX)
+  return Math.min(viewportX, maximumAnchorX)
 }
 
 export function rebaseOverlayDragOffset(
   anchorX: number,
   offset: { x: number; y: number },
   viewportWidth: number,
-  growsLeft: boolean,
 ): { x: number; y: number } {
-  const clampedX = clampOverlayAnchorX(anchorX + offset.x, viewportWidth, growsLeft)
+  const clampedX = clampOverlayAnchorX(anchorX + offset.x, viewportWidth)
   return { x: clampedX - anchorX, y: offset.y }
 }
 
 export function calculateOverlayPositionStyle(
   position: { x: number; y: number },
   viewportWidth: number,
-  growsLeft?: boolean,
 ) {
   const anchorX = Number.isFinite(position.x) ? position.x : VIEWPORT_GUTTER
-  const shouldGrowLeft = growsLeft ?? anchorX > viewportWidth / 2
-  const x = clampOverlayAnchorX(anchorX, viewportWidth, shouldGrowLeft)
-  const availableWidth = (shouldGrowLeft ? x : viewportWidth - x) - VIEWPORT_GUTTER
+  const x = clampOverlayAnchorX(anchorX, viewportWidth)
+  const availableWidth = viewportWidth - x - VIEWPORT_GUTTER
 
   return {
     top: `${Number.isFinite(position.y) ? position.y : VIEWPORT_GUTTER}px`,
-    left: shouldGrowLeft ? 'auto' : `${x}px`,
-    right: shouldGrowLeft ? `${viewportWidth - x}px` : 'auto',
+    left: `${x}px`,
+    right: 'auto',
     '--mustard-overlay-max-width': `${availableWidth}px`,
   }
 }

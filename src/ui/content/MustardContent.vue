@@ -39,8 +39,8 @@ const event = inject<Observable<Message>>('event')!
 // Reactive trigger for recalculating positions on resize/scroll
 const resizeTick = ref(0)
 
-function positionedStyle(position: { x: number; y: number }, growsLeft?: boolean) {
-  return calculateOverlayPositionStyle(position, window.innerWidth, growsLeft)
+function positionedStyle(position: { x: number; y: number }) {
+  return calculateOverlayPositionStyle(position, window.innerWidth)
 }
 
 /**
@@ -93,14 +93,9 @@ function getDragOffset(noteId: string | null): { x: number; y: number } {
 }
 
 /** Set drag offset for a note */
-function setDragOffset(
-  noteId: string | null,
-  anchorX: number,
-  growsLeft: boolean,
-  offset: { x: number; y: number },
-) {
+function setDragOffset(noteId: string | null, anchorX: number, offset: { x: number; y: number }) {
   if (!noteId) return
-  dragOffsets[noteId] = rebaseOverlayDragOffset(anchorX, offset, window.innerWidth, growsLeft)
+  dragOffsets[noteId] = rebaseOverlayDragOffset(anchorX, offset, window.innerWidth)
 }
 
 const { isNoteTimeframeActive } = useVideoNoteVisibility({
@@ -144,13 +139,7 @@ const notesWithPositions = computed(() => {
       // rendered here) — hide rather than misplace.
       const anchorPos = calculateAnchorPosition(note.anchorData)
       if (!anchorPos) return []
-      const growsLeft = anchorPos.x > window.innerWidth / 2
-      const offset = rebaseOverlayDragOffset(
-        anchorPos.x,
-        getDragOffset(note.id),
-        window.innerWidth,
-        growsLeft,
-      )
+      const offset = rebaseOverlayDragOffset(anchorPos.x, getDragOffset(note.id), window.innerWidth)
       return [
         {
           note,
@@ -159,7 +148,6 @@ const notesWithPositions = computed(() => {
             x: anchorPos.x + offset.x,
             y: anchorPos.y + offset.y,
           },
-          growsLeft,
           dragOffset: offset,
         },
       ]
@@ -173,12 +161,7 @@ function handleResize() {
     if (!offset) continue
     const anchorPos = calculateAnchorPosition(note.anchorData)
     if (!anchorPos) continue
-    dragOffsets[note.id] = rebaseOverlayDragOffset(
-      anchorPos.x,
-      offset,
-      window.innerWidth,
-      anchorPos.x > window.innerWidth / 2,
-    )
+    dragOffsets[note.id] = rebaseOverlayDragOffset(anchorPos.x, offset, window.innerWidth)
   }
   resizeTick.value++
 }
@@ -461,18 +444,18 @@ function onNoteUnhide(note: MustardNoteType) {
     <!-- Existing notes (TransitionGroup animates notes in/out when visibility toggles) -->
     <TransitionGroup name="mustard-note">
       <MustardNote
-        v-for="({ note, anchorX, position, growsLeft, dragOffset }, index) in notesWithPositions"
+        v-for="({ note, anchorX, position, dragOffset }, index) in notesWithPositions"
         :key="note.id ?? `unsaved-${index}`"
         :note="note"
         :drag-offset="dragOffset"
         class="mustard-positioned"
-        :style="positionedStyle(position, growsLeft)"
+        :style="positionedStyle(position)"
         @pressed-publish="onNotePublish"
         @pressed-delete="onNoteDelete"
         @pressed-repost="onNoteRepost"
         @pressed-hide="onNoteHide"
         @pressed-unhide="onNoteUnhide"
-        @drag="(offset) => setDragOffset(note.id, anchorX, growsLeft, offset)"
+        @drag="(offset) => setDragOffset(note.id, anchorX, offset)"
       >
         <PublishConfirmBubble
           v-if="pendingPublish?.source === note.id"
