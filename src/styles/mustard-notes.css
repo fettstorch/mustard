@@ -110,6 +110,13 @@
   opacity: 0.5;
 }
 
+/* Non-positioned note surfaces (for example the options-page hidden-notes
+ * gallery) derive their effective width from the surface's content limit.
+ * Positioned page overlays replace this with their viewport-aware value. */
+:is(#mustard-host, .mustard-surface) {
+  --mustard-note-effective-content-max-width: var(--mustard-note-content-max-width);
+}
+
 /* The editable and rendered forms share one sizing contract so saving a note
  * does not change its content geometry. */
 :is(#mustard-host, .mustard-surface)
