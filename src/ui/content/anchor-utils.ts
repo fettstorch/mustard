@@ -4,24 +4,31 @@ import { resolveAnchoredElement, siteStrategyFor } from '@/shared/site-strategie
 const VIEWPORT_GUTTER = 8
 const MIN_VISIBLE_OVERLAY_WIDTH = 80
 
+export function clampOverlayAnchorX(
+  anchorX: number,
+  viewportWidth: number,
+  growsLeft: boolean,
+): number {
+  const viewportMinX = VIEWPORT_GUTTER
+  const viewportMaxX = Math.max(viewportMinX, viewportWidth - VIEWPORT_GUTTER)
+  const viewportX = Math.min(Math.max(anchorX, viewportMinX), viewportMaxX)
+  const minimumAnchorX = Math.min(viewportMaxX, VIEWPORT_GUTTER + MIN_VISIBLE_OVERLAY_WIDTH)
+  const maximumAnchorX = Math.max(
+    viewportMinX,
+    viewportWidth - VIEWPORT_GUTTER - MIN_VISIBLE_OVERLAY_WIDTH,
+  )
+
+  return growsLeft ? Math.max(viewportX, minimumAnchorX) : Math.min(viewportX, maximumAnchorX)
+}
+
 export function calculateOverlayPositionStyle(
   position: { x: number; y: number },
   viewportWidth: number,
   growsLeft?: boolean,
 ) {
   const anchorX = Number.isFinite(position.x) ? position.x : VIEWPORT_GUTTER
-  const viewportMinX = VIEWPORT_GUTTER
-  const viewportMaxX = Math.max(viewportMinX, viewportWidth - VIEWPORT_GUTTER)
-  const viewportX = Math.min(Math.max(anchorX, viewportMinX), viewportMaxX)
-  const shouldGrowLeft = growsLeft ?? viewportX > viewportWidth / 2
-  const minimumAnchorX = Math.min(viewportMaxX, VIEWPORT_GUTTER + MIN_VISIBLE_OVERLAY_WIDTH)
-  const maximumAnchorX = Math.max(
-    viewportMinX,
-    viewportWidth - VIEWPORT_GUTTER - MIN_VISIBLE_OVERLAY_WIDTH,
-  )
-  const x = shouldGrowLeft
-    ? Math.max(viewportX, minimumAnchorX)
-    : Math.min(viewportX, maximumAnchorX)
+  const shouldGrowLeft = growsLeft ?? anchorX > viewportWidth / 2
+  const x = clampOverlayAnchorX(anchorX, viewportWidth, shouldGrowLeft)
   const availableWidth = (shouldGrowLeft ? x : viewportWidth - x) - VIEWPORT_GUTTER
 
   return {

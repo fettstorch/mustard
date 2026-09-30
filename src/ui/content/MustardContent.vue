@@ -1,7 +1,11 @@
 <script setup lang="ts">
 import { inject, computed, onMounted, onUnmounted, ref, reactive, defineAsyncComponent } from 'vue'
 import type { MustardState } from './mustard-state'
-import { calculateAnchorPosition, calculateOverlayPositionStyle } from './anchor-utils'
+import {
+  calculateAnchorPosition,
+  calculateOverlayPositionStyle,
+  clampOverlayAnchorX,
+} from './anchor-utils'
 const MustardNoteEditor = defineAsyncComponent(() => import('./note-editor/MustardNoteEditor.vue'))
 import MustardNote from './note/MustardNote.vue'
 import PublishConfirmBubble from './PublishConfirmBubble.vue'
@@ -89,9 +93,15 @@ function getDragOffset(noteId: string | null): { x: number; y: number } {
 }
 
 /** Set drag offset for a note */
-function setDragOffset(noteId: string | null, offset: { x: number; y: number }) {
+function setDragOffset(
+  noteId: string | null,
+  anchorX: number,
+  growsLeft: boolean,
+  offset: { x: number; y: number },
+) {
   if (!noteId) return
-  dragOffsets[noteId] = offset
+  const clampedX = clampOverlayAnchorX(anchorX + offset.x, window.innerWidth, growsLeft)
+  dragOffsets[noteId] = { x: clampedX - anchorX, y: offset.y }
 }
 
 const { isNoteTimeframeActive } = useVideoNoteVisibility({
@@ -139,6 +149,7 @@ const notesWithPositions = computed(() => {
       return [
         {
           note,
+          anchorX: anchorPos.x,
           position: {
             x: anchorPos.x + offset.x,
             y: anchorPos.y + offset.y,
@@ -432,7 +443,7 @@ function onNoteUnhide(note: MustardNoteType) {
     <!-- Existing notes (TransitionGroup animates notes in/out when visibility toggles) -->
     <TransitionGroup name="mustard-note">
       <MustardNote
-        v-for="({ note, position, growsLeft, dragOffset }, index) in notesWithPositions"
+        v-for="({ note, anchorX, position, growsLeft, dragOffset }, index) in notesWithPositions"
         :key="note.id ?? `unsaved-${index}`"
         :note="note"
         :drag-offset="dragOffset"
@@ -443,7 +454,7 @@ function onNoteUnhide(note: MustardNoteType) {
         @pressed-repost="onNoteRepost"
         @pressed-hide="onNoteHide"
         @pressed-unhide="onNoteUnhide"
-        @drag="(offset) => setDragOffset(note.id, offset)"
+        @drag="(offset) => setDragOffset(note.id, anchorX, growsLeft, offset)"
       >
         <PublishConfirmBubble
           v-if="pendingPublish?.source === note.id"
