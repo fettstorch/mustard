@@ -117,8 +117,8 @@ onUnmounted(() => {
 .mustard-link-preview-shell {
   position: relative;
   display: block;
-  width: min(100%, var(--mustard-note-content-max-width));
-  max-width: var(--mustard-note-content-max-width);
+  width: min(100%, var(--mustard-note-effective-content-max-width));
+  max-width: var(--mustard-note-effective-content-max-width);
 }
 
 .mustard-link-preview {

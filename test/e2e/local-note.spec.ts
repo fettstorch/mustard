@@ -73,6 +73,58 @@ test.describe('Content script smoke', () => {
     })
   })
 
+  test('keeps a content-sized editor and saved note inside the viewport', async ({ context }) => {
+    const page = await context.newPage()
+    await page.setViewportSize({ width: 600, height: 600 })
+    await page.goto(fixtureUrl)
+    const mustard = page.locator('#mustard-host')
+    await expect(mustard).toBeAttached({ timeout: 8_000 })
+
+    await page.locator('body').evaluate((body) => {
+      body.insertAdjacentHTML(
+        'beforeend',
+        '<div id="right-edge-anchor" style="position:fixed;inset:80px 0 auto;height:40px"></div>',
+      )
+    })
+    await page.mouse.click(590, 100, { button: 'right' })
+
+    let serviceWorker = context.serviceWorkers()[0]
+    if (!serviceWorker) serviceWorker = await context.waitForEvent('serviceworker')
+    await serviceWorker.evaluate(async (url: string) => {
+      const [tab] = await chrome.tabs.query({ url: `${url}*` })
+      if (tab?.id === undefined) throw new Error(`No tab found for ${url}`)
+      await chrome.tabs.sendMessage(tab.id, { type: 'OPEN_NOTE_EDITOR' })
+    }, fixtureUrl)
+
+    const noteEditor = mustard.locator('.mustard-note-editor')
+    const editor = noteEditor.locator('.tiptap[contenteditable="true"]')
+    await expect(editor).toBeVisible({ timeout: 8_000 })
+
+    const initialBox = await noteEditor.boundingBox()
+    if (!initialBox) throw new Error('Editor has no initial bounding box')
+    expect(initialBox.width).toBeGreaterThan(50)
+    expect(initialBox.x).toBeGreaterThanOrEqual(8)
+    expect(initialBox.x + initialBox.width).toBeLessThanOrEqual(592)
+
+    await editor.click()
+    await page.keyboard.type(
+      'This note grows to fit its actual content while remaining completely reachable in the viewport.',
+    )
+
+    const grownBox = await noteEditor.boundingBox()
+    if (!grownBox) throw new Error('Editor has no grown bounding box')
+    expect(grownBox.width).toBeGreaterThan(initialBox.width)
+    expect(grownBox.x).toBeGreaterThanOrEqual(8)
+    expect(grownBox.x + grownBox.width).toBeLessThanOrEqual(592)
+
+    await mustard.getByTitle('Save this note locally').click()
+    const savedNote = mustard.locator('.mustard-note').filter({ hasText: 'This note grows' })
+    const savedBox = await savedNote.boundingBox()
+    if (!savedBox) throw new Error('Saved note has no bounding box')
+    expect(savedBox.x).toBeGreaterThanOrEqual(8)
+    expect(savedBox.x + savedBox.width).toBeLessThanOrEqual(592)
+  })
+
   test('turns typed Markdown link syntax into a saved link', async ({ context }) => {
     await context.route('https://example.com/**', (route) =>
       route.fulfill({ contentType: 'text/html', body: '<title>Example</title>' }),
@@ -510,10 +562,22 @@ test.describe('Content script smoke', () => {
     await page.setViewportSize({ width: 800, height: 800 })
     await expect
       .poll(() => savedImage.evaluate((element) => element.getBoundingClientRect().width))
-      .toBeCloseTo(grownImageWidth, 0)
-    await expect
-      .poll(() => savedImage.evaluate((element) => element.getBoundingClientRect().height))
-      .toBeCloseTo(grownImageWidth, 0)
+      .toBeLessThan(grownImageWidth)
+    const narrowGeometry = await savedImage.evaluate((element) => {
+      const imageRect = element.getBoundingClientRect()
+      const noteRect = element.closest('.mustard-note')?.getBoundingClientRect()
+      return {
+        imageWidth: imageRect.width,
+        imageHeight: imageRect.height,
+        noteLeft: noteRect?.left ?? -1,
+        noteRight: noteRect?.right ?? Number.POSITIVE_INFINITY,
+        viewportWidth: window.innerWidth,
+      }
+    })
+    expect(narrowGeometry.imageWidth).toBeLessThan(grownImageWidth)
+    expect(narrowGeometry.imageHeight).toBeCloseTo(narrowGeometry.imageWidth, 0)
+    expect(narrowGeometry.noteLeft).toBeGreaterThanOrEqual(8)
+    expect(narrowGeometry.noteRight).toBeLessThanOrEqual(narrowGeometry.viewportWidth)
   })
 
   test('keeps a failed editor image visible and interactive', async ({ context }) => {

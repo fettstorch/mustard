@@ -1,7 +1,11 @@
 <script setup lang="ts">
 import { inject, computed, onMounted, onUnmounted, ref, reactive, defineAsyncComponent } from 'vue'
 import type { MustardState } from './mustard-state'
-import { calculateAnchorPosition } from './anchor-utils'
+import {
+  calculateAnchorPosition,
+  calculateOverlayPositionStyle,
+  rebaseOverlayDragOffset,
+} from './anchor-utils'
 const MustardNoteEditor = defineAsyncComponent(() => import('./note-editor/MustardNoteEditor.vue'))
 import MustardNote from './note/MustardNote.vue'
 import PublishConfirmBubble from './PublishConfirmBubble.vue'
@@ -34,6 +38,10 @@ const event = inject<Observable<Message>>('event')!
 
 // Reactive trigger for recalculating positions on resize/scroll
 const resizeTick = ref(0)
+
+function positionedStyle(position: { x: number; y: number }, growsLeft?: boolean) {
+  return calculateOverlayPositionStyle(position, window.innerWidth, growsLeft)
+}
 
 /**
  * Temporary drag offsets per note. Allows users to reposition notes on screen
@@ -85,9 +93,14 @@ function getDragOffset(noteId: string | null): { x: number; y: number } {
 }
 
 /** Set drag offset for a note */
-function setDragOffset(noteId: string | null, offset: { x: number; y: number }) {
+function setDragOffset(
+  noteId: string | null,
+  anchorX: number,
+  growsLeft: boolean,
+  offset: { x: number; y: number },
+) {
   if (!noteId) return
-  dragOffsets[noteId] = offset
+  dragOffsets[noteId] = rebaseOverlayDragOffset(anchorX, offset, window.innerWidth, growsLeft)
 }
 
 const { isNoteTimeframeActive } = useVideoNoteVisibility({
@@ -131,14 +144,22 @@ const notesWithPositions = computed(() => {
       // rendered here) — hide rather than misplace.
       const anchorPos = calculateAnchorPosition(note.anchorData)
       if (!anchorPos) return []
-      const offset = getDragOffset(note.id)
+      const growsLeft = anchorPos.x > window.innerWidth / 2
+      const offset = rebaseOverlayDragOffset(
+        anchorPos.x,
+        getDragOffset(note.id),
+        window.innerWidth,
+        growsLeft,
+      )
       return [
         {
           note,
+          anchorX: anchorPos.x,
           position: {
             x: anchorPos.x + offset.x,
             y: anchorPos.y + offset.y,
           },
+          growsLeft,
           dragOffset: offset,
         },
       ]
@@ -146,6 +167,19 @@ const notesWithPositions = computed(() => {
 })
 
 function handleResize() {
+  for (const note of mustardState.notes) {
+    if (!note.id) continue
+    const offset = dragOffsets[note.id]
+    if (!offset) continue
+    const anchorPos = calculateAnchorPosition(note.anchorData)
+    if (!anchorPos) continue
+    dragOffsets[note.id] = rebaseOverlayDragOffset(
+      anchorPos.x,
+      offset,
+      window.innerWidth,
+      anchorPos.x > window.innerWidth / 2,
+    )
+  }
   resizeTick.value++
 }
 
@@ -427,18 +461,18 @@ function onNoteUnhide(note: MustardNoteType) {
     <!-- Existing notes (TransitionGroup animates notes in/out when visibility toggles) -->
     <TransitionGroup name="mustard-note">
       <MustardNote
-        v-for="({ note, position, dragOffset }, index) in notesWithPositions"
+        v-for="({ note, anchorX, position, growsLeft, dragOffset }, index) in notesWithPositions"
         :key="note.id ?? `unsaved-${index}`"
         :note="note"
         :drag-offset="dragOffset"
         class="mustard-positioned"
-        :style="{ left: `${position.x}px`, top: `${position.y}px` }"
+        :style="positionedStyle(position, growsLeft)"
         @pressed-publish="onNotePublish"
         @pressed-delete="onNoteDelete"
         @pressed-repost="onNoteRepost"
         @pressed-hide="onNoteHide"
         @pressed-unhide="onNoteUnhide"
-        @drag="(offset) => setDragOffset(note.id, offset)"
+        @drag="(offset) => setDragOffset(note.id, anchorX, growsLeft, offset)"
       >
         <PublishConfirmBubble
           v-if="pendingPublish?.source === note.id"
@@ -457,7 +491,7 @@ function onNoteUnhide(note: MustardNoteType) {
         v-if="mustardState.editor.isOpen"
         :anchor="mustardState.editor.anchor"
         class="mustard-positioned"
-        :style="{ left: `${editorPosition.x}px`, top: `${editorPosition.y}px` }"
+        :style="positionedStyle(editorPosition)"
         @pressed-x="onEditorClose"
         @pressed-save="onEditorSave"
         @pressed-publish="onEditorPublish"
@@ -497,6 +531,10 @@ function onNoteUnhide(note: MustardNoteType) {
 
 .mustard-positioned {
   position: fixed;
+  --mustard-note-effective-content-max-width: min(
+    var(--mustard-note-content-max-width),
+    calc(var(--mustard-overlay-max-width) - 1em - 6px)
+  );
 }
 
 .mustard-note-enter-active,
