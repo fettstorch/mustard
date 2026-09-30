@@ -144,7 +144,13 @@ const notesWithPositions = computed(() => {
       // rendered here) — hide rather than misplace.
       const anchorPos = calculateAnchorPosition(note.anchorData)
       if (!anchorPos) return []
-      const offset = getDragOffset(note.id)
+      const growsLeft = anchorPos.x > window.innerWidth / 2
+      const offset = rebaseOverlayDragOffset(
+        anchorPos.x,
+        getDragOffset(note.id),
+        window.innerWidth,
+        growsLeft,
+      )
       return [
         {
           note,
@@ -153,7 +159,7 @@ const notesWithPositions = computed(() => {
             x: anchorPos.x + offset.x,
             y: anchorPos.y + offset.y,
           },
-          growsLeft: anchorPos.x > window.innerWidth / 2,
+          growsLeft,
           dragOffset: offset,
         },
       ]

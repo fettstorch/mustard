@@ -52,4 +52,11 @@ describe('calculateOverlayPositionStyle', () => {
       y: -12,
     })
   })
+
+  it('rebases an initially off-screen anchor before the first drag', () => {
+    expect(rebaseOverlayDragOffset(700, { x: 0, y: 0 }, 600, true)).toEqual({
+      x: -108,
+      y: 0,
+    })
+  })
 })
