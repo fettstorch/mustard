@@ -125,6 +125,50 @@ test.describe('Content script smoke', () => {
     expect(savedBox.x + savedBox.width).toBeLessThanOrEqual(592)
   })
 
+  test('a long anchor selector does not expand the empty editor', async ({ context }) => {
+    let serviceWorker = context.serviceWorkers()[0]
+    if (!serviceWorker) serviceWorker = await context.waitForEvent('serviceworker')
+    await serviceWorker.evaluate(async () => {
+      await chrome.storage.local.set({ 'mustard-show-anchor-in-editor': true })
+    })
+
+    const page = await context.newPage()
+    await page.setViewportSize({ width: 900, height: 600 })
+    await page.goto(fixtureUrl)
+    const mustard = page.locator('#mustard-host')
+    await expect(mustard).toBeAttached({ timeout: 8_000 })
+
+    const anchor = page.locator('#content')
+    await anchor.evaluate((element) => {
+      element.id = `anchor-${'very-long-selector-'.repeat(20)}`
+    })
+    await page.locator('[id^="anchor-very-long-selector"]').dispatchEvent('contextmenu', {
+      button: 2,
+      clientX: 100,
+      clientY: 100,
+    })
+
+    await serviceWorker.evaluate(async (url: string) => {
+      const [tab] = await chrome.tabs.query({ url: `${url}*` })
+      if (tab?.id === undefined) throw new Error(`No tab found for ${url}`)
+      await chrome.tabs.sendMessage(tab.id, { type: 'OPEN_NOTE_EDITOR' })
+    }, fixtureUrl)
+
+    const noteEditor = mustard.locator('.mustard-note-editor')
+    const selector = noteEditor.locator('.anchor-row-expandable .anchor-value')
+    await expect(selector).toContainText('very-long-selector')
+    const sizes = await noteEditor.evaluate((element) => {
+      const info = element.querySelector<HTMLElement>('.anchor-info')!
+      const withSelector = element.getBoundingClientRect().width
+      info.style.display = 'none'
+      const withoutSelector = element.getBoundingClientRect().width
+      info.style.removeProperty('display')
+      return { withSelector, withoutSelector }
+    })
+    expect(sizes.withSelector).toBeLessThan(600)
+    expect(sizes.withSelector).toBeCloseTo(sizes.withoutSelector, 0)
+  })
+
   test('turns typed Markdown link syntax into a saved link', async ({ context }) => {
     await context.route('https://example.com/**', (route) =>
       route.fulfill({ contentType: 'text/html', body: '<title>Example</title>' }),

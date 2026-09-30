@@ -463,6 +463,9 @@ function handlePublish() {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  /* Fill the editor without letting a long selector set its fit-content width. */
+  width: 0;
+  min-width: 100%;
   max-width: var(--mustard-note-effective-content-max-width);
 }
 
