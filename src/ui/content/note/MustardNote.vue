@@ -566,7 +566,7 @@ watch(unreadCount, (count) => {
 }
 
 .mustard-note.is-minimized:hover {
-  max-width: 300px;
+  max-width: min(300px, var(--mustard-overlay-max-width, calc(100vw - 16px)));
   padding: 8px 0.5em 4px !important;
   cursor: grab;
   /* Expand: width grows first, height grows after */
