@@ -22,9 +22,11 @@ import {
 } from '@/shared/messaging'
 import type { UserProfile } from '@/shared/model/UserProfile'
 import type { ExtensionUpdateState } from '@/shared/extension-update'
+import { siteStrategyFor } from '@/shared/site-strategies'
 import ProviderLogin from './auth/ProviderLogin.vue'
 import MyPagesSection from './MyPagesSection.vue'
-import MentionsSection from './MentionsSection.vue'
+import NotificationsSection from './NotificationsSection.vue'
+import SubscriptionsSection from './SubscriptionsSection.vue'
 
 const NOTES_MINIMIZED_KEY = 'mustard-notes-minimized'
 
@@ -34,6 +36,7 @@ const extensionUpdateState = ref<ExtensionUpdateState | null>(null)
 const areNotesVisible = ref(true)
 const areNotesMinimized = ref(false)
 const activeTabId = ref<number | null>(null)
+const activePageKey = ref<string | null>(null)
 
 // One-shot "Show all notes on this page" state.
 const isLoadingAllNotes = ref(false)
@@ -58,6 +61,7 @@ onMounted(async () => {
   const [tab] = await browser.tabs.query({ active: true, currentWindow: true })
   if (tab?.id && tab.url && (tab.url.startsWith('http://') || tab.url.startsWith('https://'))) {
     activeTabId.value = tab.id
+    activePageKey.value = siteStrategyFor(tab.url).getPageKey()
     try {
       areNotesVisible.value = await sendTabMessage(tab.id, createGetNotesVisibleMessage())
     } catch {
@@ -267,7 +271,11 @@ const logoUrl = browser.runtime.getURL('/mustard_bottle_smile_512.png')
 
     <!-- Logged in -->
     <div v-if="session" class="session-container">
-      <MentionsSection :is-outdated="extensionUpdateState?.required === true" />
+      <NotificationsSection :is-outdated="extensionUpdateState?.required === true" />
+      <SubscriptionsSection
+        :page-key="activePageKey"
+        :is-outdated="extensionUpdateState?.required === true"
+      />
       <MyPagesSection />
       <div class="profile-row">
         <img
@@ -313,6 +321,32 @@ html::-webkit-scrollbar,
 body::-webkit-scrollbar {
   /* Chrome/Safari/Edge */
   display: none;
+}
+
+.mustard-popup .popup-section {
+  padding: 0.75rem 0.875rem;
+  border: 1.5px solid var(--mustard-border-subtle);
+  border-radius: 12px;
+  background: var(--mustard-glass);
+}
+
+.mustard-popup .popup-section-header {
+  min-height: 1.75rem;
+  box-sizing: border-box;
+  padding: 0 0 0.625rem;
+  border-bottom: 1.5px solid var(--mustard-border-subtle);
+}
+
+.mustard-popup .popup-section-title {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--mustard-border);
+}
+
+.mustard-popup .popup-section > :not(.popup-section-header) {
+  margin-top: 0.75rem;
 }
 </style>
 

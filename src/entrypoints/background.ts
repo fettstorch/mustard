@@ -15,6 +15,7 @@ import {
 import { mustardNotesManager } from '@/background/business/MustardNotesManager'
 import { mustardCommentsManager } from '@/background/business/MustardCommentsManager'
 import { mustardNotificationsManager } from '@/background/business/MustardNotificationsManager'
+import { mustardSubscriptionsServiceRemote } from '@/background/business/service/MustardSubscriptionsServiceRemote'
 import { DtoMustardNote } from '@/shared/dto/DtoMustardNote'
 import { DtoMustardComment } from '@/shared/dto/DtoMustardComment'
 import { RateLimitError } from '@/shared/errors'
@@ -38,6 +39,7 @@ import {
   resolveIdentities,
   resolveGithubAccounts,
   getGithubMentionCandidates,
+  resolveAccountUserIds,
 } from '@/background/auth/AuthBridge'
 import {
   storeSupabaseJwt,
@@ -56,6 +58,10 @@ import { githubAvatarUrl } from '@/shared/providers'
 import { PENDING_FOCUS_KEY, type PendingFocus } from '@/shared/pending-focus'
 import { unhideNote } from '@/shared/hidden-notes'
 import { ExtensionUpdateService } from '@/background/business/service/extension-update/ExtensionUpdateService'
+import {
+  subscriptionIdentityKey,
+  type SubscriptionIdentityTarget,
+} from '@/shared/model/Subscription'
 
 /** Builds a github UserProfile from an id + login, falling back to the id when the login is unknown. */
 function buildGithubProfile(id: string, login: string | undefined): UserProfile {
@@ -201,7 +207,7 @@ export default defineBackground(() => {
 
   /**
    * Acknowledge one notification by id — the single code path that both the
-   * popup's mention press (via the MARK_MENTION_SEEN message) and a native-toast
+   * popup's notification press and a native-toast
    * click funnel through, so "engage with the notification → it's seen" behaves
    * identically on both surfaces. Deletes the row (any type) and fans out the
    * badge/UI refresh.
@@ -756,6 +762,81 @@ export default defineBackground(() => {
       }
     },
 
+    GET_SUBSCRIPTIONS: async () => {
+      const session = await getSession()
+      if (!session) return []
+      return mustardSubscriptionsServiceRemote.getSubscriptions()
+    },
+
+    RESOLVE_SUBSCRIPTION_IDENTITIES: async (message) => {
+      const jwt = await getSupabaseJwt()
+      if (!jwt) return {}
+
+      const targetsByProvider = new Map<
+        SubscriptionIdentityTarget['provider'],
+        SubscriptionIdentityTarget[]
+      >()
+      for (const target of message.targets) {
+        const targets = targetsByProvider.get(target.provider) ?? []
+        targets.push(target)
+        targetsByProvider.set(target.provider, targets)
+      }
+      const resolvedEntries = await Promise.all(
+        [...targetsByProvider].map(async ([provider, targets]) => {
+          const resolved = await resolveAccountUserIds(
+            jwt,
+            provider,
+            targets.map((target) => target.accountId),
+          )
+          return targets.flatMap((target) => {
+            const userId = resolved.get(target.accountId)
+            return userId ? [[subscriptionIdentityKey(target), userId] as const] : []
+          })
+        }),
+      )
+      return Object.fromEntries(resolvedEntries.flat())
+    },
+
+    SET_PAGE_SUBSCRIPTION: async (message) => {
+      const session = await getSession()
+      if (!session) throw new Error('Cannot manage subscriptions - user not logged in')
+      await mustardSubscriptionsServiceRemote.setPageSubscription(
+        session.userId,
+        message.pageKey,
+        message.subscribed,
+      )
+      return null
+    },
+
+    SET_USER_SUBSCRIPTION: async (message) => {
+      const session = await getSession()
+      if (!session) throw new Error('Cannot manage subscriptions - user not logged in')
+      await mustardSubscriptionsServiceRemote.setUserSubscription(
+        session.userId,
+        message.targetUserId,
+        message.subscribed,
+      )
+      return null
+    },
+
+    SET_IDENTITY_SUBSCRIPTION: async (message) => {
+      const session = await getSession()
+      if (!session) throw new Error('Cannot manage subscriptions - user not logged in')
+      const jwt = await getSupabaseJwt()
+      if (!jwt) throw new Error('Cannot manage subscriptions - session unavailable')
+      const resolved = await resolveAccountUserIds(jwt, message.target.provider, [
+        message.target.accountId,
+      ])
+      const targetUserId = resolved.get(message.target.accountId)
+      if (!targetUserId) return null
+      await mustardSubscriptionsServiceRemote.setUserSubscription(
+        session.userId,
+        targetUserId,
+        message.subscribed,
+      )
+      return targetUserId
+    },
+
     QUERY_COMMENTS: async (message) => {
       try {
         const map = await mustardCommentsManager.queryCommentsForNotes(message.noteIds)
@@ -845,7 +926,7 @@ export default defineBackground(() => {
       }
     },
 
-    GET_MY_MENTIONS: async () => {
+    GET_MY_NOTIFICATIONS: async () => {
       try {
         const session = await getSession()
         if (!session) return []
@@ -853,18 +934,18 @@ export default defineBackground(() => {
         const notifications = await mustardNotificationsManager.getUnreadNotifications((ids) =>
           resolveProfilesByUserId(jwt, ids),
         )
-        return notifications.filter((n) => n.type === 'mention')
+        return notifications
       } catch (err) {
-        console.error('GET_MY_MENTIONS failed:', err)
+        console.error('GET_MY_NOTIFICATIONS failed:', err)
         return []
       }
     },
 
-    MARK_MENTION_SEEN: async (message) => {
+    MARK_NOTIFICATION_SEEN: async (message) => {
       try {
         await acknowledgeNotification(message.notificationId)
       } catch (err) {
-        console.error('MARK_MENTION_SEEN failed:', err)
+        console.error('MARK_NOTIFICATION_SEEN failed:', err)
       }
       return null
     },

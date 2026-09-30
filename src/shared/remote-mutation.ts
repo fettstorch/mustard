@@ -18,7 +18,10 @@ export function isRemoteMutationMessage(message: Message): boolean {
     case 'UPSERT_COMMENT':
     case 'DELETE_COMMENT':
     case 'MARK_NOTIFICATIONS_SEEN_FOR_NOTE':
-    case 'MARK_MENTION_SEEN':
+    case 'MARK_NOTIFICATION_SEEN':
+    case 'SET_PAGE_SUBSCRIPTION':
+    case 'SET_USER_SUBSCRIPTION':
+    case 'SET_IDENTITY_SUBSCRIPTION':
       return true
     default:
       return false

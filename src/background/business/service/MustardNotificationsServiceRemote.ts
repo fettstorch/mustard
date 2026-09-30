@@ -24,7 +24,7 @@ interface DbMentionRow {
 }
 
 interface DbNotificationFullRow extends DbMentionRow {
-  type: 'mention' | 'comment'
+  type: 'mention' | 'comment' | 'subscription'
 }
 
 /** Map a joined notifications row to the shared raw shape (snippet from note or comment). */
@@ -141,9 +141,8 @@ export class MustardNotificationsServiceRemote implements MustardNotificationsSe
   }
 
   async getUnreadNotifications(): Promise<RawNotification[]> {
-    // All unread rows of BOTH types (no `type` filter) so native browser
-    // notifications and the popup's Mentions list share one query; callers that
-    // want only mentions filter on `type`. RLS scopes to recipient_id =
+    // All unread rows (no `type` filter) so native browser notifications and
+    // the popup list share one query. RLS scopes to recipient_id =
     // auth.jwt().sub. Embeds pull the note's page URL + the source content for
     // the snippet. supabase-js infers embedded resources as arrays, but a to-one
     // FK embed (notifications → notes/comments) returns a single object (or

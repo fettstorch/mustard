@@ -1,7 +1,7 @@
 import type { DtoMustardNote } from './dto/DtoMustardNote'
 import type { DtoMustardComment } from './dto/DtoMustardComment'
 import type { DtoMyPagesOverview } from './dto/DtoMyPagesOverview'
-import type { DtoMustardMention } from './dto/DtoMustardMention'
+import type { DtoMustardNotification } from './dto/DtoMustardMention'
 import type { Satisfies } from './Satisfies'
 import type { UserProfile, UserId, LinkedIdentity, UserProfileType } from './model/UserProfile'
 import type { MentionTarget } from './mentions'
@@ -9,6 +9,11 @@ import type { BskyProfile } from './model/BskyProfile'
 import type { MentionCandidate } from './model/MentionCandidate'
 import type { LinkPreview } from './model/LinkPreview'
 import type { ExtensionUpdateState } from './extension-update'
+import type {
+  ResolvedSubscriptionIdentities,
+  Subscription,
+  SubscriptionIdentityTarget,
+} from './model/Subscription'
 
 type BaseMessage = {
   type: string
@@ -244,6 +249,43 @@ export type GetGithubMentionCandidatesMessage = Satisfies<
 
 type GetGithubMentionCandidatesResponse = MentionCandidate[]
 
+export type GetSubscriptionsMessage = Satisfies<BaseMessage, { type: 'GET_SUBSCRIPTIONS' }>
+
+export type ResolveSubscriptionIdentitiesMessage = Satisfies<
+  BaseMessage,
+  {
+    type: 'RESOLVE_SUBSCRIPTION_IDENTITIES'
+    targets: SubscriptionIdentityTarget[]
+  }
+>
+
+export type SetPageSubscriptionMessage = Satisfies<
+  BaseMessage,
+  {
+    type: 'SET_PAGE_SUBSCRIPTION'
+    pageKey: string
+    subscribed: boolean
+  }
+>
+
+export type SetUserSubscriptionMessage = Satisfies<
+  BaseMessage,
+  {
+    type: 'SET_USER_SUBSCRIPTION'
+    targetUserId: string
+    subscribed: boolean
+  }
+>
+
+export type SetIdentitySubscriptionMessage = Satisfies<
+  BaseMessage,
+  {
+    type: 'SET_IDENTITY_SUBSCRIPTION'
+    target: SubscriptionIdentityTarget
+    subscribed: boolean
+  }
+>
+
 // Response types for AT Protocol auth messages.
 // userId is the stable Mustard account id (opaque UUID).
 // did is the linked atproto DID (if any), for atproto-specific operations.
@@ -434,23 +476,23 @@ export type GetMyPagesOverviewMessage = Satisfies<
   }
 >
 
-// Popup → service worker: the current user's unread @-mentions (in notes or
-// comments). Response: DtoMustardMention[] (newest first).
-export type GetMyMentionsMessage = Satisfies<
+// Popup → service worker: all of the current user's unread notifications.
+// Response: DtoMustardNotification[] (newest first).
+export type GetMyNotificationsMessage = Satisfies<
   BaseMessage,
   {
-    type: 'GET_MY_MENTIONS'
+    type: 'GET_MY_NOTIFICATIONS'
   }
 >
 
-type GetMyMentionsResponse = DtoMustardMention[]
+type GetMyNotificationsResponse = DtoMustardNotification[]
 
-// Popup → service worker: the user acted on a mention notification; delete it.
+// Popup → service worker: the user acted on a notification; delete it.
 // Response: void.
-export type MarkMentionSeenMessage = Satisfies<
+export type MarkNotificationSeenMessage = Satisfies<
   BaseMessage,
   {
-    type: 'MARK_MENTION_SEEN'
+    type: 'MARK_NOTIFICATION_SEEN'
     notificationId: string
   }
 >
@@ -501,6 +543,11 @@ export type Message =
   | GetMutualsMessage
   | SearchBskyActorsMessage
   | GetGithubMentionCandidatesMessage
+  | GetSubscriptionsMessage
+  | ResolveSubscriptionIdentitiesMessage
+  | SetPageSubscriptionMessage
+  | SetUserSubscriptionMessage
+  | SetIdentitySubscriptionMessage
   | GetNotesVisibleMessage
   | SetNotesVisibleMessage
   | LoadAllNotesMessage
@@ -518,8 +565,8 @@ export type Message =
   | QueryNotificationsForNotesMessage
   | MarkNotificationsSeenForNoteMessage
   | GetMyPagesOverviewMessage
-  | GetMyMentionsMessage
-  | MarkMentionSeenMessage
+  | GetMyNotificationsMessage
+  | MarkNotificationSeenMessage
   | NotificationsChangedMessage
   | OpenDeepLinkMessage
 
@@ -557,6 +604,11 @@ type MessageResponses = {
   GET_MUTUALS: GetMutualsResponse
   SEARCH_BSKY_ACTORS: SearchBskyActorsResponse
   GET_GITHUB_MENTION_CANDIDATES: GetGithubMentionCandidatesResponse
+  GET_SUBSCRIPTIONS: Subscription[]
+  RESOLVE_SUBSCRIPTION_IDENTITIES: ResolvedSubscriptionIdentities
+  SET_PAGE_SUBSCRIPTION: null
+  SET_USER_SUBSCRIPTION: null
+  SET_IDENTITY_SUBSCRIPTION: string | null
   GET_NOTES_VISIBLE: boolean
   SET_NOTES_VISIBLE: boolean
   LOAD_ALL_NOTES: number
@@ -574,8 +626,8 @@ type MessageResponses = {
   QUERY_NOTIFICATIONS_FOR_NOTES: QueryNotificationsForNotesResponse
   MARK_NOTIFICATIONS_SEEN_FOR_NOTE: null
   GET_MY_PAGES_OVERVIEW: DtoMyPagesOverview
-  GET_MY_MENTIONS: GetMyMentionsResponse
-  MARK_MENTION_SEEN: null
+  GET_MY_NOTIFICATIONS: GetMyNotificationsResponse
+  MARK_NOTIFICATION_SEEN: null
   NOTIFICATIONS_CHANGED: void
   OPEN_DEEP_LINK: void
 }
@@ -786,6 +838,37 @@ export function createGetGithubMentionCandidatesMessage(): GetGithubMentionCandi
   }
 }
 
+export function createGetSubscriptionsMessage(): GetSubscriptionsMessage {
+  return { type: 'GET_SUBSCRIPTIONS' }
+}
+
+export function createResolveSubscriptionIdentitiesMessage(
+  targets: SubscriptionIdentityTarget[],
+): ResolveSubscriptionIdentitiesMessage {
+  return { type: 'RESOLVE_SUBSCRIPTION_IDENTITIES', targets }
+}
+
+export function createSetPageSubscriptionMessage(
+  pageKey: string,
+  subscribed: boolean,
+): SetPageSubscriptionMessage {
+  return { type: 'SET_PAGE_SUBSCRIPTION', pageKey, subscribed }
+}
+
+export function createSetUserSubscriptionMessage(
+  targetUserId: string,
+  subscribed: boolean,
+): SetUserSubscriptionMessage {
+  return { type: 'SET_USER_SUBSCRIPTION', targetUserId, subscribed }
+}
+
+export function createSetIdentitySubscriptionMessage(
+  target: SubscriptionIdentityTarget,
+  subscribed: boolean,
+): SetIdentitySubscriptionMessage {
+  return { type: 'SET_IDENTITY_SUBSCRIPTION', target, subscribed }
+}
+
 export function createGetNotesVisibleMessage(): GetNotesVisibleMessage {
   return {
     type: 'GET_NOTES_VISIBLE',
@@ -877,15 +960,17 @@ export function createGetMyPagesOverviewMessage(): GetMyPagesOverviewMessage {
   }
 }
 
-export function createGetMyMentionsMessage(): GetMyMentionsMessage {
+export function createGetMyNotificationsMessage(): GetMyNotificationsMessage {
   return {
-    type: 'GET_MY_MENTIONS',
+    type: 'GET_MY_NOTIFICATIONS',
   }
 }
 
-export function createMarkMentionSeenMessage(notificationId: string): MarkMentionSeenMessage {
+export function createMarkNotificationSeenMessage(
+  notificationId: string,
+): MarkNotificationSeenMessage {
   return {
-    type: 'MARK_MENTION_SEEN',
+    type: 'MARK_NOTIFICATION_SEEN',
     notificationId,
   }
 }

@@ -1,6 +1,13 @@
 import { expect, test } from './authenticated.fixture'
 import { TEST_USERS } from './auth-test-data'
-import { authedClient } from './local-supabase'
+import {
+  adminClient,
+  authedClient,
+  deleteNote,
+  getLocalSupabaseStatus,
+  seedNote,
+  setFollows,
+} from './local-supabase'
 import { loginAs } from '../extension.fixture'
 
 const fixtureUrl = 'http://127.0.0.1:4173/page.html'
@@ -16,6 +23,114 @@ test('popup recognizes the seeded GitHub session', async ({
   await expect(popup.getByRole('button', { name: 'Logout' })).toBeVisible()
   await expect(popup.getByText('@mustard-e2e')).toBeVisible()
   await expect(popup.getByRole('tab', { name: 'GitHub' })).not.toBeVisible()
+})
+
+test('popup subscriptions use compact controls and a bounded scroll area', async ({
+  authenticatedContext: context,
+  popupUrl,
+}) => {
+  const client = authedClient(TEST_USERS.viewer.userId)
+  const pageKeys = Array.from(
+    { length: 12 },
+    (_, index) => `https://example.com/subscribed-page-${index}`,
+  )
+  const { error } = await client.from('subscriptions').insert([
+    ...pageKeys.map((pageKey) => ({
+      subscriber_id: TEST_USERS.viewer.userId,
+      kind: 'page',
+      page_key: pageKey,
+    })),
+    {
+      subscriber_id: TEST_USERS.viewer.userId,
+      kind: 'user',
+      page_key: null,
+      target_user_id: TEST_USERS.author.userId,
+    },
+  ])
+  if (error) throw new Error(`Could not seed popup subscriptions: ${error.message}`)
+
+  const popup = await context.newPage()
+  await popup.goto(popupUrl)
+
+  const section = popup.locator('.subscriptions-section')
+  const heading = section.getByRole('button', { name: 'Subscriptions' })
+  await expect(heading.locator('.subscriptions-chevron')).toHaveText('›')
+  await heading.click()
+
+  const list = section.locator('.subscription-list')
+  await expect(list.locator('.subscription-row')).toHaveCount(pageKeys.length + 1)
+  await expect(list.locator('.subscription-page-icon img').first()).toHaveAttribute(
+    'src',
+    'https://example.com/favicon.ico',
+  )
+  await expect(list.locator('.subscription-user-avatar img')).toHaveAttribute(
+    'src',
+    'https://github.com/mustard-author.png',
+  )
+  await expect(section.getByRole('button', { name: /^Unsubscribe from https:\/\// })).toHaveCount(
+    pageKeys.length,
+  )
+  await expect(section.getByText('Remove', { exact: true })).toHaveCount(0)
+
+  const dimensions = await list.evaluate((element) => ({
+    clientHeight: element.clientHeight,
+    scrollHeight: element.scrollHeight,
+    overflowY: getComputedStyle(element).overflowY,
+  }))
+  expect(dimensions.overflowY).toBe('auto')
+  expect(dimensions.scrollHeight).toBeGreaterThan(dimensions.clientHeight)
+})
+
+test('note author profile card can subscribe and keeps the provider link', async ({
+  authenticatedContext: context,
+}) => {
+  const { viewer, author } = TEST_USERS
+  const status = getLocalSupabaseStatus()
+  await setFollows(viewer.userId, [author.userId], status)
+  const noteId = await seedNote(author.userId, fixtureUrl, 'Profile card subscription note', status)
+
+  try {
+    const page = await context.newPage()
+    await page.setViewportSize({ width: 800, height: 360 })
+    await page.goto(fixtureUrl)
+    const mustard = page.locator('#mustard-host')
+    await expect(mustard.getByText('Profile card subscription note')).toBeVisible({
+      timeout: 8_000,
+    })
+
+    await mustard.getByRole('button', { name: 'mustard-author' }).click()
+    const card = mustard.getByRole('dialog', { name: 'mustard-author profile' })
+    await expect(card).toBeVisible()
+    await expect(card.getByRole('link', { name: 'View on GitHub' })).toHaveAttribute(
+      'href',
+      'https://github.com/mustard-author',
+    )
+    const cardBounds = await card.evaluate((element) => {
+      const rect = element.getBoundingClientRect()
+      return { top: rect.top, bottom: rect.bottom, viewportHeight: window.innerHeight }
+    })
+    expect(cardBounds.top).toBeGreaterThanOrEqual(8)
+    expect(cardBounds.bottom).toBeLessThanOrEqual(cardBounds.viewportHeight - 8)
+
+    await card.getByRole('button', { name: 'Subscribe' }).click()
+    await expect(card.getByRole('button', { name: 'Unsubscribe' })).toBeVisible()
+
+    const { data, error } = await adminClient(status)
+      .from('subscriptions')
+      .select('subscriber_id, target_user_id, kind')
+      .eq('subscriber_id', viewer.userId)
+      .eq('target_user_id', author.userId)
+    if (error) throw new Error(`Could not query profile-card subscription: ${error.message}`)
+    expect(data).toEqual([
+      {
+        subscriber_id: viewer.userId,
+        target_user_id: author.userId,
+        kind: 'user',
+      },
+    ])
+  } finally {
+    await deleteNote(noteId, status)
+  }
 })
 
 test('publishes a remote note and restores it after reload', async ({

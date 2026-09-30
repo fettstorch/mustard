@@ -9,6 +9,10 @@ const MAX_VISIBLE_REPOSTERS = 3
 const props = defineProps<{
   /** The note's original author — always rendered front-most (on top). */
   author: UserProfile | null
+  authorId: string
+  canSubscribe?: boolean
+  isOwnProfile?: boolean
+  isOutdated?: boolean
   /** All reposters of the note (may include accounts the viewer doesn't follow). May be empty. */
   reposters: (UserProfile | null)[]
 }>()
@@ -45,7 +49,13 @@ const overflowCount = computed(() => Math.max(0, props.reposters.length - MAX_VI
     </div>
     <!-- Original author: front-most. -->
     <div class="repost-stack-item author-item" :style="{ zIndex: visibleReposters.length + 1 }">
-      <AuthorAvatar :profile="author" />
+      <AuthorAvatar
+        :profile="author"
+        :user-id="authorId"
+        :can-subscribe="canSubscribe"
+        :is-own-profile="isOwnProfile"
+        :is-outdated="isOutdated"
+      />
     </div>
   </div>
 </template>

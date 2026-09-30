@@ -119,6 +119,28 @@ test.describe('comment rate limits', () => {
   })
 })
 
+test.describe('subscription limits', () => {
+  test('allows 500 subscriptions and rejects the 501st', async () => {
+    const client = authedClient(userId)
+    const rows = Array.from({ length: 500 }, (_, index) => ({
+      subscriber_id: userId,
+      kind: 'page',
+      page_key: `${PAGE_URL}/subscription-${index}`,
+    }))
+
+    const { error: seedError } = await client.from('subscriptions').insert(rows)
+    expect(seedError).toBeNull()
+
+    const { error } = await client.from('subscriptions').insert({
+      subscriber_id: userId,
+      kind: 'page',
+      page_key: `${PAGE_URL}/subscription-over-limit`,
+    })
+    expect(error?.code).toBe('23514')
+    expect(error?.message).toContain('Subscription limit reached')
+  })
+})
+
 test('reposts remain unlimited', async () => {
   const status = getLocalSupabaseStatus()
   const noteIds = await Promise.all(

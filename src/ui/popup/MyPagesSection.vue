@@ -15,7 +15,7 @@ import { createGetMyPagesOverviewMessage, sendMessage } from '@/shared/messaging
 import type { DtoMyPagesOverview } from '@/shared/dto/DtoMyPagesOverview'
 import { useNotificationsChanged } from './use-notifications-changed'
 import { openPageFocused } from './open-page-focused'
-import { displayUrl } from '@/shared/display-url'
+import { displayUrl, pageFaviconUrl } from '@/shared/display-url'
 
 const overview = ref<DtoMyPagesOverview>([])
 const isExpanded = ref(false)
@@ -50,17 +50,21 @@ async function openPage(pageUrl: string) {
 function toggle() {
   isExpanded.value = !isExpanded.value
 }
+
+function hideFailedImage(event: Event) {
+  if (event.currentTarget instanceof HTMLImageElement) event.currentTarget.hidden = true
+}
 </script>
 
 <template>
-  <div class="my-pages-section">
+  <div class="my-pages-section popup-section">
     <button
       type="button"
-      class="my-pages-header"
+      class="my-pages-header popup-section-header"
       :title="isExpanded ? 'Collapse' : 'Expand'"
       @click="toggle"
     >
-      <span class="my-pages-title">
+      <span class="my-pages-title popup-section-title">
         Notes &amp; Threads
         <span v-if="totalUnread > 0" class="my-pages-unread-pill"> {{ totalUnread }} unread </span>
       </span>
@@ -81,6 +85,21 @@ function toggle() {
         :title="entry.pageUrl"
         @click="openPage(entry.pageUrl)"
       >
+        <span class="my-pages-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none">
+            <circle cx="12" cy="12" r="8.5" />
+            <path
+              d="M3.5 12h17M12 3.5c2.2 2.3 3.3 5.1 3.3 8.5S14.2 18.2 12 20.5M12 3.5C9.8 5.8 8.7 8.6 8.7 12s1.1 6.2 3.3 8.5"
+            />
+          </svg>
+          <img
+            v-if="pageFaviconUrl(entry.pageUrl)"
+            :src="pageFaviconUrl(entry.pageUrl) ?? undefined"
+            alt=""
+            referrerpolicy="no-referrer"
+            @error="hideFailedImage"
+          />
+        </span>
         <span
           v-if="entry.unreadCount > 0"
           class="my-pages-badge"
@@ -96,9 +115,7 @@ function toggle() {
 
 <style scoped>
 .my-pages-section {
-  margin-bottom: 0.75rem;
-  border-bottom: 1px solid var(--mustard-border-subtle);
-  padding-bottom: 0.5rem;
+  min-width: 0;
 }
 
 .my-pages-header {
@@ -106,7 +123,6 @@ function toggle() {
   width: 100%;
   align-items: center;
   justify-content: space-between;
-  padding: 0.5rem 0;
   background: none;
   border: none;
   color: var(--mustard-text);
@@ -190,6 +206,43 @@ function toggle() {
 
 .my-pages-row.has-unread {
   border-color: #d32f2f;
+}
+
+.my-pages-icon {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
+  overflow: hidden;
+  border: 1px solid var(--mustard-border-subtle);
+  border-radius: 6px;
+  background: var(--mustard-glass-hover);
+  color: inherit;
+  opacity: 0.9;
+}
+
+.my-pages-icon svg {
+  width: 15px;
+  height: 15px;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.55;
+}
+
+.my-pages-icon img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  padding: 3px;
+  box-sizing: border-box;
+  object-fit: contain;
+  background: var(--mustard-glass);
 }
 
 .my-pages-badge {

@@ -15,6 +15,7 @@ import { expect, test } from './authenticated.fixture'
 import { TEST_USERS } from './auth-test-data'
 import {
   adminClient,
+  authedClient,
   deleteComment,
   deleteNote,
   fetchIndex,
@@ -27,6 +28,102 @@ import { loginAs } from '../extension.fixture'
 
 const { viewer, author } = TEST_USERS
 const FIXTURE_URL = 'http://127.0.0.1:4173/page.html'
+
+test.describe('subscription notification trigger', () => {
+  test('page and user matches create one notification for the new note', async () => {
+    const status = getLocalSupabaseStatus()
+    const viewerClient = authedClient(viewer.userId, status)
+    const { error: pageError } = await viewerClient.from('subscriptions').insert({
+      subscriber_id: viewer.userId,
+      kind: 'page',
+      page_key: FIXTURE_URL,
+    })
+    if (pageError) throw new Error(`Could not create page subscription: ${pageError.message}`)
+
+    const { error: userError } = await viewerClient.from('subscriptions').insert({
+      subscriber_id: viewer.userId,
+      kind: 'user',
+      target_user_id: author.userId,
+    })
+    if (userError) throw new Error(`Could not create user subscription: ${userError.message}`)
+
+    const noteId = await seedNote(author.userId, FIXTURE_URL, 'A subscribed note', status)
+    try {
+      const { data, error } = await adminClient(status)
+        .from('notifications')
+        .select('recipient_id, actor_id, type')
+        .eq('note_id', noteId)
+      if (error) throw new Error(`Could not query notifications: ${error.message}`)
+      expect(data).toEqual([
+        {
+          recipient_id: viewer.userId,
+          actor_id: author.userId,
+          type: 'subscription',
+        },
+      ])
+    } finally {
+      await deleteNote(noteId, status)
+    }
+  })
+
+  test('AT Protocol page subscriptions are rejected while user subscriptions still notify', async () => {
+    const status = getLocalSupabaseStatus()
+    const viewerClient = authedClient(viewer.userId, status)
+    const atUri = 'at://author.example/app.bsky.feed.post/3subscription'
+    const { error: pageError } = await viewerClient.from('subscriptions').insert({
+      subscriber_id: viewer.userId,
+      kind: 'page',
+      page_key: atUri,
+    })
+    expect(pageError).not.toBeNull()
+
+    const { error: userError } = await viewerClient.from('subscriptions').insert({
+      subscriber_id: viewer.userId,
+      kind: 'user',
+      target_user_id: author.userId,
+    })
+    if (userError) throw new Error(`Could not create user subscription: ${userError.message}`)
+
+    const noteId = await seedNote(author.userId, atUri, 'A subscribed Bluesky note', status)
+    try {
+      const { data, error } = await adminClient(status)
+        .from('notifications')
+        .select('type')
+        .eq('note_id', noteId)
+        .eq('recipient_id', viewer.userId)
+      if (error) throw new Error(`Could not query notifications: ${error.message}`)
+      expect(data).toEqual([{ type: 'subscription' }])
+    } finally {
+      await deleteNote(noteId, status)
+    }
+  })
+
+  test('authors do not receive their own page-subscription notifications', async () => {
+    const status = getLocalSupabaseStatus()
+    const authorClient = authedClient(author.userId, status)
+    const { error: subscriptionError } = await authorClient.from('subscriptions').insert({
+      subscriber_id: author.userId,
+      kind: 'page',
+      page_key: FIXTURE_URL,
+    })
+    if (subscriptionError) {
+      throw new Error(`Could not create page subscription: ${subscriptionError.message}`)
+    }
+
+    const noteId = await seedNote(author.userId, FIXTURE_URL, 'My own subscribed note', status)
+    try {
+      const { data, error } = await adminClient(status)
+        .from('notifications')
+        .select('id')
+        .eq('note_id', noteId)
+        .eq('recipient_id', author.userId)
+      if (error) throw new Error(`Could not query notifications: ${error.message}`)
+      expect(data).toHaveLength(0)
+    } finally {
+      await deleteNote(noteId, status)
+    }
+  })
+})
 
 test.describe('notification trigger', () => {
   let noteId: string
@@ -253,6 +350,10 @@ test.describe('popup notification badge', () => {
     const unreadPage = popup.locator('.my-pages-row.has-unread')
     await expect(unreadPage).toHaveCount(1)
     await expect(unreadPage).toHaveAttribute('title', FIXTURE_URL)
+    await expect(unreadPage.locator('.my-pages-icon img')).toHaveAttribute(
+      'src',
+      'http://127.0.0.1:4173/favicon.ico',
+    )
 
     await popup.close()
   })

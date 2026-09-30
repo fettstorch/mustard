@@ -12,3 +12,14 @@ export function displayUrl(pageUrl: string): string {
     return pageUrl
   }
 }
+
+/** Conventional, same-origin favicon URL for an HTTP(S) page. */
+export function pageFaviconUrl(pageUrl: string): string | null {
+  try {
+    const url = new URL(pageUrl)
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return null
+    return new URL('/favicon.ico', url.origin).href
+  } catch {
+    return null
+  }
+}

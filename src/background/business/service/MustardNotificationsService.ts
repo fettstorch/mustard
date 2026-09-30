@@ -22,11 +22,11 @@ export interface RawMention {
  * whether the snippet came from a note or a comment.
  */
 export interface RawNotification extends RawMention {
-  type: 'mention' | 'comment'
+  type: 'mention' | 'comment' | 'subscription'
 }
 
 /**
- * Service for unread mention and comment-thread notifications.
+ * Service for unread mention, comment-thread, and subscription notifications.
  *
  * The notifications table only stores unread rows — there is no "read" column.
  * Marking a notification as seen == deleting the row.
@@ -60,13 +60,12 @@ export interface MustardNotificationsService {
   queryUnreadCommentsByPage(): Promise<Record<string, string[]>>
 
   /**
-   * ALL of the current user's unread notifications — both mentions and comment
-   * thread activity — newest first. RLS scopes to the recipient. Drives native
-   * browser notifications and the popup's Mentions list (filtered to mentions by
-   * the caller), mirroring every event the in-app system tracks.
+   * ALL of the current user's unread notifications — mentions, comment-thread
+   * activity, and subscribed notes — newest first. RLS scopes to the recipient.
+   * Drives native browser notifications and the popup's notification list.
    */
   getUnreadNotifications(): Promise<RawNotification[]>
 
-  /** Delete a single notification row by id (mention or comment). */
+  /** Delete a single notification row by id. */
   markNotificationSeen(notificationId: string): Promise<void>
 }
