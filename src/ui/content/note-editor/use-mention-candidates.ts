@@ -7,7 +7,7 @@ import {
 import type { MentionCandidate } from '@/shared/model/MentionCandidate'
 
 /**
- * Loads the @-mention autocomplete candidates once on mount, merging two
+ * Loads the @-mention autocomplete candidates once on mount (or on demand), merging two
  * provider-specific sources:
  *   - Bluesky mutuals (people the user follows who follow them back).
  *   - GitHub follows who are also Mustard users (so the mention can be rendered).
@@ -18,7 +18,7 @@ import type { MentionCandidate } from '@/shared/model/MentionCandidate'
  * network) — picking one decides which profile the mention links to. The
  * computed is read lazily by the suggestion on each keystroke.
  */
-export function useMentionCandidates() {
+export function useMentionCandidates(options: { lazy?: boolean } = {}) {
   const bskyMutuals = ref<MentionCandidate[]>([])
   const githubFollows = ref<MentionCandidate[]>([])
   const candidates = computed<MentionCandidate[]>(() => [
@@ -26,7 +26,10 @@ export function useMentionCandidates() {
     ...githubFollows.value,
   ])
 
-  onMounted(() => {
+  let loaded = false
+  function loadCandidates() {
+    if (loaded) return
+    loaded = true
     sendMessage(createGetMutualsMessage())
       .then((list) => {
         bskyMutuals.value = (list ?? []).map((p) => ({
@@ -45,7 +48,11 @@ export function useMentionCandidates() {
         githubFollows.value = list ?? []
       })
       .catch(() => {})
+  }
+
+  onMounted(() => {
+    if (!options.lazy) loadCandidates()
   })
 
-  return { candidates }
+  return { candidates, loadCandidates }
 }

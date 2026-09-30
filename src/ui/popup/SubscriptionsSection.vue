@@ -32,9 +32,13 @@ const inputFocused = ref(false)
 const activeSuggestionId = ref<string>()
 const busyTarget = ref<string | null>(null)
 const feedback = ref<string | null>(null)
-const { candidates } = useMentionCandidates()
+const { candidates, loadCandidates } = useMentionCandidates({ lazy: true })
 const resolvedCandidateUserIds = ref<Record<string, string>>({})
 let candidateRequestId = 0
+
+watch(expanded, (isExpanded) => {
+  if (isExpanded) loadCandidates()
+})
 
 watch(
   candidates,
