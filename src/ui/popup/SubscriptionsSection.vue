@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import {
   createGetProfilesMessage,
   createGetSubscriptionsMessage,
@@ -37,7 +37,10 @@ const resolvedCandidateUserIds = ref<Record<string, string>>({})
 let candidateRequestId = 0
 
 watch(expanded, (isExpanded) => {
-  if (isExpanded) loadCandidates()
+  if (isExpanded) {
+    loadCandidates()
+    void refresh()
+  }
 })
 
 watch(
@@ -87,8 +90,6 @@ async function refresh() {
     ? await sendMessage(createGetProfilesMessage(userIds)).catch(() => ({}))
     : {}
 }
-
-onMounted(refresh)
 
 async function togglePageSubscription() {
   if (!props.pageKey || !pageSupported.value || props.isOutdated) return
