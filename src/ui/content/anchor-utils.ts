@@ -21,6 +21,16 @@ export function clampOverlayAnchorX(
   return growsLeft ? Math.max(viewportX, minimumAnchorX) : Math.min(viewportX, maximumAnchorX)
 }
 
+export function rebaseOverlayDragOffset(
+  anchorX: number,
+  offset: { x: number; y: number },
+  viewportWidth: number,
+  growsLeft: boolean,
+): { x: number; y: number } {
+  const clampedX = clampOverlayAnchorX(anchorX + offset.x, viewportWidth, growsLeft)
+  return { x: clampedX - anchorX, y: offset.y }
+}
+
 export function calculateOverlayPositionStyle(
   position: { x: number; y: number },
   viewportWidth: number,

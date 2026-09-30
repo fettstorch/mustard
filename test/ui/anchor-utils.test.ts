@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { calculateOverlayPositionStyle, clampOverlayAnchorX } from '@/ui/content/anchor-utils'
+import {
+  calculateOverlayPositionStyle,
+  clampOverlayAnchorX,
+  rebaseOverlayDragOffset,
+} from '@/ui/content/anchor-utils'
 
 describe('calculateOverlayPositionStyle', () => {
   it('keeps the positioning edge stable when a dragged note crosses the midpoint', () => {
@@ -36,5 +40,16 @@ describe('calculateOverlayPositionStyle', () => {
   it('provides the clamped anchor used to rebase stored drag offsets', () => {
     expect(clampOverlayAnchorX(-40, 600, true)).toBe(88)
     expect(clampOverlayAnchorX(640, 600, false)).toBe(512)
+  })
+
+  it('rebases a stored drag offset against the current viewport', () => {
+    expect(rebaseOverlayDragOffset(500, { x: -460, y: 24 }, 600, true)).toEqual({
+      x: -412,
+      y: 24,
+    })
+    expect(rebaseOverlayDragOffset(100, { x: 460, y: -12 }, 600, false)).toEqual({
+      x: 412,
+      y: -12,
+    })
   })
 })

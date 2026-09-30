@@ -4,7 +4,7 @@ import type { MustardState } from './mustard-state'
 import {
   calculateAnchorPosition,
   calculateOverlayPositionStyle,
-  clampOverlayAnchorX,
+  rebaseOverlayDragOffset,
 } from './anchor-utils'
 const MustardNoteEditor = defineAsyncComponent(() => import('./note-editor/MustardNoteEditor.vue'))
 import MustardNote from './note/MustardNote.vue'
@@ -100,8 +100,7 @@ function setDragOffset(
   offset: { x: number; y: number },
 ) {
   if (!noteId) return
-  const clampedX = clampOverlayAnchorX(anchorX + offset.x, window.innerWidth, growsLeft)
-  dragOffsets[noteId] = { x: clampedX - anchorX, y: offset.y }
+  dragOffsets[noteId] = rebaseOverlayDragOffset(anchorX, offset, window.innerWidth, growsLeft)
 }
 
 const { isNoteTimeframeActive } = useVideoNoteVisibility({
@@ -162,6 +161,19 @@ const notesWithPositions = computed(() => {
 })
 
 function handleResize() {
+  for (const note of mustardState.notes) {
+    if (!note.id) continue
+    const offset = dragOffsets[note.id]
+    if (!offset) continue
+    const anchorPos = calculateAnchorPosition(note.anchorData)
+    if (!anchorPos) continue
+    dragOffsets[note.id] = rebaseOverlayDragOffset(
+      anchorPos.x,
+      offset,
+      window.innerWidth,
+      anchorPos.x > window.innerWidth / 2,
+    )
+  }
   resizeTick.value++
 }
 
