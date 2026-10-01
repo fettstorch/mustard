@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { EMOJI, type EmojiName } from '@/shared/emoji'
+import type { EmojiEntry } from '@/shared/emoji'
 
 const props = defineProps<{
-  items: EmojiName[]
+  items: EmojiEntry[]
   clientRect: (() => DOMRect | null) | null | undefined
-  onSelect: (name: EmojiName) => void
+  onSelect: (item: EmojiEntry) => void
 }>()
 const selectedIndex = ref(0)
 const list = ref<HTMLElement | null>(null)
@@ -50,19 +50,19 @@ defineExpose({ onKeyDown })
   >
     <div ref="list" class="emoji-list">
       <button
-        v-for="(name, index) in items"
-        :key="name"
+        v-for="(item, index) in items"
+        :key="item.emoji"
         type="button"
         role="option"
         :aria-selected="index === selectedIndex"
         :class="{ selected: index === selectedIndex }"
-        :title="`:${name}:`"
+        :title="item.names.map((name) => `:${name}:`).join(', ')"
         @mouseenter="selectedIndex = index"
         @mousedown.prevent
-        @click="onSelect(name)"
+        @click="onSelect(item)"
       >
-        <span>{{ EMOJI[name] }}</span
-        ><span>:{{ name }}:</span>
+        <span>{{ item.emoji }}</span
+        ><span>:{{ item.names[0] }}:</span>
       </button>
     </div>
     <div v-if="!items.length" class="emoji-empty">No matching emoji</div>

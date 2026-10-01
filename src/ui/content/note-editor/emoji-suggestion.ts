@@ -3,7 +3,7 @@ import { VueRenderer } from '@tiptap/vue-3'
 import Suggestion from '@tiptap/suggestion'
 import type { SuggestionProps } from '@tiptap/suggestion'
 import { PluginKey } from '@tiptap/pm/state'
-import { EMOJI, emojiMatches, type EmojiName } from '@/shared/emoji'
+import { emojiForName, emojiMatches, type EmojiEntry } from '@/shared/emoji'
 import EmojiPicker from './EmojiPicker.vue'
 
 const pluginKey = new PluginKey('mustardEmoji')
@@ -11,10 +11,10 @@ type PickerInstance = InstanceType<typeof EmojiPicker> & {
   onKeyDown?: (event: KeyboardEvent) => boolean
 }
 
-const pickerProps = (props: SuggestionProps<EmojiName, EmojiName>) => ({
+const pickerProps = (props: SuggestionProps<EmojiEntry, EmojiEntry>) => ({
   items: props.items,
   clientRect: props.clientRect,
-  onSelect: (name: EmojiName) => props.command(name),
+  onSelect: (item: EmojiEntry) => props.command(item),
 })
 
 export const EmojiSuggestion = Extension.create({
@@ -24,7 +24,7 @@ export const EmojiSuggestion = Extension.create({
       new InputRule({
         find: /:([a-z][a-z-]*):$/,
         handler: ({ state, range, match }) => {
-          const emoji = EMOJI[match[1] as EmojiName]
+          const emoji = emojiForName(match[1]!)
           if (emoji) state.tr.replaceWith(range.from, range.to, state.schema.text(emoji))
         },
       }),
@@ -32,14 +32,14 @@ export const EmojiSuggestion = Extension.create({
   },
   addProseMirrorPlugins() {
     return [
-      Suggestion<EmojiName, EmojiName>({
+      Suggestion<EmojiEntry, EmojiEntry>({
         editor: this.editor,
         char: ':',
         pluginKey,
         allowedPrefixes: [' ', '\n', '('],
         items: ({ query }) => emojiMatches(query).slice(0, 40),
         command: ({ editor, range, props }) => {
-          editor.chain().focus().insertContentAt(range, EMOJI[props]).run()
+          editor.chain().focus().insertContentAt(range, props.emoji).run()
         },
         render: () => {
           let renderer: VueRenderer | null = null
