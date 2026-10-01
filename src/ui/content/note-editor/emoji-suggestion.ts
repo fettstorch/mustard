@@ -37,11 +37,8 @@ export const EmojiSuggestion = Extension.create({
         char: ':',
         pluginKey,
         allowedPrefixes: [' ', '\n', '('],
-        // Show a compact starting set, but never truncate a flag search.
-        items: ({ query }) => {
-          const matches = emojiMatches(query)
-          return query ? matches : matches.slice(0, 40)
-        },
+        // Keep the full catalogue browseable, including flags at the end.
+        items: ({ query }) => emojiMatches(query),
         command: ({ editor, range, props }) => {
           editor.chain().focus().insertContentAt(range, props.emoji).run()
         },
