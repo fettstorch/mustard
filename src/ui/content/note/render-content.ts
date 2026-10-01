@@ -1,4 +1,5 @@
 import MarkdownIt from 'markdown-it'
+import emojiRegex from 'emoji-regex-xs'
 import { highlightCode } from './code-highlighting'
 import { makeMentionSentinelRegex, shortAccountId } from '@/shared/mentions'
 import {
@@ -17,6 +18,17 @@ const md = new MarkdownIt({
   // unsupported explicit language delegates to markdown-it's safe escaping.
   highlight: highlightCode,
 })
+
+// Only replace Markdown text tokens: code (inline and fenced), image attributes,
+// and HTML never pass through this renderer. Escape first, just like the default
+// text renderer, so adding a span cannot turn user content into markup.
+const emojiPresentation = /\p{Emoji_Presentation}/u
+md.renderer.rules.text = (tokens, idx) =>
+  md.utils.escapeHtml(tokens[idx]!.content).replace(emojiRegex(), (emoji) => {
+    // © and ™ can be represented as emoji, but without VS16 they are text.
+    if (!emoji.includes('\ufe0f') && !emojiPresentation.test(emoji)) return emoji
+    return `<span class="mustard-emoji">${emoji}</span>`
+  })
 
 // Add target="_blank" and security attrs to links. Mentions (links to a
 // provider profile page) get a distinct class so they can be styled differently.

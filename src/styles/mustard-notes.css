@@ -393,6 +393,13 @@
   background: var(--mustard-glass-strong);
 }
 
+/* Filter the isolated glyph, not the whole line or note. An alpha-mask
+   drop-shadow follows the emoji silhouette rather than drawing a square. */
+:is(.mustard-note-content, .mustard-comment-content) .mustard-emoji {
+  display: inline-block;
+  filter: drop-shadow(0 0 1px rgba(61, 34, 0, 0.85)) drop-shadow(0 0.75px 0 rgba(61, 34, 0, 0.65));
+}
+
 /* Highlight for the element a note will be anchored to (shown while editor is open).
    The accent is injected per-element as --mustard-yellow-mid because host-page
    nodes don't inherit vars from #mustard-host. */

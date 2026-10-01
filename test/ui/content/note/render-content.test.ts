@@ -2,6 +2,27 @@ import { describe, expect, it } from 'vitest'
 import { highlightCode } from '../../../../src/ui/content/note/code-highlighting'
 import { renderContent } from '../../../../src/ui/content/note/render-content'
 
+describe('renderContent emoji contrast', () => {
+  it('frames native, compound, and pasted emoji without changing saved text', () => {
+    const source = 'Hi 🫣 🇩🇪 🤷‍♂️ ❤️‍🩹 🧑🏽‍💻'
+    const rendered = renderContent(source)
+
+    for (const emoji of ['🫣', '🇩🇪', '🤷‍♂️', '❤️‍🩹', '🧑🏽‍💻']) {
+      expect(rendered).toContain(`<span class="mustard-emoji">${emoji}</span>`)
+    }
+    expect(source).toBe('Hi 🫣 🇩🇪 🤷‍♂️ ❤️‍🩹 🧑🏽‍💻')
+  })
+
+  it('does not style code, plain symbols, or escape user HTML', () => {
+    const rendered = renderContent('© ™ `🔥` <script>🔥</script> and 🔥')
+
+    expect(rendered).toContain('© ™ <code>🔥</code>')
+    expect(rendered).toContain('&lt;script&gt;<span class="mustard-emoji">🔥</span>')
+    expect(rendered).not.toContain('<script>')
+    expect(rendered.match(/class="mustard-emoji"/g)).toHaveLength(2)
+  })
+})
+
 describe('highlightCode', () => {
   it.each([
     ['Rust', 'rust', 'rs', 'fn main() {}'],
