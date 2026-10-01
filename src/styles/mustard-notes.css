@@ -393,18 +393,12 @@
   background: var(--mustard-glass-strong);
 }
 
-/* Crisp contour around the glyph, not a blurred glow or a rectangular box. */
+/* Zero-blur alpha-mask offsets follow the color emoji's silhouette without
+   the soft antialiased halo produced by text-shadow. */
 :is(.mustard-note-content, .mustard-comment-content, .ProseMirror) .mustard-emoji {
   display: inline-block;
-  text-shadow:
-    -1.5px -1.5px 0 #3d2200,
-    0 -1.5px 0 #3d2200,
-    1.5px -1.5px 0 #3d2200,
-    -1.5px 0 0 #3d2200,
-    1.5px 0 0 #3d2200,
-    -1.5px 1.5px 0 #3d2200,
-    0 1.5px 0 #3d2200,
-    1.5px 1.5px 0 #3d2200;
+  filter: drop-shadow(1px 0 0 #3d2200) drop-shadow(-1px 0 0 #3d2200)
+    drop-shadow(0 1px 0 #3d2200) drop-shadow(0 -1px 0 #3d2200);
 }
 
 /* Highlight for the element a note will be anchored to (shown while editor is open).
