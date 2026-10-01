@@ -23,7 +23,7 @@ const { candidates } = useMentionCandidates()
 
 const editor = useEditor({
   extensions: createEditorExtensions({
-    placeholder: 'Add a comment... gif via /wow, mention with @',
+    placeholder: 'Add a comment... gif via /, mention with @, emoji with :',
     getCandidates: () => candidates.value,
   }),
 })

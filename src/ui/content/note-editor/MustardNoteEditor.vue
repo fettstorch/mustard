@@ -47,7 +47,7 @@ const { candidates } = useMentionCandidates()
 
 const editor = useEditor({
   extensions: createEditorExtensions({
-    placeholder: 'Write your note... Or add a gif via /wow, mention with @',
+    placeholder: 'Write your note... Add a gif with /, mention with @, emoji with :',
     getCandidates: () => candidates.value,
   }),
   autofocus: true,
@@ -157,11 +157,13 @@ function handleFocusOut(event: FocusEvent) {
     return
   }
 
-  // The Giphy + mention pickers are appended to document.body. Treat focus
+  // The suggestion pickers are appended to document.body. Treat focus
   // moves into either as "still in editor" so the editor doesn't close behind it.
   if (
     event.relatedTarget instanceof Element &&
-    event.relatedTarget.closest('.mustard-giphy-picker, .mustard-mention-picker')
+    event.relatedTarget.closest(
+      '.mustard-giphy-picker, .mustard-mention-picker, .mustard-emoji-picker',
+    )
   ) {
     return
   }

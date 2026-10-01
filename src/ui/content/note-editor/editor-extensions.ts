@@ -6,6 +6,7 @@ import { CodeBlockLowlightWithHardBreakFence } from './code-block-extension'
 import { ImageUrlAutoConvert } from './image-url-auto-convert'
 import { ResizableImage } from './resizable-image'
 import { GiphySlash } from './giphy-slash'
+import { EmojiSuggestion } from './emoji-suggestion'
 import { createMentionExtension } from './mention-node'
 import { MarkdownLinkInput } from './markdown-link-input'
 import { lowlight } from '../note/code-highlighting'
@@ -54,6 +55,7 @@ export function createEditorExtensions(opts: {
     MarkdownLinkInput,
     ImageUrlAutoConvert,
     GiphySlash,
+    EmojiSuggestion,
     createMentionExtension(opts.getCandidates),
   ]
 }
