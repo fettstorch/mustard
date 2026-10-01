@@ -9,6 +9,7 @@ const props = defineProps<{
 }>()
 const selectedIndex = ref(0)
 const list = ref<HTMLElement | null>(null)
+const COLUMNS = 5
 watch(
   () => props.items,
   () => {
@@ -22,11 +23,14 @@ const position = computed(() => {
 
 function onKeyDown(event: KeyboardEvent): boolean {
   if (!props.items.length) return false
-  if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-    selectedIndex.value = Math.max(
-      0,
-      Math.min(props.items.length - 1, selectedIndex.value + (event.key === 'ArrowDown' ? 1 : -1)),
-    )
+  const step = {
+    ArrowDown: COLUMNS,
+    ArrowUp: -COLUMNS,
+    ArrowRight: 1,
+    ArrowLeft: -1,
+  }[event.key]
+  if (step !== undefined) {
+    selectedIndex.value = Math.max(0, Math.min(props.items.length - 1, selectedIndex.value + step))
     requestAnimationFrame(() =>
       list.value?.children[selectedIndex.value]?.scrollIntoView({ block: 'nearest' }),
     )
@@ -61,8 +65,8 @@ defineExpose({ onKeyDown })
         @mousedown.prevent
         @click="onSelect(item)"
       >
-        <span>{{ item.emoji }}</span
-        ><span>:{{ item.names[0] }}:</span>
+        <span class="emoji-glyph">{{ item.emoji }}</span>
+        <span class="emoji-name">{{ item.names[0] }}</span>
       </button>
     </div>
     <div v-if="!items.length" class="emoji-empty">No matching emoji</div>
@@ -73,37 +77,55 @@ defineExpose({ onKeyDown })
 .mustard-emoji-picker {
   position: fixed;
   z-index: 2147483647;
-  width: 230px;
-  max-height: 240px;
+  width: min(340px, calc(100vw - 16px));
+  max-height: min(320px, calc(100vh - 16px));
   display: flex;
   flex-direction: column;
   overflow: hidden;
   font-family: var(--mustard-font);
 }
 .emoji-list {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 2px;
   overflow-y: auto;
   padding: 4px;
 }
 .emoji-list button {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 10px;
+  justify-content: center;
+  gap: 2px;
   width: 100%;
+  min-width: 0;
+  min-height: 54px;
   margin: 0;
-  padding: 5px 6px;
+  padding: 4px 2px;
   border: 0;
   border-radius: 6px;
   background: transparent;
   color: inherit;
-  text-align: left;
+  text-align: center;
   font: inherit;
   cursor: pointer;
 }
 .emoji-list button.selected {
   background: var(--mustard-glass-hover);
 }
-.emoji-list button span:first-child {
-  font-size: 20px;
+.emoji-glyph {
+  font-size: 25px;
+  line-height: 1.15;
+}
+.emoji-name {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 9px;
+  line-height: 1.2;
+  opacity: 0.7;
 }
 .emoji-empty {
   padding: 12px;
