@@ -205,13 +205,13 @@ const subdivisionFlags: EmojiEntry[] = [
   { emoji: flagForSubdivision('gbwls'), names: ['flag-wales', 'wales'] },
 ]
 
-export const EMOJI_CATALOGUE: readonly EmojiEntry[] = [
+const EMOJI_CATALOGUE: readonly EmojiEntry[] = [
   ...CURATED_EMOJI,
   ...regionalFlags,
   ...subdivisionFlags,
 ]
 
-export function normalizeEmojiQuery(query: string): string {
+function normalizeEmojiQuery(query: string): string {
   return query.toLowerCase().replace(/_/g, '-')
 }
 
