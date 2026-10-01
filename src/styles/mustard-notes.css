@@ -393,11 +393,18 @@
   background: var(--mustard-glass-strong);
 }
 
-/* Filter the isolated glyph, not the whole line or note. The stronger dark
-   contour stays visible against the mustard gradient at actual note font size. */
+/* Crisp contour around the glyph, not a blurred glow or a rectangular box. */
 :is(.mustard-note-content, .mustard-comment-content, .ProseMirror) .mustard-emoji {
   display: inline-block;
-  filter: drop-shadow(0 0 1.6px #3d2200) drop-shadow(0 0 1px #3d2200);
+  text-shadow:
+    -1.5px -1.5px 0 #3d2200,
+    0 -1.5px 0 #3d2200,
+    1.5px -1.5px 0 #3d2200,
+    -1.5px 0 0 #3d2200,
+    1.5px 0 0 #3d2200,
+    -1.5px 1.5px 0 #3d2200,
+    0 1.5px 0 #3d2200,
+    1.5px 1.5px 0 #3d2200;
 }
 
 /* Highlight for the element a note will be anchored to (shown while editor is open).
