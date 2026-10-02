@@ -680,6 +680,10 @@ watch(unreadCount, (count) => {
 /* --- Content styles --- */
 
 .mustard-note-content {
+  /* Leave room inside the body's collapse clip for an emoji at the first
+     character/line to paint its contour on every side. */
+  box-sizing: border-box;
+  padding: 3px;
   word-break: break-word;
 }
 
