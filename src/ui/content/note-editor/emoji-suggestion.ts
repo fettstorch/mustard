@@ -30,11 +30,13 @@ export const EmojiSuggestion = Extension.create({
   addInputRules() {
     return [
       new InputRule({
-        find: /:([a-z][a-z-]*):$/,
+        // Match the same trigger boundaries as the picker, not URL/path suffixes.
+        find: /(?:^|[ \n(]):([a-z][a-z-]*):$/,
         handler: ({ state, range, match }) => {
-          if (isCodeContext(state, range.from)) return
+          const from = range.from + match[0].indexOf(':')
+          if (isCodeContext(state, from)) return
           const emoji = emojiForName(match[1]!)
-          if (emoji) state.tr.replaceWith(range.from, range.to, state.schema.text(emoji))
+          if (emoji) state.tr.replaceWith(from, range.to, state.schema.text(emoji))
         },
       }),
     ]
