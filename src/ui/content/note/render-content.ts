@@ -1,5 +1,6 @@
 import MarkdownIt from 'markdown-it'
 import { highlightCode } from './code-highlighting'
+import { visibleEmojiMatches } from '@/shared/emoji-presentation'
 import { makeMentionSentinelRegex, shortAccountId } from '@/shared/mentions'
 import {
   BSKY_PROFILE_URL_PREFIX,
@@ -17,6 +18,21 @@ const md = new MarkdownIt({
   // unsupported explicit language delegates to markdown-it's safe escaping.
   highlight: highlightCode,
 })
+
+// Only replace Markdown text tokens: code (inline and fenced), image attributes,
+// and HTML never pass through this renderer. Escape first, just like the default
+// text renderer, so adding a span cannot turn user content into markup.
+md.renderer.rules.text = (tokens, idx) => {
+  const text = tokens[idx]!.content
+  let result = ''
+  let offset = 0
+  for (const match of visibleEmojiMatches(text)) {
+    result += md.utils.escapeHtml(text.slice(offset, match.index))
+    result += `<span class="mustard-emoji">${md.utils.escapeHtml(match[0])}</span>`
+    offset = match.index! + match[0].length
+  }
+  return result + md.utils.escapeHtml(text.slice(offset))
+}
 
 // Add target="_blank" and security attrs to links. Mentions (links to a
 // provider profile page) get a distinct class so they can be styled differently.
