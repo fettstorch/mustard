@@ -2,11 +2,19 @@ import { Extension, InputRule } from '@tiptap/core'
 import { VueRenderer } from '@tiptap/vue-3'
 import Suggestion from '@tiptap/suggestion'
 import type { SuggestionProps } from '@tiptap/suggestion'
-import { PluginKey } from '@tiptap/pm/state'
+import { PluginKey, type EditorState } from '@tiptap/pm/state'
 import { emojiForName, emojiMatches, type EmojiEntry } from '@/shared/emoji'
 import EmojiPicker from './EmojiPicker.vue'
 
 const pluginKey = new PluginKey('mustardEmoji')
+function isCodeContext(state: EditorState, position: number): boolean {
+  const $position = state.doc.resolve(position)
+  return (
+    Boolean($position.parent.type.spec.code) ||
+    $position.marks().some((mark) => mark.type.spec.code)
+  )
+}
+
 type PickerInstance = InstanceType<typeof EmojiPicker> & {
   onKeyDown?: (event: KeyboardEvent) => boolean
 }
@@ -24,6 +32,7 @@ export const EmojiSuggestion = Extension.create({
       new InputRule({
         find: /:([a-z][a-z-]*):$/,
         handler: ({ state, range, match }) => {
+          if (isCodeContext(state, range.from)) return
           const emoji = emojiForName(match[1]!)
           if (emoji) state.tr.replaceWith(range.from, range.to, state.schema.text(emoji))
         },
@@ -36,6 +45,7 @@ export const EmojiSuggestion = Extension.create({
         editor: this.editor,
         char: ':',
         pluginKey,
+        allow: ({ state, range }) => !isCodeContext(state, range.from),
         allowedPrefixes: [' ', '\n', '('],
         // Keep the full catalogue browseable, including flags at the end.
         items: ({ query }) => emojiMatches(query),
