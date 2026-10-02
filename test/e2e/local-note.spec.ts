@@ -73,7 +73,7 @@ test.describe('Content script smoke', () => {
     })
   })
 
-  test('keeps a content-sized editor and saved note inside the viewport', async ({ context }) => {
+  test('keeps a right-edge editor and saved note inside the viewport', async ({ context }) => {
     const page = await context.newPage()
     await page.setViewportSize({ width: 600, height: 600 })
     await page.goto(fixtureUrl)
@@ -107,18 +107,20 @@ test.describe('Content script smoke', () => {
     expect(initialBox.x + initialBox.width).toBeLessThanOrEqual(592)
 
     await editor.click()
-    await page.keyboard.type(
-      'This note grows to fit its actual content while remaining completely reachable in the viewport.',
-    )
+    const content = 'This note stays reachable even when its text wraps near the right edge.'
+    await page.keyboard.type(content)
+    await expect(editor).toContainText(content)
 
     const grownBox = await noteEditor.boundingBox()
     if (!grownBox) throw new Error('Editor has no grown bounding box')
-    expect(grownBox.width).toBeGreaterThan(initialBox.width)
+    // With an anchor at the right edge, the editor wraps rather than growing
+    // leftward or extending past the viewport.
     expect(grownBox.x).toBeGreaterThanOrEqual(8)
     expect(grownBox.x + grownBox.width).toBeLessThanOrEqual(592)
 
     await mustard.getByTitle('Save this note locally').click()
-    const savedNote = mustard.locator('.mustard-note').filter({ hasText: 'This note grows' })
+    const savedNote = mustard.locator('.mustard-note').filter({ hasText: 'This note stays reachable' })
+    await expect(savedNote.locator('.mustard-note-content')).toContainText(content)
     const savedBox = await savedNote.boundingBox()
     if (!savedBox) throw new Error('Saved note has no bounding box')
     expect(savedBox.x).toBeGreaterThanOrEqual(8)
