@@ -656,6 +656,13 @@ watch(unreadCount, (count) => {
 }
 
 .mustard-note-body-inner {
+  /* Expanded content may paint a few pixels outside its box (emoji contours).
+     The outer note still clips at its padded border. */
+  overflow: visible;
+}
+
+.mustard-note.is-minimized .mustard-note-body-inner {
+  /* Keep content clipped while the minimized pill collapses/expands. */
   overflow: hidden;
 }
 
@@ -680,10 +687,6 @@ watch(unreadCount, (count) => {
 /* --- Content styles --- */
 
 .mustard-note-content {
-  /* Leave room inside the body's collapse clip for an emoji at the first
-     character/line to paint its contour on every side. */
-  box-sizing: border-box;
-  padding: 3px;
   word-break: break-word;
 }
 
