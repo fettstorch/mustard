@@ -18,7 +18,19 @@ watch(
 )
 const position = computed(() => {
   const rect = props.clientRect?.()
-  return { top: (rect?.bottom ?? 0) + 6, left: rect?.left ?? 0 }
+  const gutter = 8
+  const width = Math.min(340, window.innerWidth - gutter * 2)
+  const height = Math.min(320, window.innerHeight - gutter * 2)
+  const left = Math.max(gutter, Math.min(rect?.left ?? gutter, window.innerWidth - width - gutter))
+  const below = (rect?.bottom ?? gutter) + 6
+  const above = (rect?.top ?? gutter) - height - 6
+  const top =
+    below + height <= window.innerHeight - gutter
+      ? below
+      : above >= gutter
+        ? above
+        : Math.max(gutter, window.innerHeight - height - gutter)
+  return { top, left }
 })
 
 function onKeyDown(event: KeyboardEvent): boolean {
