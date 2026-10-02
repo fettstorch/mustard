@@ -119,7 +119,9 @@ test.describe('Content script smoke', () => {
     expect(grownBox.x + grownBox.width).toBeLessThanOrEqual(592)
 
     await mustard.getByTitle('Save this note locally').click()
-    const savedNote = mustard.locator('.mustard-note').filter({ hasText: 'This note stays reachable' })
+    const savedNote = mustard
+      .locator('.mustard-note')
+      .filter({ hasText: 'This note stays reachable' })
     await expect(savedNote.locator('.mustard-note-content')).toContainText(content)
     const savedBox = await savedNote.boundingBox()
     if (!savedBox) throw new Error('Saved note has no bounding box')
