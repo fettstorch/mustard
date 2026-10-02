@@ -64,7 +64,10 @@ export const EmojiSuggestion = Extension.create({
                 props: pickerProps(props),
               })
               element = renderer.element as HTMLElement
-              document.body.appendChild(element)
+              // A sibling of the note avoids clipping while inheriting the host's
+              // live theme and font variables (which aren't set on document.body).
+              const host = props.editor.view.dom.closest('#mustard-host') ?? document.body
+              host.appendChild(element)
             },
             onUpdate(props) {
               if (props.query && props.items.length === 1) {
