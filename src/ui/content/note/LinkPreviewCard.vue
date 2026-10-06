@@ -117,7 +117,10 @@ onUnmounted(() => {
 .mustard-link-preview-shell {
   position: relative;
   display: block;
-  width: min(100%, var(--mustard-note-effective-content-max-width));
+  /* The note is fit-content: exclude preview text/image from its intrinsic width,
+   * then fill the width established by the note's actual content. */
+  contain: inline-size;
+  width: 100%;
   max-width: var(--mustard-note-effective-content-max-width);
 }
 
