@@ -118,9 +118,11 @@ onUnmounted(() => {
   position: relative;
   display: block;
   /* The note is fit-content: exclude preview text/image from its intrinsic width,
-   * then fill the width established by the note's actual content. */
+   * but reserve enough room for a readable card. Fill wider notes without
+   * exceeding the available content width on narrow viewports. */
   contain: inline-size;
   width: 100%;
+  min-width: min(240px, var(--mustard-note-effective-content-max-width));
   max-width: var(--mustard-note-effective-content-max-width);
 }
 
